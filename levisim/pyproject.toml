@@ -1,0 +1,30 @@
+[build-system]
+# requires = ["setuptools>=68.0", "wheel"]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "levisim"
+version = "0.0.1"
+authors = [
+  { name="Julian Iacoponi", email="julian.iacoponi@gmail.com" },
+]
+description = "A package for levitated physics simulations"
+readme = "README.md"
+requires-python = ">=3.9"
+
+# classifiers = [
+#     "Programming Language :: Python :: 3",
+#     "License :: OSI Approved :: MIT License",
+#     "Operating System :: OS Independent",
+# ]
+
+# [project.urls]
+# Homepage = "https://github.com/pypa/sampleproject"
+# Issues = "https://github.com/pypa/sampleproject/issues"
+
+[tool.hatch.build.targets.sdist]
+include = ["/levisim"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["levisim"]
