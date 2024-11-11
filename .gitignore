@@ -1,0 +1,15 @@
+# https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+
+# macOS filesystem generated
+# https://stackoverflow.com/questions/18393498/gitignore-all-the-ds-store-files-in-every-folder-and-subfolder
+.DS_Store
+.DS_Store?
+
+# python generated
+__pycache__
+
+# gfortran compiled binary
+*.out
+
+# fortran output data
+*.dat
