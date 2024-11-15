@@ -24,8 +24,13 @@ __all__ = [
     'kick_data_path',
     'generate_kick_list',
     'find_kicks',
+
+    # MultiTrap QLT spectra comparison tools
+    'greyscale_diff',
+    'compare_methods',
 ]
 
+import cv2
 import pickle
 import scipy.signal
 import matplotlib.animation
@@ -35,8 +40,12 @@ import matplotlib.pyplot as plt
 
 from matplotlib.path import Path
 from IPython.display import HTML
+from pprint import pprint as pp
 
+from levisim.core.constants import ħ, kB
+from levisim.core.units import Hz, kHz
 from levisim.physics.kick import Kick
+from levisim.physics.multitrap import QuantumLinearTheoryMethod as QLTM
 
 
 ####################################################################################################
@@ -303,4 +312,135 @@ def find_kicks(
         plt.show()
 
     return kick_times, kick_times_2, kick_voltages
+
+####################################################################################################
+# MultiTrap QLT spectra comparison tools
+
+def greyscale_diff(image_1, image_2):
+    return cv2.cvtColor(cv2.subtract(image_1, image_2), cv2.COLOR_BGR2GRAY)
+
+def compare_methods(multitrap_instance, methods_to_compare, spectra_to_compare):
+    mph = multitrap_instance
+    methods = methods_to_compare
+    spectral_types = spectra_to_compare
+    N, ax = mph.num_traps, mph.Cartesian_axes_per_trap
+
+    if QLTM.TNT_LINEAR_AMPLIFIER_MODEL in methods:
+        spectral_types = ['PSDs']
+
+    ω_low = min(mph.ω_range) / kHz
+    ω_high = max(mph.ω_range) / kHz
+    ω_step = (mph.ω_range[1] - mph.ω_range[0]) / kHz
+
+    image_dicts = {}
+    all_plot_values = {}
+    for spectral_type in spectral_types:
+        image_dicts[spectral_type] = {}
+        for method in methods:
+            all_plot_values[method] = {}
+            print(f'{spectral_type} -- {method}')
+
+            label = spectral_type
+            if spectral_type == 'PSDs':
+                calc_func = mph.calculate_all_hybridised_position_spectra
+                label = mph.labels
+            elif spectral_type == 'homodyne':
+                calc_func = mph.calculate_homodyne_spectrum
+            elif spectral_type == 'heterodyne':
+                calc_func = mph.calculate_heterodyne_spectrum
+
+            plot_values = calc_func(method)
+            all_plot_values[method][spectral_type] = plot_values
+
+            if spectral_type == 'PSDs' and N >= 3 and ax >= 2:
+                PSD_fig = plt.figure(layout='constrained', figsize=(8, 16))
+                PSD_ax_dict = PSD_fig.subplot_mosaic([
+                    ['X1'],
+                    ['Y1'],
+                    ['X2'],
+                    ['Y2'],
+                    ['X3'],
+                    ['Y3'],
+                ])
+                PSD_ax_list = list(PSD_ax_dict.values())
+                for ii, PSD_ax in enumerate(PSD_ax_list):
+                    PSD_ax.plot(mph.ω_range / kHz, plot_values[:, ii], label=label[ii])
+                    PSD_ax.set_yscale('log')
+                    PSD_ax.legend()
+                    PSD_ax.grid()
+                    PSD_ax.set_xlim(ω_low, ω_high)
+                    PSD_ax.set_ylim(1e-7, 1e1)
+                plt.show()
+
+            plt.plot(
+                mph.ω_range / kHz,
+                plot_values,
+                label=label,
+            )
+            plt.yscale('log')
+            plt.legend()
+            plt.grid()
+            plt.xlim(ω_low, ω_high)
+            if spectral_type == 'PSDs':
+                plt.ylim(1e-8, 1e1)
+            figname = f'{spectral_type} -- {method}.png'
+            plt.savefig(figname)
+            image_dicts[spectral_type][method] = cv2.imread(figname)
+            plt.show()
+
+            if spectral_type == 'PSDs':
+                for ii, label in enumerate(mph.labels):
+                    jn = mph.dimensions[label]
+                    ħΩ = ħ * jn.Ω
+
+                    SQQ_area = np.trapz(plot_values[:, ii], mph.ω_range / Hz)
+                    njn = 0.5 * (SQQ_area - 1)
+                    print(f'{label=}')
+                    print(f'n{label} = {njn:.6f} phonons')
+                    print(f'T{label} via phonons = {njn * ħΩ / kB:.6e} K')
+
+                    eqp_f = jn.m * jn.Ω**2 / kB
+                    q_variance = SQQ_area * jn.zpf**2
+                    print(f'T{label} via variance = {eqp_f * q_variance:.6e} K')
+
+
+    method_pairs = []
+    # comparing 2
+    if len(methods) >= 2:
+        method_pairs.append((methods[0], methods[1]))
+
+    # comparing 3
+    if len(methods) >= 3:
+        method_pairs.append((methods[1], methods[2]))
+        method_pairs.append((methods[0], methods[2]))
+
+    # comparing 4
+    if len(methods) >= 4:
+        method_pairs.append((methods[2], methods[3]))
+        method_pairs.append((methods[0], methods[3]))
+        method_pairs.append((methods[1], methods[3]))
+
+    # comparing 5
+    if len(methods) >= 5:
+        method_pairs.append((methods[3], methods[4]))
+        method_pairs.append((methods[0], methods[4]))
+        method_pairs.append((methods[1], methods[4]))
+        method_pairs.append((methods[2], methods[4]))
+
+    results_dict = {}
+    all_results = []
+    for spectral_type, image_dict in image_dicts.items():
+
+        results_dict[spectral_type] = {}
+
+        for method_pair in method_pairs:
+            diff = greyscale_diff(image_dict[method_pair[0]], image_dict[method_pair[1]])
+            result = cv2.countNonZero(diff) == 0
+
+            all_results.append(result)
+            results_dict[spectral_type][method_pair] = result
+
+    assert all(all_results), f'🏴‍☠️🏴‍☠️🏴‍☠️🏴‍☠️🏴‍☠️ Failure present! 🏴‍☠️🏴‍☠️🏴‍☠️🏴‍☠️🏴‍☠️\n{results_dict=}'
+    print('🎉🎉🎉🎉🎉 all spectral calculation methods agree :) 🎉🎉🎉🎉🎉')
+    pp(results_dict)
 

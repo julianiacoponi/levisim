@@ -345,6 +345,7 @@ class QuantumLinearTheoryMethod(Enum):
             - in particular, solving for X(ω), in terms of X1D(ω)
 
                 X(ω) = R(ω) @ X(ω) + X1D(ω)
+                (I - R(ω)) @ X(ω) = X1D(ω)
                 D(ω) @ X(ω) = X1D(ω)
                 X(ω) = D(ω)⁻¹ @ X1D(ω)
                 X(ω) = H(ω) @ X1D(ω)
