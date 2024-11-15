@@ -45,7 +45,7 @@ class Tweezer:
         self.wy0 = float(kwargs.get('wy0', 1.0679*μm))
 
         ############################################################################################
-        # MULTI-PHYSICS PROPERTIES
+        # MULTI-TRAP PROPERTIES
         # ------------------------------------------------------------------------------------------
         # Rotation angle of polarisation direction relative to cavity axis
         # [rad]
@@ -64,7 +64,7 @@ class Tweezer:
     @property
     def info(self):
         """
-        Prints info on the tweezer
+        Prints information on the Tweezer instance
         """
         print(
             f'Tweezer(id={id(self)}'
@@ -255,7 +255,7 @@ class Tweezer:
 
         # NOTE: 1064nm tweezer light oscillates at about 2.8 THz >> kHz oscillations of the bead.
         # This means we do not do the above (which would be proper).
-        # Instead, we consider that the cos²(θ) oscillation averages to ½ (when finding the potential Utw ~ |E|² in the Physics class).
+        # Instead, we consider that the cos²(θ) oscillation averages to ½ (when finding the potential Utw ~ |E|² in the Trap class).
 
-        # So, we *artificially* include this ½ in the forces calculated in Physics.
+        # So, we *artificially* include this ½ in the forces calculated in the Trap class.
         return self.amplitude(x, y, z)

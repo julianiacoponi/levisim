@@ -134,7 +134,7 @@ class TracePair:
         self.time_array = trace_1.time_array
 
         self.Nyquist_frequency = trace_1.Nyquist_frequency
-        self.physics = trace_1.source.physics
+        self.trap = trace_1.source.trap
 
         if trace_2 is None:
             trace_2 = trace_1

@@ -47,7 +47,7 @@ class Gas:
     @property
     def info(self):
         """
-        Prints info on the physics of the tweezer levitating a bead
+        Prints information on the Gas instance
         """
         print(
             f'Gas(id={id(self)}'

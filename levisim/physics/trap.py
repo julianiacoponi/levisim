@@ -18,9 +18,10 @@ from levisim.physics.gas import Gas
 from levisim.analysis.spectral_density_theory import SpectralDensityTheory
 
 
-class Physics:
+class Trap:
     """
-    Physics of an experimental setup of
+    Combined physics of a levitated free-space tweezer trap
+    i.e. of an experimental setup of
     - a Bead instance, levitated by
     - a Tweezer instance, floating in
     - a Gas instance
@@ -37,7 +38,7 @@ class Physics:
         **kwargs,
     ):
         """
-        Initialises a Physics instance
+        Initialises a Trap instance
         """
         ############################################################################################
         # DEFINING INSTANCES
@@ -79,11 +80,6 @@ class Physics:
         # useful to get SpectralDensityTheory curves to match Experiment or Simulation data
         self.override_Ω_dict = kwargs.get('override_Ω_dict', None)
 
-        ############################################################################################
-        # MULTI-PHYSICS PROPERTIES
-        # ------------------------------------------------------------------------------------------
-        self.trap_index = kwargs.get('trap_index')
-
         # to calculate theoretical spectral density curves
         self.theory = SpectralDensityTheory(
             self.bead.m,
@@ -92,11 +88,16 @@ class Physics:
             self.fth, self.β, self.ψ,
         )
 
+        ############################################################################################
+        # MULTI-TRAP PROPERTIES
+        # ------------------------------------------------------------------------------------------
+        self.trap_index = kwargs.get('trap_index')
+
     @property
     def info(self):
-        """ Prints info on the physics of the tweezer levitating a bead """
+        """ Prints information on the physics of the bead levitating in a tweezer trap, in gas """
         print(
-            f'Physics(id={id(self)}'
+            f'Trap(id={id(self)}'
             f'\n    trap_index={self.trap_index}'
             f'\n'
             f'\n    Γfb,x = {self.Γ_fbx / kHz:.6f} kHz'

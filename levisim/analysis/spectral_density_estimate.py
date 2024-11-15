@@ -409,8 +409,8 @@ class SpectralDensityEstimate:
             return None
 
         axis = self.A.axis
-        # equipartition_factor = self.source.physics.bead.m * self.source.physics.Ωj[axis]**2 / kB
-        equipartition_factor = self.source.physics.bead.m * self.Ωfit**2 / kB
+        # equipartition_factor = self.source.trap.bead.m * self.source.trap.Ωj[axis]**2 / kB
+        equipartition_factor = self.source.trap.bead.m * self.Ωfit**2 / kB
         return equipartition_factor * (self.area)
 
     def frequency_to_index(
@@ -486,9 +486,9 @@ class SpectralDensityEstimate:
 
         if A0 is None:
             # A = kb*T / (π*m) for a displacement PSD
-            A0 = self.source.physics.A / Hz**2
+            A0 = self.source.trap.A / Hz**2
         if Γ0 is None:
-            Γ0 = self.source.physics.Γj[self.A.axis] / Hz
+            Γ0 = self.source.trap.Γj[self.A.axis] / Hz
         if Ω0 is None:
             Ω0 = self.Ω / Hz
 

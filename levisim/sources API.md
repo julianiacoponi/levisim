@@ -5,7 +5,7 @@
 - `num_samples`
 - `min_Δf`
 - `Nyquist_frequency`*
-- `physics` (for equipartition_factor)
+- `trap` (for equipartition_factor)
 
 * implied API
 - `Δt`

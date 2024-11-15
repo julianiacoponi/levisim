@@ -12,8 +12,8 @@ __all__ = [
     'Bead',
     'Gas',
     'Cavity',
-    'Physics',
-    'MultiPhysics',
+    'Trap',
+    'MultiTrap',
     'Dimension', 'QuantumLinearTheoryMethod', 'HybridisationTerm',
 ]
 
@@ -23,6 +23,6 @@ from levisim.physics.bead import Bead
 from levisim.physics.gas import Gas
 from levisim.physics.cavity import Cavity
 
-from levisim.physics.physics import Physics
-from levisim.physics.multiphysics import MultiPhysics
-from levisim.physics.multiphysics import Dimension, QuantumLinearTheoryMethod, HybridisationTerm
+from levisim.physics.trap import Trap
+from levisim.physics.multitrap import MultiTrap
+from levisim.physics.multitrap import Dimension, QuantumLinearTheoryMethod, HybridisationTerm

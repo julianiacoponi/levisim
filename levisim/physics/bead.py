@@ -56,7 +56,7 @@ class Bead:
         self.εR = float(kwargs.get('εR', 1.98))
 
         ############################################################################################
-        # MULTI-PHYSICS PROPERTIES
+        # MULTI-TRAP PROPERTIES
         # ------------------------------------------------------------------------------------------
         # Trapping position away from the antinode of a the cavity standing
         # [rad]
@@ -69,7 +69,7 @@ class Bead:
     @property
     def info(self):
         """
-        Prints info on the Bead object
+        Prints information on the Bead instance
         """
         print(
             f'Bead(id={id(self)}'

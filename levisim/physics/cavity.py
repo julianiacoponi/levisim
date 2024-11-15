@@ -56,7 +56,7 @@ class Cavity:
         self.ωtw = float(kwargs.get('ωtw', Tweezer().ω))
 
         ############################################################################################
-        # MULTI-PHYSICS PROPERTIES
+        # MULTI-TRAP PROPERTIES
         # ------------------------------------------------------------------------------------------
         # Real and imaginary parts of the static part of the cavity mode photon field
         # [complex ·]
@@ -97,9 +97,9 @@ class Cavity:
         """
         Prints information on the Cavity instance
         """
-        multiphysics_str = ''
+        multitrap_str = ''
         if self.A0:
-            multiphysics_str = (
+            multitrap_str = (
                 f'\n'
                 f'\n    |α|² = {np.abs(self.αR + 1j*self.αI)**2:.5e} photons'
                 f'\n    A0 = {self.A0:.5e}'
@@ -124,7 +124,7 @@ class Cavity:
             f'\n'
             f'\n    θhom = {self.θhom / degrees:.5f} °'
             f'\n    Ωhet = {self.Ωhet / kHz:.5f} kHz'
-            f'{multiphysics_str}'
+            f'{multitrap_str}'
             f'\n)'
         )
         return

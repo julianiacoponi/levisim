@@ -40,7 +40,6 @@ from levisim.physics.kick import Kick
 
 
 ####################################################################################################
-
 # data to calculate the V/m calibration factor
 CALIBRATION_DATA_PATH_ROOT = ''
 
@@ -222,7 +221,7 @@ def generate_kick_list(
     strengths=None,  # multiple of to the thermal gas momentum
     angles=None,  # radians in x-y plane
 ):
-    """ Provides a list of Kicks that can be assigned to the kicks attribute of a Physics instance """
+    """ Provides a list of Kicks that can be assigned to the kicks attribute of a Trap instance """
     # default to returning an empty list
     if num_kicks is None:
         return []

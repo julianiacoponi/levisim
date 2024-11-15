@@ -23,7 +23,7 @@ from levisim.physics.tweezer import Tweezer
 from levisim.physics.bead import Bead
 from levisim.physics.gas import Gas
 from levisim.physics.cavity import Cavity
-from levisim.physics.physics import Physics
+from levisim.physics.trap import Trap
 
 alphabet = 'abcdefghijklmnopqrstuvwxyz'
 HybridisationTerm = namedtuple('HybridisationTerm', ['sign', 'pairs'])
@@ -363,7 +363,7 @@ class QuantumLinearTheoryMethod(Enum):
         POWER_SERIES_HYBRIDISATION
             H(ω) = D(ω)⁻¹ = adj(D)/det(D)
             This sets up the power series
-                - to 'write out' the symbolic inversion D(ω) i.e. the symbolic form of H(ω)
+                - to 'write out' the symbolic inversion of D(ω) i.e. the symbolic form of H(ω)
                 - in terms of the hybridisation functions Rjk(ω)
 
             The power series are as follows
@@ -409,7 +409,7 @@ class QuantumLinearTheoryMethod(Enum):
             return 'TNT LAM'
 
 
-class MultiPhysics:
+class MultiTrap:
     """
     Class to calculate multi-particle Quantum Linear Theory
     """
@@ -418,7 +418,7 @@ class MultiPhysics:
         **kwargs,
     ):
         """
-        Initialises a MultiPhysics instance
+        Initialises a MultiTrap instance
         """
         self.num_traps = kwargs.get('num_traps', 2)
         self.Cartesian_axes_per_trap = kwargs.get('Cartesian_axes_per_trap', 2)
@@ -501,7 +501,7 @@ class MultiPhysics:
     @property
     def info(self):
         print(
-            f'MultiPhysics('
+            f'MultiTrap('
             f'\n    num_traps = {self.num_traps}'
             f'\n    Cartesian_axes_per_trap = {self.Cartesian_axes_per_trap}'
             f'\n    ω_range = [{self.ω_range.min() / kHz}, {self.ω_range.max() / kHz}] kHz'
@@ -525,8 +525,8 @@ class MultiPhysics:
     @property
     def info_per_trap(self):
         if not self.toy_params:
-            for physics in self.traps:
-                physics.info
+            for trap in self.traps:
+                trap.info
 
     @property
     def toy_params_info(self):
@@ -536,7 +536,7 @@ class MultiPhysics:
         if self.use_Γ_formula:
             Γ_str = (
                 f'\n    Γ_formula = {self.toy_Γ_formula / Hz:.5e} Hz'
-                f'\n    Γ_formula_from_Antonio_paper = (1 + π/8) m〈v〉P / (kBT) / (ρr) = {self.toy_Γ_formula_from_Antonio_paper / Hz:.5e} Hz'
+                f'\n    Γ_formula_from_Antonio_paper = (1 + π/8) m_gas〈v〉P / (kBT) / (ρr) = {self.toy_Γ_formula_from_Antonio_paper / Hz:.5e} Hz'
                 f'\n    Γ_formula_from_Tania_paper = 15Pr²/(m〈v〉) = {self.toy_Γ_formula_from_Tania_paper / Hz:.5e} Hz'
                 f'\n    Γ_formula_from_Tania_fortran = 16P/(πρr〈v〉) = {self.toy_Γ_formula_from_Tania_fortran / Hz:.5e} Hz'
             )
@@ -619,7 +619,7 @@ class MultiPhysics:
 
         # each particle/trap/tweezer has its own physics!
         self.traps = [
-            Physics(
+            Trap(
                 tweezer=self.tweezers[_],
                 bead=self.beads[_],
                 gas=self.gas,
@@ -1259,7 +1259,7 @@ class MultiPhysics:
                     adjugate_matrix_ω[jj, kk] = self.deranged_adjugate_entry(label_jn + label_km, ω)
             return adjugate_matrix_ω / self.deranged_determinant(ω)
 
-    def X1D(self, ω):
+    def X1D_noise_vector(self, ω):
         """
         Column vector of the 1D solutions to the QLT equations of motion for each dimension, as a noise vector
         """
@@ -1293,7 +1293,7 @@ class MultiPhysics:
             return hybrid_X
 
         # hybridisation matrix methods
-        return self.hybridisation_matrix(method, ω) @ self.X1D(ω)
+        return self.hybridisation_matrix(method, ω) @ self.X1D_noise_vector(ω)
 
     def light_noise_vectors(self, method, ω):
         """
@@ -1478,7 +1478,7 @@ class MultiPhysics:
             adj_row[ii] = self.deranged_adjugate_entry(ij, ω)
 
         # X = adj(D)/det(D) * X1D
-        value = (adj_row @ self.X1D(ω)) / self.deranged_determinant(ω)
+        value = (adj_row @ self.X1D_noise_vector(ω)) / self.deranged_determinant(ω)
         return value
 
     @cached_property
@@ -1546,18 +1546,18 @@ class MultiPhysics:
 # TODO: move this to levisim somehow?
 class Dimension:
     """ Class to represent a mechanical degree of freedom in the system """
-    def __init__(self, multiphysics, label, **kwargs):
+    def __init__(self, multitrap, label, **kwargs):
 
         # the multi-dimensional context in which this dimension exists!
-        self.multiphysics = multiphysics
+        self.multitrap = multitrap
 
         # should be a string with either of 'xyz' as the first character
         # remaining characters are the bead index
         self.label = label
         self.axis, self.trap_index = label[0], label[1:]
-        self.sub = multiphysics.label_to_sub[label]
+        self.sub = multitrap.label_to_sub[label]
         # needed to know to assign Q1D
-        self.noise_index = multiphysics.label_to_noise_index[label]
+        self.noise_index = multitrap.label_to_noise_index[label]
 
         ############################################################################################
         # TOY MODEL PARAMETERS
@@ -1581,9 +1581,9 @@ class Dimension:
         # PHYSICAL MODEL PARAMETERS
         # ------------------------------------------------------------------------------------------
         self.Φ = None
-        if not self.multiphysics.toy_params:
+        if not self.multitrap.toy_params:
             # e.g. label 'x1' will take traps[0], 'y3' takes traps[2]
-            self.trap = multiphysics.traps[int(self.trap_index) - 1]
+            self.trap = multitrap.traps[int(self.trap_index) - 1]
             # Trapping position of the bead in the cavity's standing wave
             # [rad]
             self.Φ = self.trap.bead.Φ
@@ -1592,7 +1592,7 @@ class Dimension:
             self.φ = self.trap.tweezer.φ
 
         if self.T is None:
-            self.T = multiphysics.gas.T
+            self.T = multitrap.gas.T
 
         if self.m is None:
             self.m = self.trap.bead.m
@@ -1631,18 +1631,18 @@ class Dimension:
             self.g = self.light_mech_coupling
 
         if self.gxy is None:
-            if multiphysics.Cartesian_axes_per_trap == 1:
+            if multitrap.Cartesian_axes_per_trap == 1:
                 self.gxy = 0
                 self.gxz = 0
                 self.gyz = 0
 
-            if multiphysics.Cartesian_axes_per_trap == 2:
+            if multitrap.Cartesian_axes_per_trap == 2:
                 self.gxy = self.mech_mech_coupling('xy')
                 self.gxz = 0
                 self.gyz = 0
 
             if self.gxz is None and self.gyz is None:
-                if multiphysics.Cartesian_axes_per_trap == 3:
+                if multitrap.Cartesian_axes_per_trap == 3:
                     self.gxy = self.mech_mech_coupling('xy')
                     self.gxz = self.mech_mech_coupling('xz')
                     self.gyz = self.mech_mech_coupling('yz')
@@ -1681,7 +1681,7 @@ class Dimension:
         self.noise_phonons_approx = kBT / ħΩ
 
         # TODO: derive this properly?
-        Δ, κ = self.multiphysics.cavity.Δ, self.multiphysics.cavity.κ
+        Δ, κ = self.multitrap.cavity.Δ, self.multitrap.cavity.κ
         Cp = 1 / ((Δ + self.Ω)**2 + (κ/2)**2)
         Cm = 1 / ((Δ - self.Ω)**2 + (κ/2)**2)
         self.cooling_rate = κ * np.abs(self.G)**2 * (Cp - Cm)
@@ -1788,7 +1788,7 @@ class Dimension:
         kc, θtw = self.trap.tweezer.k, self.trap.tweezer.θ
         Φ = self.trap.bead.Φ
 
-        A0, P0 = self.multiphysics.cavity.A0, self.multiphysics.cavity.P0
+        A0, P0 = self.multitrap.cavity.A0, self.multitrap.cavity.P0
         ωdsinθ = self.trap.ωd * np.sin(θtw)
 
         # all have negative signs
@@ -1840,25 +1840,25 @@ class Dimension:
         The 1D normalisation factor for position
         [·]
         """
-        return 1 + self.μm(ω) * self.multiphysics.cavity.ηm(ω) * np.abs(self.G)**2
+        return 1 + self.μm(ω) * self.multitrap.cavity.ηm(ω) * np.abs(self.G)**2
 
     def Q1D(self, ω):
         """
         The 1D noise vector for this dimension
         [·]
         """
-        κ = self.multiphysics.cavity.κ
+        κ = self.multitrap.cavity.κ
         Γ = self.Γ
         G = self.G
         G_star = np.conjugate(G)
 
-        χC, χC_star = self.multiphysics.cavity.χC(ω), np.conjugate(self.multiphysics.cavity.χC(-ω))
+        χC, χC_star = self.multitrap.cavity.χC(ω), np.conjugate(self.multitrap.cavity.χC(-ω))
         χM, χM_star = self.χM(ω), np.conjugate(self.χM(-ω))
 
         μ = self.μm(ω)
         M = self.M(ω)
 
-        Q = np.zeros(self.multiphysics.num_operators, dtype=np.complex128)
+        Q = np.zeros(self.multitrap.num_operators, dtype=np.complex128)
         index = self.noise_index
 
         # a_in

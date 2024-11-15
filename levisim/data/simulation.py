@@ -10,7 +10,7 @@ from levisim.core.units import (
     mbar,
 )
 from levisim.core.utils import save_variable_to_pickle, generate_time_array
-from levisim.physics.physics import Physics
+from levisim.physics.trap import Trap
 from levisim.data.trace import Trace
 
 
@@ -26,7 +26,7 @@ class Simulation:
 
         self.num_samples = int(kwargs.get('num_samples', 1*Megasamples))
         self.Δt = float(kwargs.get('Δt', 0.1*μs))
-        self.physics = kwargs.get('physics', Physics())
+        self.trap = kwargs.get('trap', Trap())
         self.X0 = kwargs.get('X0', np.array([0, 0, 0, 0, 0, 0]))  # initial conditions of [x, y, z, px, py, pz]
         self.RK_method = kwargs.get('RK_method', 'vector_4')
         self.detection_floor = kwargs.get('detection_floor', 0)  # m²/Hz
@@ -72,7 +72,7 @@ class Simulation:
             f'\n    Ty via Var(y) = {self.temperature_via_variance("y"):.5f} K'
             f'\n    Tz via Var(z) = {self.temperature_via_variance("z"):.5f} K'
             f'\n'
-            f'\n    id(physics)={id(self.physics)}'
+            f'\n    id(trap)={id(self.trap)}'
             f'\n)'
         )
         return
@@ -81,15 +81,15 @@ class Simulation:
     def save_name(self):
         """ Returns standardised naming format for the pickle binaries """
         kick_str = ''
-        if self.physics.kicks:
-            kick_str = f'_{len(self.physics.kicks)}_kicks'
+        if self.trap.kicks:
+            kick_str = f'_{len(self.trap.kicks)}_kicks'
 
         fmt = self.save_fmt
         save_name = (
             f'{self.save_description.replace(" ", "_")}'
             f'{kick_str}'
-            f'_P{format(self.physics.gas.P / mbar, fmt)}'
-            f'_fbx{format(self.physics.Γ_fbx / Hz, fmt)}'
+            f'_P{format(self.trap.gas.P / mbar, fmt)}'
+            f'_fbx{format(self.trap.Γ_fbx / Hz, fmt)}'
             f'_t{format(self.Δt, fmt)}'
             f'_N{format(self.num_samples, fmt)}'
         )
@@ -101,26 +101,26 @@ class Simulation:
         This is essentially the gradient of the Hamiltonian (dH) applied to the symplectic matrix J
         """
         x, y, z, px, py, pz = X
-        m = self.physics.bead.m
-        Γx, Γy, Γz = self.physics.Γx, self.physics.Γy, self.physics.Γz
+        m = self.trap.bead.m
+        Γx, Γy, Γz = self.trap.Γx, self.trap.Γy, self.trap.Γz
 
         # allow for manually input frequencies
-        if self.physics.override_Ω_dict:
-            Ftwx = -m * (self.physics.override_Ω_dict['x'])**2 * x
-            Ftwy = -m * (self.physics.override_Ω_dict['y'])**2 * y
-            Ftwz = -m * (self.physics.override_Ω_dict['z'])**2 * z
+        if self.trap.override_Ω_dict:
+            Ftwx = -m * (self.trap.override_Ω_dict['x'])**2 * x
+            Ftwy = -m * (self.trap.override_Ω_dict['y'])**2 * y
+            Ftwz = -m * (self.trap.override_Ω_dict['z'])**2 * z
         else:
-            Ftwx = self.physics.Ftwx(x, y, z)
-            Ftwy = self.physics.Ftwy(x, y, z)
-            Ftwz = self.physics.Ftwz(x, y, z)
+            Ftwx = self.trap.Ftwx(x, y, z)
+            Ftwy = self.trap.Ftwy(x, y, z)
+            Ftwz = self.trap.Ftwz(x, y, z)
 
-        # F_photon_recoil = self.physics.F_photon_recoil
+        # F_photon_recoil = self.trap.F_photon_recoil
 
         F_kick_x, F_kick_y = 0, 0
-        for kick in self.physics.kicks:
+        for kick in self.trap.kicks:
             if kick.start <= t < kick.end:
                 # K = p_kick / pth
-                kick.p = kick.K * self.physics.gas.pth
+                kick.p = kick.K * self.trap.gas.pth
 
                 # since
                 # p_kick = F0 * duration
@@ -167,14 +167,14 @@ class Simulation:
         If doing *scalar* 2nd order, dW is a single normally distributed value N~(0, Δt), i.e. zero mean, variance Δt
         If doing *vector* 2nd order, dW is a vector of separately generated normally distributed values
         """
-        Fth = self.physics.fth
+        Fth = self.trap.fth
         return np.array([
             0,
             0,
             0,
-            (Fth + self.physics.Fdx),
-            (Fth + self.physics.Fdy),
-            (Fth + self.physics.Fdz),
+            (Fth + self.trap.Fdx),
+            (Fth + self.trap.Fdy),
+            (Fth + self.trap.Fdz),
         ])
 
     def noise_matrix_RK4(self, t, X):
@@ -195,7 +195,7 @@ class Simulation:
         """
         # this means that there are separate Wiener processes applied to the momenta
         # stemming from the thermal and directed stochastic force noises
-        ψ = self.physics.ψ
+        ψ = self.trap.ψ
         return np.array([
             [0, 0, 0, 0],
             [0, 0, 0, 0],
@@ -224,7 +224,7 @@ class Simulation:
         """
         # this means that there are separate Wiener processes applied to the momenta
         # stemming from the thermal and directed stochastic force noises
-        ψ = self.physics.ψ
+        ψ = self.trap.ψ
         return np.array([
             [0, 0, 0, 0, 0, 0, 0],
             [0, 0, 0, 0, 0, 0, 0],
@@ -250,13 +250,13 @@ class Simulation:
 
             if self.debug:
                 print(self.RK_method)
-                print(f'Thermal variance = {𝛿 * self.physics.Sth}')
-                print(f'Directed variance (x) = {𝛿 * self.physics.Sdirx}')
-                print(f'Directed variance (y) = {𝛿 * self.physics.Sdiry}')
-                print(f'Directed variance (z) = {𝛿 * self.physics.Sdirz}')
-                print(f'Combined variance (x) = {𝛿 * (self.physics.Sth + self.physics.Sdirx)}')
-                print(f'Combined variance (y) = {𝛿 * (self.physics.Sth + self.physics.Sdiry)}')
-                print(f'Combined variance (z) = {𝛿 * (self.physics.Sth + self.physics.Sdirz)}')
+                print(f'Thermal variance = {𝛿 * self.trap.Sth}')
+                print(f'Directed variance (x) = {𝛿 * self.trap.Sdirx}')
+                print(f'Directed variance (y) = {𝛿 * self.trap.Sdiry}')
+                print(f'Directed variance (z) = {𝛿 * self.trap.Sdirz}')
+                print(f'Combined variance (x) = {𝛿 * (self.trap.Sth + self.trap.Sdirx)}')
+                print(f'Combined variance (y) = {𝛿 * (self.trap.Sth + self.trap.Sdiry)}')
+                print(f'Combined variance (z) = {𝛿 * (self.trap.Sth + self.trap.Sdirz)}')
 
             for n, t in enumerate(self.time_array):
                 # generate random numbers on the fly
@@ -319,8 +319,8 @@ class Simulation:
             # the angle for x, y is applied in the noise matrix
 
             # these are the standard deviations to be applied for each step of the RK method
-            Σth1, Σth2, Σth3, Σth4 = (np.sqrt(qi * self.physics.Sth / Δt) for qi in q)
-            Σdir1, Σdir2, Σdir3, Σdir4 = (np.sqrt(qi * self.physics.Sdir / Δt) for qi in q)
+            Σth1, Σth2, Σth3, Σth4 = (np.sqrt(qi * self.trap.Sth / Δt) for qi in q)
+            Σdir1, Σdir2, Σdir3, Σdir4 = (np.sqrt(qi * self.trap.Sdir / Δt) for qi in q)
 
             # if self.detection_floor:
             #     noises = self.noise_matrix_RK4_with_detection_floor
@@ -587,5 +587,5 @@ class Simulation:
         """
         # accounts for how the simulated frequencies are shifted from the first order approximations
         if Ωj is None:
-            Ωj = self.physics.Ωj[axis]
-        return self.physics.equipartition_factor[axis] * np.var(self.traces[axis].values)
+            Ωj = self.trap.Ωj[axis]
+        return self.trap.equipartition_factor[axis] * np.var(self.traces[axis].values)

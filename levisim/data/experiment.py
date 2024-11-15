@@ -10,7 +10,7 @@ from levisim.core.units import (
     MegaHz,
 )
 from levisim.core.utils import generate_time_array
-from levisim.physics.physics import Physics
+from levisim.physics.trap import Trap
 from levisim.data.trace import Trace
 
 
@@ -26,7 +26,7 @@ class Experiment:
 
         self.channel_dict = kwargs.get('channel_dict', None)
         self.V_per_m_calibrations_dict = kwargs.get('V_per_m_calibrations_dict', {})
-        self.physics = kwargs.get('physics', Physics())
+        self.trap = kwargs.get('trap', Trap())
 
         self.file_name = self.data_path.split('/')[-1]
         self.file_extension = self.data_path.split('.')[-1]
@@ -142,7 +142,7 @@ class Experiment:
 
 
     def assign_trace(self, values, start, end, axis, units):
-        """ Assign the values of a trace to the trace dict according to the channel dict"""
+        """ Assign the values of a trace to the trace dict according to the channel dict """
         V_per_m = self.V_per_m_calibrations_dict.get(axis)
         if V_per_m:
             # converts Volts to metres
