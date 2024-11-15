@@ -62,7 +62,7 @@ SUBROUTINE CALCULATE_NOISE_SPECTRA(&
     num_dimensions = num_traps * Cartesian_axes_per_trap
 
     pi = dacos(-1.d0)
-    pi2 = 2.d0 * pi
+    pi2 = pi + pi
     kHz = 1.d3 * pi2
 
     homodyne_value = 0.d0

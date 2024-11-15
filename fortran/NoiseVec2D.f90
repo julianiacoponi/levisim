@@ -72,7 +72,7 @@ SUBROUTINE CALCULATE_NOISE_VECTORS(&
     double complex, INTENT(out)::CBM_noise_vector(num_operators)
 
     pi = dacos(-1.d0)
-    pi2 = 2 * pi
+    pi2 = pi + pi
     Hz = pi2
     kHz = 1.d3 * Hz
 

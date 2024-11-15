@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]  # Use setuptools and wheel for packaging
+build-backend = "setuptools.build_meta" # Set setuptools as the build backend
+
+[project]
+name = "levisim"
+version = "0.0.1"
+authors = [
+  { name = "Julian Iacoponi", email = "julian.iacoponi@gmail.com" }
+]
+description = "A package for levitated physics simulations"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }
+
+[project.urls]
+Homepage = "https://github.com/julianiacoponi/levisim"
+Issues = "https://github.com/julianiacoponi/levisim/issues"
+
+[tool.setuptools]
+packages = ["levisim"]  # Explicitly specify the package(s) to include
+include-package-data = true  # If you have a MANIFEST.in for non-code files

@@ -105,10 +105,10 @@ class Simulation:
         Γx, Γy, Γz = self.physics.Γx, self.physics.Γy, self.physics.Γz
 
         # allow for manually input frequencies
-        if self.physics.override_Ω0:
-            Ftwx = -m * (self.physics.override_Ω0_dict['x'])**2 * x
-            Ftwy = -m * (self.physics.override_Ω0_dict['y'])**2 * y
-            Ftwz = -m * (self.physics.override_Ω0_dict['z'])**2 * z
+        if self.physics.override_Ω_dict:
+            Ftwx = -m * (self.physics.override_Ω_dict['x'])**2 * x
+            Ftwy = -m * (self.physics.override_Ω_dict['y'])**2 * y
+            Ftwz = -m * (self.physics.override_Ω_dict['z'])**2 * z
         else:
             Ftwx = self.physics.Ftwx(x, y, z)
             Ftwy = self.physics.Ftwy(x, y, z)
@@ -320,7 +320,7 @@ class Simulation:
 
             # these are the standard deviations to be applied for each step of the RK method
             Σth1, Σth2, Σth3, Σth4 = (np.sqrt(qi * self.physics.Sth / Δt) for qi in q)
-            Σdir1, Σdir2, Σdir3, Σdir4 = (np.sqrt(qi * self.physics.Sdir() / Δt) for qi in q)
+            Σdir1, Σdir2, Σdir3, Σdir4 = (np.sqrt(qi * self.physics.Sdir / Δt) for qi in q)
 
             # if self.detection_floor:
             #     noises = self.noise_matrix_RK4_with_detection_floor
@@ -587,5 +587,5 @@ class Simulation:
         """
         # accounts for how the simulated frequencies are shifted from the first order approximations
         if Ωj is None:
-            Ωj = self.physics.Ω0(axis)
-        return self.physics.equipartition_factor(axis, Ωj) * np.var(self.traces[axis].values)
+            Ωj = self.physics.Ωj[axis]
+        return self.physics.equipartition_factor[axis] * np.var(self.traces[axis].values)

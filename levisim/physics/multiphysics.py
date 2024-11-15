@@ -1,11 +1,5 @@
-import math
-import itertools
 import sympy
-
-import scipy.constants
-
 import numpy as np
-import networkx as nx
 
 from enum import Enum, auto
 from copy import copy
@@ -13,11 +7,26 @@ from functools import cached_property, partial
 from collections import namedtuple
 from sympy.combinatorics.named_groups import SymmetricGroup
 
-from levisim import *
-
+from levisim.core.constants import (
+    π, ħ, kB,
+    m_gas,
+    shot_noise,
+    node, halfnode, antinode,
+)
+from levisim.core.units import (
+    nm,
+    degrees,
+    Hz, kHz,
+    mbar,
+)
+from levisim.physics.tweezer import Tweezer
+from levisim.physics.bead import Bead
+from levisim.physics.gas import Gas
+from levisim.physics.cavity import Cavity
+from levisim.physics.physics import Physics
 
 alphabet = 'abcdefghijklmnopqrstuvwxyz'
-Term = namedtuple('Term', ['sign', 'pairs'])
+HybridisationTerm = namedtuple('HybridisationTerm', ['sign', 'pairs'])
 
 
 def generate_subscripts_and_labels(num_traps, Cartesian_axes_per_trap):
@@ -206,9 +215,9 @@ def generate_deranged_terms(
             # NOTE: sorted could help with unit testing, but not needed for now
             # doesn't seem to affect performance that much
             # could use set() instead of list()
-            # all_terms.append(Term(sign=sign, pairs=sorted(pairs)))
+            # all_terms.append(HybridisationTerm(sign=sign, pairs=sorted(pairs)))
 
-            all_terms.append(Term(sign=sign, pairs=pairs))
+            all_terms.append(HybridisationTerm(sign=sign, pairs=pairs))
 
         except StopIteration:
             break
@@ -465,9 +474,13 @@ class MultiPhysics:
         ]
 
         for label in self.labels:
+            # NOTE: this is to match Tania's original fortran's values
+            # njn = 1.4e-23 * 300 / (1.05e-34 * self.dimensions[label].Ω)
+
+            # NOTE: there is basically no difference between approx. and exact calcs
+            # since kBT >> ħΩ for T = 300K
             # njn = self.dimensions[label].noise_phonons_approx
-            # NOTE: this is to match Tania's quanta_per_operator values
-            njn = 1.4e-23 * 300 / (1.05e-34 * self.dimensions[label].Ω)
+            njn = self.dimensions[label].noise_phonons_exact
 
             # phonon annihilation operators, <bjn_in(ω).bjn_in†(ω)> = njn + 1
             self.quantum_factor_per_noise_operator.append(njn + 1)
@@ -522,9 +535,10 @@ class MultiPhysics:
 
         if self.use_Γ_formula:
             Γ_str = (
-                f'\n    P = {self.toy_P / mbar :.5e} mbar'
-                f'\n    〈v〉 = {self.toy_vth:.5f} m/s'
-                f'\n    Γ_formula = 15Pr²/(m〈v〉) = {self.toy_Γ_formula / Hz:.5e} Hz'
+                f'\n    Γ_formula = {self.toy_Γ_formula / Hz:.5e} Hz'
+                f'\n    Γ_formula_from_Antonio_paper = (1 + π/8) m〈v〉P / (kBT) / (ρr) = {self.toy_Γ_formula_from_Antonio_paper / Hz:.5e} Hz'
+                f'\n    Γ_formula_from_Tania_paper = 15Pr²/(m〈v〉) = {self.toy_Γ_formula_from_Tania_paper / Hz:.5e} Hz'
+                f'\n    Γ_formula_from_Tania_fortran = 16P/(πρr〈v〉) = {self.toy_Γ_formula_from_Tania_fortran / Hz:.5e} Hz'
             )
         else:
             Γ_str = (
@@ -536,9 +550,13 @@ class MultiPhysics:
             f'{self.toy_model_description}'
             f'\n    Ωz_to_Ωx_multiplier = {self.Ωz_to_Ωx_multiplier:.1f}'
             f'\n'
-            f'\n    T = {self.toy_T:.1f} K'
+            f'\n    ρ = {self.toy_ρ:.1f} kg/m³'
             f'\n    r = {self.toy_r / nm:.1f} nm'
             f'\n    m = {self.toy_m:.5e} kg'
+            f'\n'
+            f'\n    P = {self.toy_P / mbar:.1f} mbar'
+            f'\n    T = {self.toy_T:.1f} K'
+            f'\n    〈v〉 = {self.toy_vth:.1f} m/s'
             f'\n'
             f'\n    all Ωx = {self.toy_Ωxs / kHz} kHz'
             f'\n    all Ωy = {self.toy_Ωys / kHz} kHz'
@@ -546,7 +564,9 @@ class MultiPhysics:
             f'\n'
             f'{Γ_str}'
             f'\n'
-            f'\n    g = {self.toy_g / kHz:.5f} kHz'
+            f'\n    gx = {self.toy_gx / kHz:.5f} kHz'
+            f'\n    gy = {self.toy_gy / kHz:.5f} kHz'
+            f'\n    gz = {self.toy_gz / kHz:.5f} kHz'
             f'\n'
             f'\n    gxy = {self.toy_gxy / kHz:.5f} kHz'
             f'\n    gxz = {self.toy_gxz / kHz:.5f} kHz'
@@ -577,16 +597,6 @@ class MultiPhysics:
             Tweezer(wx0=935*nm, wy0=1035*nm, θ=θtw, φ=80*degrees),
         ][:self.num_traps]
 
-        # Φ = k.x0
-        # k = 2π/λ
-        # Φ = k.x0 = 2π.x0/λ
-        # therefore
-        # Φ/2π = x0/λ
-        # therefore
-        # Φ = (antinode, halfnode, node)
-        antinode, halfnode, node = 0, π/4, π/2
-        # x0 = (0, 0.125, 0.25)λ
-
         # NOTE: all mech-mech, and z-light couplings are 0 at the node
         # for the mech-mech couplings:
         # x-y couplings depend on A0, and j-z couplings on P0
@@ -595,9 +605,6 @@ class MultiPhysics:
         # each of these cavity drive energies goes as cosΦ, due to the linearised potential Vcs
         # z-light couplings also go with cosΦ, due to the linearised potential Vcs
         Φbead = node
-        Φbead = 0.8*node
-        Φbead = halfnode
-
         self.beads = [
             Bead(r=60.1*nm, Φ=Φbead),
             Bead(r=60.2*nm, Φ=Φbead),
@@ -629,10 +636,10 @@ class MultiPhysics:
         α = a dominant, static, complex valued part
         a = a small, dynamic, operator valued part
 
-        a --> α + a
-        a† --> α* + a†
-        A --> A0 + (a† + a)
-        P --> P0 + i(a† - a)
+        a → α + a
+        a† → α* + a†
+        A → A0 + (a† + a)
+        P → P0 + i(a† - a)
 
         α = 1/2 (A0 + iP0)
         α* = 1/2 (A0 - iP0)
@@ -723,36 +730,65 @@ class MultiPhysics:
                 f'\n    Ω_gap = {self.Ω_gap / kHz:.1f} kHz'
             )
 
+        elif self.toy_param_model == 'custom':
+            self.toy_Ωxs = np.array(params.get('Ωxs'))
+            self.toy_Ωys = np.array(params.get('Ωys'))
+            self.toy_model_description = ''
+
         self.Ωz_to_Ωx_multiplier = params.get('Ωz_to_Ωx_multiplier', 10)
         self.toy_Ωzs = np.array([freq / self.Ωz_to_Ωx_multiplier for freq in self.toy_Ωxs])
 
-        Ωxs_iter = iter(self.toy_Ωxs)
-        Ωys_iter = iter(self.toy_Ωys)
-        Ωzs_iter = iter(self.toy_Ωzs)
-        Ωs_iter = {'x': Ωxs_iter, 'y': Ωys_iter, 'z': Ωzs_iter}
+        Ωs_iter = {}
+        Ωs_iter['x'] = iter(self.toy_Ωxs)
+        if 2 <= self.Cartesian_axes_per_trap <= 3:
+            Ωs_iter['y'] = iter(self.toy_Ωys)
+        if self.Cartesian_axes_per_trap == 3:
+            Ωs_iter['z'] = iter(self.toy_Ωzs)
+
         Ωs = {label: next(Ωs_iter[label[0]]) for label in self.labels}
 
-        bead_density = 2200  # kg/m³
-        self.toy_T = params.get('T', self.gas.T)
+
+        self.toy_ρ = params.get('ρ', 2200)  # kg/m³
         self.toy_r = params.get('r', 75*nm)
-        self.toy_m = params.get('m', bead_density * (4/3) * π * self.toy_r**3)
-        # define damping rate either with formula or directly
+        self.toy_m = params.get('m', self.toy_ρ * (4/3) * π * self.toy_r**3)
+
+        self.toy_P = params.get('P', self.gas.P)
+        self.toy_T = params.get('T', self.gas.T)
+        self.toy_vth = params.get('vth', self.gas.vth)
+
+        # define damping rate either with formula
         self.use_Γ_formula = params.get('use_Γ_formula', False)
         if self.use_Γ_formula:
-            self.toy_P = params.get('P', self.gas.P)
-            self.toy_vth = params.get('vth', self.gas.vth)
-            # self.toy_Γ_formula = 15 * self.toy_P * self.toy_r**2 / (self.toy_m * self.toy_vth)
-            self.toy_Γ_formula = 16 * self.toy_P / π / self.toy_vth / bead_density / self.toy_r
+
+            self.toy_Γ_formula_from_Antonio_paper = (1 + π/8) * m_gas * self.toy_vth * self.toy_P / (kB * self.toy_T) / (self.toy_ρ * self.toy_r)
+            self.toy_Γ_formula_from_Tania_paper = 15 * self.toy_P * self.toy_r**2 / (self.toy_m * self.toy_vth)
+            self.toy_Γ_formula_from_Tania_fortran = 16 * self.toy_P / π / self.toy_vth / self.toy_ρ / self.toy_r
+
+            # choose Tania's fortran formula for now
+            self.toy_Γ_formula = self.toy_Γ_formula_from_Tania_fortran
+
             Γs = {label: self.toy_Γ_formula for label in self.labels}
+
+        # or define damping rate directly
         else:
             self.toy_Γ = params.get('toy_Γ', 1e-5*Hz)
             Γs_dict = {label: self.Γ_choice for label in self.labels}
             Γs = params.get('Γs', Γs_dict)
 
         # define the coupling rates
-        self.toy_g = params.get('toy_g', 30*kHz)
+        self.toy_gx = params.get('toy_gx', 0*kHz)
+        self.toy_gy = params.get('toy_gy', 0*kHz)
+        self.toy_gz = params.get('toy_gz', 0*kHz)
+
         # assuming each bead is at the node, z and mech-mech are zero
-        gs_dict = {label: self.toy_g if 'z' not in label else 0*kHz for label in self.labels}
+        gs_dict = {}
+        for label in self.labels:
+            if 'x' in label:
+                gs_dict[label] = self.toy_gx
+            if 'y' in label:
+                gs_dict[label] = self.toy_gy
+            if 'z' in label:
+                gs_dict[label] = self.toy_gz
         gs = params.get('gs', gs_dict)
 
         self.toy_gxy = params.get('gxy', 0*kHz)
@@ -1041,7 +1077,7 @@ class MultiPhysics:
             for kk, label_km in enumerate(self.labels):
                 if jj == kk:
                     continue
-                term = Term(sign=-1, pairs=[(label_jn, label_km)])
+                term = HybridisationTerm(sign=-1, pairs=[(label_jn, label_km)])
                 D_mat[jj, kk] = self.hybridisation_term_value(term, ω)
         return D_mat
 
@@ -1098,10 +1134,10 @@ class MultiPhysics:
                     if jk in ['xy', 'yx']:
                         Rjk_A = (1j * μj / Mj) * (1j * ηC_m * gjn * gkm + gjk)
 
-                    if jk in ['xz', 'yz']:
+                    elif jk in ['xz', 'yz']:
                         Rjk_A = (1j * μj / Mj) * (-ηC_p * gjn * gkm + gjk)
 
-                    if jk in ['zx', 'zy']:
+                    elif jk in ['zx', 'zy']:
                         Rjk_A = (1j * μj / Mj) * (ηC_p * gjn * gkm + gjk)
 
             # off-bead, inter-particle hybridisation
@@ -1111,10 +1147,30 @@ class MultiPhysics:
 
                 if self.compare_Rjk_calculations:
                     φnm = dim_jn.φ - dim_km.φ
-                    Rjk_B1 = (1j * μj / Mj) * (1j * ηC_m * np.cos(φnm) + ηC_p * np.sin(φnm)) * gjn * gkm
 
-                    ηC_φ = self.cavity.ηφ(ω, φnm)
-                    Rjk_B2 = (1j * μj / Mj) * (1j * ηC_φ * gjn * gkm)
+                    # amplitude-amplitude coupling or phase-phase coupling
+                    if jk in ['xy', 'yx', 'xx', 'yy'] or jk in ['zz']:
+                        Rjk_B1 = (1j * μj / Mj) * (1j * ηC_m * np.cos(φnm) + ηC_p * np.sin(φnm)) * gjn * gkm
+                        ηC_φ_P = self.cavity.ηφ_P(φnm, ω)
+                        Rjk_B2 = (1j * μj / Mj) * (-ηC_φ_P) * gjn * gkm
+
+                        # NOTE: Tania's form is related to the phase form
+                        # ηC_φ_T = iηC_φ_P
+                        # iηC_φ_T = -ηC_φ_P
+                        #  ηC_φ_T = self.cavity.ηφ_T(φnm, ω)
+                        # Rjk_B2 = (1j * μj / Mj) * (1j * ηC_φ_T) * gjn * gkm
+
+                    # amplitude-phase coupling
+                    elif jk in ['xz', 'yz']:
+                        Rjk_B1 = (1j * μj / Mj) * (1j * ηC_m * np.sin(φnm) - ηC_p * np.cos(φnm)) * gjn * gkm
+                        ηC_φ_A = self.cavity.ηφ_A(φnm, ω)
+                        Rjk_B2 = (1j * μj / Mj) * (-ηC_φ_A) * gjn * gkm
+
+                    # phase-amplitude coupling
+                    elif jk in ['zx', 'zy']:
+                        Rjk_B1 = (1j * μj / Mj) * (-1j * ηC_m * np.sin(φnm) + ηC_p * np.cos(φnm)) * gjn * gkm
+                        ηC_φ_A = self.cavity.ηφ_A(φnm, ω)
+                        Rjk_B2 = (1j * μj / Mj) * (ηC_φ_A) * gjn * gkm
 
 
             # NOTE: This expression works regardless of on-bead/off-bead
@@ -1123,14 +1179,17 @@ class MultiPhysics:
 
             if self.compare_Rjk_calculations:
                 # 1e-16 fails the float comparision trivially
-                rtol = 1e-12
-                atol = 1e-12
+                rtol = 1e-15
+                atol = 1e-15
                 debug_str = (
                     f'\n{ω / kHz} kHz'
                     f'\n{label_jn=}, {label_km=}'
-                    f'\n{dim_jn.g=}, {dim_km.g=}'
-                    f'\n{gjn=}, {gkm=}'
-                    f'\n{Gjn=}, {Gkm_star=}'
+                    f'\ng{label_jn} = {dim_jn.g / kHz} kHz'
+                    f'\ng{label_km} = {dim_km.g / kHz} kHz'
+                    f'\nφ{label_jn[1:]} = {dim_jn.φ / degrees}°'
+                    f'\nφ{label_km[1:]} = {dim_km.φ / degrees}°'
+                    f'\nG{label_jn} = {Gjn / kHz} kHz'
+                    f'\nG{label_km}* = {Gkm_star / kHz} kHz'
                 )
                 if m == n:
                     debug_str += f'\n{Rjk_A=}, {Rjk=}'
@@ -1138,8 +1197,17 @@ class MultiPhysics:
                 else:
                     debug_str_1 = debug_str + f'\n{Rjk_B1=}, {Rjk=}'
                     debug_str_2 = debug_str + f'\n{Rjk_B2=}, {Rjk=}'
-                    assert np.isclose(Rjk_B1, Rjk, rtol=rtol, atol=atol), debug_str_1
-                    assert np.isclose(Rjk_B2, Rjk, rtol=rtol, atol=atol), debug_str_2
+                    debug_str_12 = debug_str + f'\n{Rjk_B1=}, {Rjk_B2=}'
+                    try:
+                        # assert np.isclose(Rjk_B1, Rjk_B2, rtol=rtol, atol=atol), debug_str_12
+                        # assert np.isclose(Rjk_B1, Rjk, rtol=rtol, atol=atol), debug_str_1
+                        # assert np.isclose(Rjk_B2, Rjk, rtol=rtol, atol=atol), debug_str_2
+                        assert np.isclose(Rjk_B1, Rjk, rtol=rtol, atol=atol)
+                        assert np.isclose(Rjk_B2, Rjk, rtol=rtol, atol=atol)
+                        assert np.isclose(Rjk_B1, Rjk_B2, rtol=rtol, atol=atol)
+                    except AssertionError as error:
+                        print(debug_str + f'\n{Rjk=}, {Rjk_B1=}, {Rjk_B2=}')
+                        raise error()
 
             value *= Rjk
 
@@ -1349,6 +1417,8 @@ class MultiPhysics:
 
         Calculate PSDs based on the squares of x as a noise vector
         """
+        print(f'Calculating all PSDs in frequency range [{min(self.ω_range) / kHz}, {max(self.ω_range) / kHz}]  kHz using {method}')
+
         if method == QuantumLinearTheoryMethod.TNT_LINEAR_AMPLIFIER_MODEL:
             return self.position_power_spectra_array
 
@@ -1375,6 +1445,7 @@ class MultiPhysics:
         h = a†_out.exp(iθ) + a_out.exp(-iθ) = A_out.cos(θ) + P_out.sin(θ)
         θ = homodyne angle
         """
+        print(f'Calculating homodyne spectrum in frequency range [{min(self.ω_range) / kHz}, {max(self.ω_range) / kHz}] kHz using {method}')
         homodyne_spectrum = []
         for ii, ω in enumerate(self.ω_range):
             if not ii % 100:
@@ -1387,6 +1458,7 @@ class MultiPhysics:
         Calculates the heterodyne spectrum of output light from the cavity, S_het
         S_het(ω) = S_aa†(ω + Ω) + S_a†a(ω - Ω)
         """
+        print(f'Calculating heterodyne spectrum in frequency range [{min(self.ω_range) / kHz}, {max(self.ω_range) / kHz}] kHz using {method}')
         heterodyne_spectrum = []
         for ii, ω in enumerate(self.ω_range):
             if not ii % 100:
@@ -1575,19 +1647,32 @@ class Dimension:
                     self.gxz = self.mech_mech_coupling('xz')
                     self.gyz = self.mech_mech_coupling('yz')
 
+        # all coupling rates apart from gz should be negative
+        for coupling in [
+            self.gxy,
+            self.gxz,
+            self.gyz,
+        ]:
+            assert coupling <= 0, f'(gxy, gxz, gyz) = ({self.gxy / kHz}, {self.gxz / kHz}, {self.gyz / kHz}) kHz'
+
+        if self.label[0] in ['x', 'y']:
+            assert self.g <= 0, f'g{label} = {self.g / kHz} kHz'
+        elif self.label[0] == 'z':
+            assert self.g >= 0, f'g{label} = {self.g / kHz} kHz'
+
         ############################################################################################
         # DERIVED PROPERTIES
         # ------------------------------------------------------------------------------------------
         # Linear coupling of (x,y,z)-motion to the cavity light quadratures with tweezer phase included
         # [rad/s]
-        # TODO: decide if want to do 'perfect' sympy calcs for cos(π/2) = sin(π) = 0
-        # if not self.φ:
-        #     arg = self.CS_coupling_phase
-        #     # NOTE: only sympy gives exact cos(π/2) = 0, which is definitely needed here!
-        #     self.G = self.g * (float(sympy.cos(arg)) + 1j * float(sympy.sin(arg)))
-        # else:
-        self.G = self.g * np.exp(1j * (self.CS_coupling_phase + self.φ))
+        if not self.φ:
+            arg = self.CS_coupling_phase
+            # NOTE: only sympy gives exact cos(π/2) = 0
+            self.G = self.g * (float(sympy.cos(arg)) + 1j * float(sympy.sin(arg)))
+        else:
+            self.G = self.g * np.exp(1j * (self.CS_coupling_phase + self.φ))
 
+        # ------------------------------------------------------------------------------------------
         # Number of phonons due to the thermal bath, via the Bose-Einstein distribution
         # [·]
         ħΩ = ħ * self.Ω
@@ -1668,8 +1753,8 @@ class Dimension:
         return {
             'x': 0,
             'y': 0,
-            # 'z': π / 2 if self.φ else sympy.pi / 2,
-            'z': π / 2,
+            'z': π/2 if self.φ else sympy.pi / 2,
+            'z': π/2,
         }[self.axis]
 
     @property
@@ -1692,7 +1777,7 @@ class Dimension:
 
         # z couples to the phase quadrature, has positive sign!
         if self.axis == 'z':
-            kz = (kc - 1/self.trap.tweezer.zR)
+            kz = (kc - 1 / self.trap.tweezer.zR)
             return ωdsinθ * kz * zpf * np.cos(Φ)
 
     def mech_mech_coupling(self, axes):
@@ -1736,14 +1821,16 @@ class Dimension:
 
     def μm(self, ω):
         """
-        The difference of the mechanical susceptibilities for phonon annihilation and creation
+        The difference of the conjugate mechanical susceptibilities
+        for phonon annihilation and creation
         [complex (rad/s)⁻¹]
         """
         return self.χM(ω) - np.conjugate(self.χM(-ω))
 
     def μp(self, ω):
         """
-        The sum of the mechanical susceptibilities for phonon annihilation and creation
+        The sum of the conjugate mechanical susceptibilities
+        for phonon annihilation and creation
         [complex (rad/s)⁻¹]
         """
         return self.χM(ω) + np.conjugate(self.χM(-ω))

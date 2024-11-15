@@ -106,7 +106,8 @@ class Physics:
             f'\n    ψ = {self.ψ / degrees:.5f}°'
             f'\n'
             f'\n    Γth = {self.Γth / Hz:.6e} Hz'
-            f'\n    Γth ~ 15Pr²/mv = {self.Γth_2 / Hz:.6e} Hz'
+            f'\n    Γth ~ 15Pr²/(m〈v〉) = {self.Γth_2 / Hz:.6e} Hz'
+            f'\n    Γth ~ 16/(πρr〈v〉) = {self.Γth_3 / Hz:.6e} Hz'
             f'\n    fth = {self.fth / zN:.5f} zN/√Hz'
             f'\n    Sth = {self.Sth:.5e} N²/Hz'
             f'\n'
@@ -184,6 +185,16 @@ class Physics:
         return 15 * self.gas.P * self.bead.r**2 / (self.bead.m * self.gas.vth)
 
     @cached_property
+    def Γth_3(self):
+        """
+        (Alternative formula for)
+        Thermal gas mechanical damping rate
+        [rad/s]
+        """
+        return 16 * self.gas.P / (π * self.bead.ρ * self.bead.r * self.gas.vth)
+
+
+    @cached_property
     def fth(self):
         """
         Thermal force noise due to gas damping
@@ -239,7 +250,7 @@ class Physics:
         return self.fdir * np.sin(self.ψ)
 
     @cached_property
-    def fdiry(self):
+    def fdirz(self):
         """
         Directed force noise in the z-axis
         [N/√Hz]

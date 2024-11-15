@@ -5,6 +5,7 @@ import numpy as np
 from scipy.optimize import curve_fit
 from scipy.integrate import simpson
 
+from levisim.core.constants import kB
 from levisim.core.units import (
     nm,
     ms,

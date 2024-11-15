@@ -11,7 +11,8 @@ SUBROUTINE CALCULATE_TRAP_PARAMETERS(&
 
     IMPLICIT NONE
 
-    double precision::vacuum_permittivity, speed_of_light, hbar, kB
+    double precision::pi, hbar, speed_of_light, kB, vacuum_permittivity
+    double precision::Hz, kHz
     double precision::tweezer_power, theta_tweezer_over_pi, tweezer_waist_X, tweezer_waist_Y
     double precision::bead_radius, bead_density, bead_permittivity
     double precision::gas_temperature, gas_pressure_mbar
@@ -21,7 +22,6 @@ SUBROUTINE CALCULATE_TRAP_PARAMETERS(&
     double precision::X0, Y0, Z0
     INCLUDE 'CSCAVITY.h'
 
-    double precision::pi, pi2, Hz, kHz
     double precision::bead_mass, bead_polarisability
     double precision::E_tweezer, tweezer_zR
     double precision::E_cavity, cavity_field_depth, cavity_volume
@@ -29,10 +29,6 @@ SUBROUTINE CALCULATE_TRAP_PARAMETERS(&
     double precision::kappa, kappa_nano, kappa_input
     double precision::Gamma_M, half_Gamma_M
 
-    pi = dacos(-1.d0)
-    pi2 = 2.d0 * pi
-    Hz = pi2
-    kHz = Hz * 1.d3
 
     ! ---------------------------------------------------------------------------------------------
     ! tweezer
@@ -68,7 +64,7 @@ SUBROUTINE CALCULATE_TRAP_PARAMETERS(&
     omega_cav = speed_of_light * k_cav
     cavity_field_depth = omega_cav * bead_polarisability / 2. / cavity_volume / vacuum_permittivity
     WRITE(6, *) '&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&'
-    WRITE(6, *) 'depth of cavity field A', cavity_field_depth / pi2
+    WRITE(6, *) 'depth of cavity field A', cavity_field_depth / (2.d0 * pi)
     E_cavity = sqrt(hbar * omega_cav / (2. * cavity_volume * vacuum_permittivity))
 
     kappa_input = pi * speed_of_light / cavity_finesse / cavity_length
@@ -108,7 +104,8 @@ SUBROUTINE CALCULATE_EQUILIBRIUM_PARAMETERS(&
 
     IMPLICIT NONE
 
-    double precision::vacuum_permittivity, speed_of_light, hbar, kB
+    double precision::pi, hbar, speed_of_light, kB, vacuum_permittivity
+    double precision::Hz, kHz
     double precision::tweezer_power, theta_tweezer_over_pi, tweezer_waist_X, tweezer_waist_Y
     double precision::bead_radius, bead_density, bead_permittivity
     double precision::gas_temperature, gas_pressure_mbar
@@ -119,8 +116,6 @@ SUBROUTINE CALCULATE_EQUILIBRIUM_PARAMETERS(&
     INCLUDE 'CSCAVITY.h'
 
     integer::iwrite
-    double precision::pi, pi2, Hz, kHz
-
     double precision::E_tweezer, tweezer_zR, theta_tweezer
     double precision::bead_polarisability, bead_mass, k_X0
     double precision::Gamma_M, half_Gamma_M
@@ -145,11 +140,6 @@ SUBROUTINE CALCULATE_EQUILIBRIUM_PARAMETERS(&
     double precision::couplings_array(6)
 
     iwrite = 6
-    pi = dacos(-1.d0)
-    pi2 = 2.d0 * pi
-    Hz = pi2
-    kHz = Hz * 1.d3
-
 
     ! kappa_nano is from photon scattering losses from nanoparticle, in addition to usual losses
     ! through mirrors. Not always added in
@@ -328,7 +318,8 @@ SUBROUTINE CALCULATE_COOLING_RATES(&
 
     IMPLICIT NONE
 
-    double precision::vacuum_permittivity, speed_of_light, hbar, kB
+    double precision::pi, hbar, speed_of_light, kB, vacuum_permittivity
+    double precision::Hz, kHz
     double precision::tweezer_power, theta_tweezer_over_pi, tweezer_waist_X, tweezer_waist_Y
     double precision::bead_radius, bead_density, bead_permittivity
     double precision::gas_temperature, gas_pressure_mbar
@@ -338,18 +329,12 @@ SUBROUTINE CALCULATE_COOLING_RATES(&
     double precision::X0, Y0, Z0
     INCLUDE 'CSCAVITY.h'
 
-    double precision::pi, pi2, Hz, kHz
     double precision::kappa, half_kappa, cavity_detuning
 
     double precision::GX, GY, GZ
     double precision::Omega_X, Omega_Y, Omega_Z
     double precision::C_plus, C_minus
     double precision::cooling_rate_X, cooling_rate_Y, cooling_rate_Z
-
-    pi = dacos(-1.d0)
-    pi2 = 2.d0 * pi
-    Hz = pi2
-    kHz = Hz * 1.d3
 
     half_kappa = 0.5d0 * kappa
 
@@ -406,7 +391,8 @@ SUBROUTINE CALCULATE_OPTICAL_DAMPING(&
 
     IMPLICIT NONE
 
-    double precision::vacuum_permittivity, speed_of_light, hbar, kB
+    double precision::pi, hbar, speed_of_light, kB, vacuum_permittivity
+    double precision::Hz, kHz
     double precision::tweezer_power, theta_tweezer_over_pi, tweezer_waist_X, tweezer_waist_Y
     double precision::bead_radius, bead_density, bead_permittivity
     double precision::gas_temperature, gas_pressure_mbar
@@ -425,8 +411,6 @@ SUBROUTINE CALCULATE_OPTICAL_DAMPING(&
     double precision::kappa, half_kappa
 
     double complex::imag_num
-    double precision::pi, pi2, Hz, kHz
-
     double precision::norm
     double precision::chi_real, chi_imag
     double precision::cooling_rate_X, cooling_rate_Y, cooling_rate_Z
@@ -438,11 +422,6 @@ SUBROUTINE CALCULATE_OPTICAL_DAMPING(&
     double precision::spring_X, spring_Y
 
     imag_num = cmplx(0.d0, 1.d0)
-    pi = dacos(-1.d0)
-    pi2 = 2.d0 * pi
-    Hz = pi2
-    kHz = Hz * 1.d3
-
 
     half_kappa = 0.5d0 * kappa
 

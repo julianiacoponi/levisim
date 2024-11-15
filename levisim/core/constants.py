@@ -20,3 +20,11 @@ T_gas = 21.5 - absolute_zero  # gas temperature (actual lab temperature) [K]
 
 # number of photons contributing to noise / the dynamic part of a photon field
 shot_noise = 0
+
+# positions of beads in a cavity standing wave
+# as a phase Φ, where Φ/2π = x0/λ
+antinode, halfnode, node = 0, π/4, π/2
+# Φ = k.x0
+# k = 2π/λ
+# Φ = (antinode, halfnode, node)
+# x0 = (0, 0.125, 0.25)λ

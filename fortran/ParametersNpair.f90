@@ -29,7 +29,7 @@ SUBROUTINE FILL_PARAMETER_ARRAYS(&
 
 
     pi = dacos(-1.d0)
-    pi2 = 2.d0 * pi
+    pi2 = pi + pi
     kHz = 1.d3 * pi2
 
     phase_per_trap = 0.d0

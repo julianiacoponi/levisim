@@ -36,6 +36,11 @@ class Gas:
         # [K]
         self.T = float(kwargs.get('T', 300.0))
 
+        # ------------------------------------------------------------------------------------------
+        # Manually overriden value for the thermal gas velocity
+        # [m/s]
+        self.override_vth = kwargs.get('vth')
+
     ################################################################################################
     # INFORMATION PRINTING FUNCTIONS
     # ----------------------------------------------------------------------------------------------
@@ -68,6 +73,9 @@ class Gas:
         Average speed of a gas molecule
         [m/s]
         """
+        if self.override_vth:
+            return float(self.override_vth)
+
         # NOTE: https://en.wikipedia.org/wiki/Thermal_velocity#In_three_dimensions
         # "Root-mean square" (rms) value has factor = 3
         # "Most probable" (peak of Maxwell-Boltzmann) has a factor = 2

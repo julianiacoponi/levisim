@@ -10,7 +10,8 @@ IMPLICIT NONE
 integer::num_traps, Cartesian_axes_per_trap, num_operators, num_dimensions
 INCLUDE 'Nparticle.h'
 
-double precision::vacuum_permittivity, speed_of_light, hbar, kB
+double precision::pi, hbar, speed_of_light, kB, vacuum_permittivity
+double precision::Hz, kHz
 double precision::tweezer_power, theta_tweezer_over_pi, tweezer_waist_X, tweezer_waist_Y
 double precision::bead_radius, bead_density, bead_permittivity
 double precision::gas_temperature, gas_pressure_mbar
@@ -21,7 +22,6 @@ double precision::X0, Y0, Z0
 INCLUDE 'CSCAVITY.h'
 
 ! --------------------------------------------------------------------------------------------------
-double precision::pi, pi2, Hz, kHz
 double precision::cavity_photons
 double precision::X0_step
 integer::num_omega_samples
@@ -114,15 +114,7 @@ OPEN(12, file="OMEGAS.dat", status="unknown")
 OPEN(13, file="Omegas1.dat", status="unknown")
 OPEN(14, file="Omegas2.dat", status="unknown")
 
-OPEN(20, file="X_noise_vector_1_1.dat", status="unknown")
-OPEN(21, file="X_noise_vector_1_2.dat", status="unknown")
-
 WRITE(6, *) 'detuning (kHz)', cavity_detuning_kHz
-
-pi = dacos(-1.d0)
-pi2 = 2.d0 * pi
-Hz = pi2
-kHz = 1.d3 * pi2
 
 cavity_detuning = cavity_detuning_kHz * kHz
 k_X0 = k_cav * X0
@@ -184,8 +176,7 @@ CALL FILL_PARAMETER_ARRAYS(&
     quanta_per_operator)
 
 WRITE(6, *) 'Omega_X1, Omega_Y1, Omega_X2, Omega_Y2 (kHz)'
-WRITE(6, 120) mech_freq_array(1, 1) / kHz, mech_freq_array(1, 2) / kHz, mech_freq_array(2, 1) / kHz, mech_freq_array(2, 2) / kHz
-120 FORMAT(7E14.6)
+WRITE(6, 101) mech_freq_array(1, 1) / kHz, mech_freq_array(1, 2) / kHz, mech_freq_array(2, 1) / kHz, mech_freq_array(2, 2) / kHz
 
 
 kappa = kappa_input + kappa_nano
@@ -203,9 +194,7 @@ WRITE(6, *) 'cavity photons', cavity_photons
 ! shot noise
 noise_photons = 0.d0
 ! open loop over frequency for noise spectra
-! e.g. S_xx(omega)=FT(autocorrelation <X(t)X^T(t+tau)>)
-omega_range_max = 2 * Omega_X * 1.001
-omega_range_max = 7.d5 * Hz
+! e.g. S_XX(omega) = FT(autocorrelation <X(t).X^T(t+tau)>)
 omega_range_max = 5.d5 * Hz
 omega_step = omega_range_max / num_omega_samples
 WRITE(6, *) 'omega_step (kHz)', omega_step / kHz
@@ -330,7 +319,7 @@ DO omega_index=1, num_omega_samples
     Y3_PSD_value_symmetrised = Y3_PSD_value_symmetrised + Y3_PSD_value
 
     omega_range_value = omega_range_value / kHz
-    IF((omega_range_value.GE.0.d0).AND.(omega_range_value.LE.400)) THEN
+    IF((omega_range_value.GE.0.d0).AND.(omega_range_value.LE.400.d0)) THEN
         ! 8 => FTanXYZ.dat
         WRITE(8, 101) omega_range_value, X1_PSD_value, Y1_PSD_value, X2_PSD_value, Y2_PSD_value, X3_PSD_value, Y3_PSD_value
         ! formula
@@ -339,7 +328,6 @@ DO omega_index=1, num_omega_samples
         ! 10 => FTanOPT.dat
         WRITE(10, 101) omega_range_value, heterodyne_value, homodyne_spectrum_symmetrised
     ENDIF
-    101 FORMAT(7E14.6)
 
     ! NOTE: this is only taking the positive frequency calculation?
     X1_PSD_array(omega_index) = X1_PSD_value
@@ -379,7 +367,7 @@ phonons_from_cooling_formula_X = phonons_from_cooling_formula(1)
 ! Area phonons_via_PSD_area corresponds to 2n+1 so convert to get n
 phonons_via_PSD_area = 0.5d0 * (PSD_area - 1.d0)
 WRITE(6, *) 'X1 phonons from formula, from SXX1 FT'
-WRITE(6, 200) phonons_from_cooling_formula_X, phonons_via_PSD_area
+WRITE(6, 101) phonons_from_cooling_formula_X, phonons_via_PSD_area
 
 CALL AREA_UNDER_PSD(&
     num_omega_samples, &
@@ -389,15 +377,9 @@ CALL AREA_UNDER_PSD(&
 phonons_from_cooling_formula_Y = phonons_from_cooling_formula(2)
 phonons_via_PSD_area = 0.5d0 * (PSD_area - 1.d0)
 WRITE(6, *) 'Y1 phonons from formula, from SYY1 FT'
-WRITE(6, 200) phonons_from_cooling_formula_Y, phonons_via_PSD_area
+WRITE(6, 101) phonons_from_cooling_formula_Y, phonons_via_PSD_area
 
-! 100 FORMAT(I3, 3E14.6, 1x, 2(E14.6))
-! 200 FORMAT(7E14.6)
-
-! 100 FORMAT(4D16.8)
-! 200 FORMAT(4D16.8)
-
-200 FORMAT(7E14.6)
+101 FORMAT(7E14.7)
 
 STOP
 END
