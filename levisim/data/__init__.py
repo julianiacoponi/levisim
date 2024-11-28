@@ -7,7 +7,11 @@ A module to handle the data of the time trace produced by simulation or experime
 """
 
 
-__all__ = ['Simulation', 'Experiment', 'Trace', 'TracePair']
+__all__ = [
+    'Simulation',
+    'Experiment',
+    'Trace', 'TracePair',
+]
 
 
 from levisim.data.simulation import Simulation

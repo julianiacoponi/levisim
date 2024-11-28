@@ -7,7 +7,10 @@ A module to handle the analysis of the time traces produced by simulation or exp
 """
 
 
-__all__ = ['SpectralDensityEstimate', 'SpectralDensityTheory']
+__all__ = [
+    'SpectralDensityEstimate',
+    'SpectralDensityTheory',
+]
 
 
 from levisim.analysis.spectral_density_estimate import SpectralDensityEstimate

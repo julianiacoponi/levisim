@@ -1,7 +1,7 @@
 import numpy as np
 from functools import cached_property
 
-from levisim.core.constants import π, c, kB, m_gas
+from levisim.core.constants import π, c, kB, m_air
 from levisim.core.units import (
     eV, keV,
     mbar,
@@ -24,7 +24,7 @@ class Gas:
         # ------------------------------------------------------------------------------------------
         # Mass of gas molecule
         # [kg]
-        self.m = float(kwargs.get('m', m_gas))
+        self.m = float(kwargs.get('m', m_air))
 
         # ------------------------------------------------------------------------------------------
         # Gas pressure

@@ -30,6 +30,9 @@ __all__ = [
     'compare_methods',
 ]
 
+import time
+import cProfile
+import pstats
 import cv2
 import pickle
 import scipy.signal
@@ -41,12 +44,59 @@ import matplotlib.pyplot as plt
 from matplotlib.path import Path
 from IPython.display import HTML
 from pprint import pprint as pp
+from functools import wraps
+from io import StringIO
 
 from levisim.core.constants import ħ, kB
 from levisim.core.units import Hz, kHz
 from levisim.physics.kick import Kick
-from levisim.physics.multitrap import QuantumLinearTheoryMethod as QLTM
 
+
+####################################################################################################
+# handy diagonstic wrappers
+
+def timer(enabled):
+    """ A `perf_counter` timer decorator """
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+
+            if not enabled:
+                return func(*args, **kwargs)
+
+            start_time = time.perf_counter()
+            result = func(*args, **kwargs)
+            end_time = time.perf_counter()
+            print(f"Function '{func.__name__}' executed in {end_time - start_time:.4f} seconds.")
+            return result
+        return wrapper
+    return decorator
+
+
+def profiler(enabled):
+    """ A cProfile profiling decorator """
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            if not enabled:
+                return func(*args, **kwargs)
+
+            profiler = cProfile.Profile()
+            profiler.enable()
+            result = func(*args, **kwargs)
+            profiler.disable()
+
+            # capture the profiling results
+            result_stream = StringIO()
+            stats = pstats.Stats(profiler, stream=result_stream)
+            # sort by time
+            stats.sort_stats(pstats.SortKey.TIME)
+            stats.print_stats()
+
+            print(result_stream.getvalue())
+            return result
+        return wrapper
+    return decorator
 
 ####################################################################################################
 # data to calculate the V/m calibration factor
@@ -319,18 +369,26 @@ def find_kicks(
 def greyscale_diff(image_1, image_2):
     return cv2.cvtColor(cv2.subtract(image_1, image_2), cv2.COLOR_BGR2GRAY)
 
-def compare_methods(multitrap_instance, methods_to_compare, spectra_to_compare):
-    mph = multitrap_instance
+def compare_methods(
+    multitrap_instance,
+    methods_to_compare,
+    spectra_to_compare,
+    return_PSD_temperatures=False,
+):
+    # this avoids a circular import loop
+    from levisim.multiphysics.quantum_linear_theory_method import QuantumLinearTheoryMethod
+
+    mtr = multitrap_instance
     methods = methods_to_compare
     spectral_types = spectra_to_compare
-    N, ax = mph.num_traps, mph.Cartesian_axes_per_trap
+    N, ax = mtr.num_traps, mtr.Cartesian_axes_per_trap
 
-    if QLTM.TNT_LINEAR_AMPLIFIER_MODEL in methods:
+    if QuantumLinearTheoryMethod.TNT_LINEAR_AMPLIFIER_MODEL in methods:
         spectral_types = ['PSDs']
 
-    ω_low = min(mph.ω_range) / kHz
-    ω_high = max(mph.ω_range) / kHz
-    ω_step = (mph.ω_range[1] - mph.ω_range[0]) / kHz
+    ω_low = min(mtr.ω_range) / kHz
+    ω_high = max(mtr.ω_range) / kHz
+    ω_step = (mtr.ω_range[1] - mtr.ω_range[0]) / kHz
 
     image_dicts = {}
     all_plot_values = {}
@@ -342,12 +400,12 @@ def compare_methods(multitrap_instance, methods_to_compare, spectra_to_compare):
 
             label = spectral_type
             if spectral_type == 'PSDs':
-                calc_func = mph.calculate_all_hybridised_position_spectra
-                label = mph.labels
+                calc_func = mtr.calculate_all_hybridised_position_spectra
+                label = mtr.labels
             elif spectral_type == 'homodyne':
-                calc_func = mph.calculate_homodyne_spectrum
+                calc_func = mtr.calculate_homodyne_spectrum
             elif spectral_type == 'heterodyne':
-                calc_func = mph.calculate_heterodyne_spectrum
+                calc_func = mtr.calculate_heterodyne_spectrum
 
             plot_values = calc_func(method)
             all_plot_values[method][spectral_type] = plot_values
@@ -364,7 +422,7 @@ def compare_methods(multitrap_instance, methods_to_compare, spectra_to_compare):
                 ])
                 PSD_ax_list = list(PSD_ax_dict.values())
                 for ii, PSD_ax in enumerate(PSD_ax_list):
-                    PSD_ax.plot(mph.ω_range / kHz, plot_values[:, ii], label=label[ii])
+                    PSD_ax.plot(mtr.ω_range / kHz, plot_values[:, ii], label=label[ii])
                     PSD_ax.set_yscale('log')
                     PSD_ax.legend()
                     PSD_ax.grid()
@@ -373,7 +431,7 @@ def compare_methods(multitrap_instance, methods_to_compare, spectra_to_compare):
                 plt.show()
 
             plt.plot(
-                mph.ω_range / kHz,
+                mtr.ω_range / kHz,
                 plot_values,
                 label=label,
             )
@@ -388,21 +446,12 @@ def compare_methods(multitrap_instance, methods_to_compare, spectra_to_compare):
             image_dicts[spectral_type][method] = cv2.imread(figname)
             plt.show()
 
+            temperatures = {}
             if spectral_type == 'PSDs':
-                for ii, label in enumerate(mph.labels):
-                    jn = mph.dimensions[label]
-                    ħΩ = ħ * jn.Ω
-
-                    SQQ_area = np.trapz(plot_values[:, ii], mph.ω_range / Hz)
-                    njn = 0.5 * (SQQ_area - 1)
-                    print(f'{label=}')
-                    print(f'n{label} = {njn:.6f} phonons')
-                    print(f'T{label} via phonons = {njn * ħΩ / kB:.6e} K')
-
-                    eqp_f = jn.m * jn.Ω**2 / kB
-                    q_variance = SQQ_area * jn.zpf**2
-                    print(f'T{label} via variance = {eqp_f * q_variance:.6e} K')
-
+                for ii, label in enumerate(mtr.labels):
+                    temperatures[label] = calculate_PSD_temperature(mtr, plot_values, ii, label)
+                if return_PSD_temperatures:
+                    return temperatures
 
     method_pairs = []
     # comparing 2
@@ -444,3 +493,27 @@ def compare_methods(multitrap_instance, methods_to_compare, spectra_to_compare):
     print('🎉🎉🎉🎉🎉 all spectral calculation methods agree :) 🎉🎉🎉🎉🎉')
     pp(results_dict)
 
+    return
+
+
+def calculate_PSD_temperature(multitrap_instance, plot_values, ii, label):
+    mtr = multitrap_instance
+    jn = mtr.dimensions[label]
+    ħΩ = ħ * jn.Ω
+
+    SQQ_area = np.trapz(plot_values[:, ii], mtr.ω_range / Hz)
+    njn = 0.5 * (SQQ_area - 1)
+    print(f'{label=}')
+    print(f'n{label} = {njn:.6f} phonons')
+    T_via_phonons = njn * ħΩ / kB
+    print(f'T{label} via phonons = {T_via_phonons:.6e} K')
+
+    eqp_f = jn.m * jn.Ω**2 / kB
+    q_variance = SQQ_area * jn.zpf**2
+    T_via_variance = eqp_f * q_variance
+    print(f'T{label} via variance = {T_via_variance:.6e} K')
+
+    return {
+        'phonons': T_via_phonons,
+        'variance': T_via_variance,
+    }

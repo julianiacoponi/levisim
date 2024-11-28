@@ -11,12 +11,12 @@ from scipy.constants import (
 )
 
 absolute_zero = -zero_Celsius  # 0 K in °C
+T_lab = 21.5 - absolute_zero  # gas temperature (actual lab temperature) [K]
 
 # physical constants of air as a gas
-d_gas = 0.372e-9  # diameter of air molecule [m]
-ξ_gas = 18.27e-6  # viscosity of air [kg/m/s] = [Pa.s]
-m_gas = 4.8e-26  # mass of air molecule [kg]
-T_gas = 21.5 - absolute_zero  # gas temperature (actual lab temperature) [K]
+d_air = 0.372e-9  # diameter of air molecule [m]
+ξ_air = 18.27e-6  # viscosity of air [kg/m/s] = [Pa.s]
+m_air = 4.8e-26  # mass of air molecule [kg]
 
 # number of photons contributing to noise / the dynamic part of a photon field
 shot_noise = 0
