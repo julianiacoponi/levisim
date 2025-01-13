@@ -46,7 +46,7 @@ class Dimension:
         # ------------------------------------------------------------------------------------------
         self.Φ = None
         if not self.multitrap.toy_params:
-            # e.g. label 'x1' will take traps[0], 'y3' takes traps[2]
+            # e.g. label 'x1' will take traps[0]
             self.trap = multitrap.traps[int(self.trap_index) - 1]
             # Trapping position of the bead in the cavity's standing wave
             # [rad]

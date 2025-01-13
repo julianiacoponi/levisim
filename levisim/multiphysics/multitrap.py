@@ -18,7 +18,7 @@ from levisim.core.units import (
     mbar,
 )
 
-from levisim.core.utils import timer, profiler
+from levisim.core.utils import timer, profiler, progress_bar
 
 from levisim.physics.tweezer import Tweezer
 from levisim.physics.bead import Bead
@@ -32,8 +32,9 @@ from levisim.multiphysics.hybridisation import HybridisationTerm, generate_deran
 
 
 # some debug options
-TIMER = True
+TIMER = False
 PROFILER = False
+PROGRESS_BAR = False
 
 
 class MultiTrap:
@@ -963,14 +964,18 @@ class MultiTrap:
             # 'power series' method inverts D symbolically
             # D⁻¹ = adj(D)/det(D)
 
-            # det(D) = determinant of D
-            # power series of deranged cycles = 1 - ∑ R²ν - ∑ R³ν + ...
+            # det(D) = determinant of D = power series of deranged cycles ν
+            # det(D) = 1 - ∑ R²ν - ∑ R³ν + ...
 
             # adj(D) = adjugate matrix of D = tranpose of the matrix of cofactors
             # cofactor = determinant of a minor of D
             # minor = matrix left when one row and one column have been removed
-            # diagonal entry adj(D)ii = det(D\i), i.e. det(D) but with row i and column i removed
-            # off-diagonal entry adj(D)ij = power series of 'path-cycles' ρ = Rij + ∑ R²ρ + ∑ R³ρ + ...
+            # diagonal entry adj(D)ii = det(D\i)
+            # i.e. det(D) but with row i and column i removed
+
+            # off-diagonal entry adj(D)ij = power series of 'path-cycles' ρ
+            # adj(D)ij = Rij + ∑ R²ρ + ∑ R³ρ + ...
+
             adjugate_matrix_ω = np.matrix(np.eye(self.num_total_dims), dtype=np.complex128)
             for jj, label_jn in enumerate(self.labels):
                 for kk, label_km in enumerate(self.labels):
@@ -1126,7 +1131,8 @@ class MultiTrap:
     # ----------------------------------------------------------------------------------------------
     @timer(TIMER)
     @profiler(PROFILER)
-    def calculate_all_hybridised_position_spectra(self, method):
+    @progress_bar('self.ω_range', PROGRESS_BAR)
+    def calculate_all_hybridised_position_spectra(self, method, zpf_units=True):
         """
         Invert the derangement matrix D to get the hybridisation matrix H
         This solves the n-dimensional hybridised position vector, x
@@ -1137,7 +1143,6 @@ class MultiTrap:
 
         Calculate PSDs based on the squares of x as a noise vector
         """
-        print(f'Calculating all PSDs in frequency range [{min(self.ω_range) / kHz}, {max(self.ω_range) / kHz}]  kHz using {method}')
 
         if method == QuantumLinearTheoryMethod.TNT_LINEAR_AMPLIFIER_MODEL:
             return self.position_power_spectra_array
@@ -1148,45 +1153,40 @@ class MultiTrap:
         psd_array = np.zeros((num_ω_points, self.num_total_dims))
 
         for ii, ω in enumerate(self.ω_range):
-            if not ii % 100:
-                print(f'{ω / kHz} kHz')
-            # fill out x, as a noise vector
             hybrid_X_array[ii] = self.hybridised_X(method, ω)
 
-            # for each dimension in x, calculate the psd
-            for dd in range(self.num_total_dims):
+            # for each dimension in X, calculate the psd
+            for dd, dimension in enumerate(self.dimensions.values()):
                 psd_array[ii, dd] = self.noise_vector_to_power_spectrum(hybrid_X_array[ii, dd])
+                if zpf_units:
+                    psd_array[ii, dd] *= dimension.zpf**2
 
         return psd_array
 
     @timer(TIMER)
     @profiler(PROFILER)
+    @progress_bar('self.ω_range', PROGRESS_BAR)
     def calculate_homodyne_spectrum(self, method):
         """
         Calculates homodyne spectrum of output light from the cavity, S_hh
         h = a†_out.exp(iθ) + a_out.exp(-iθ) = A_out.cos(θ) + P_out.sin(θ)
         θ = homodyne angle
         """
-        print(f'Calculating homodyne spectrum in frequency range [{min(self.ω_range) / kHz}, {max(self.ω_range) / kHz}] kHz using {method}')
         homodyne_spectrum = []
         for ii, ω in enumerate(self.ω_range):
-            if not ii % 100:
-                print(f'{ω / kHz} kHz')
             homodyne_spectrum.append(self.noise_vector_to_power_spectrum(self.homodyne_noise_vector(method, ω)))
         return np.array(homodyne_spectrum)
 
     @timer(TIMER)
     @profiler(PROFILER)
+    @progress_bar('self.ω_range', PROGRESS_BAR)
     def calculate_heterodyne_spectrum(self, method):
         """
         Calculates the heterodyne spectrum of output light from the cavity, S_het
         S_het(ω) = S_aa†(ω + Ω) + S_a†a(ω - Ω)
         """
-        print(f'Calculating heterodyne spectrum in frequency range [{min(self.ω_range) / kHz}, {max(self.ω_range) / kHz}] kHz using {method}')
         heterodyne_spectrum = []
         for ii, ω in enumerate(self.ω_range):
-            if not ii % 100:
-                print(f'{ω / kHz} kHz')
             heterodyne_spectrum.append(self.noise_vector_to_power_spectrum(self.heterodyne_noise_vector(method, ω)))
         return np.array(heterodyne_spectrum)
 

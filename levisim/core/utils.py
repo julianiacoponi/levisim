@@ -28,6 +28,11 @@ __all__ = [
     # MultiTrap QLT spectra comparison tools
     'greyscale_diff',
     'compare_methods',
+
+    # handy diagonstic wrappers
+    'timer',
+    'profiler',
+    'progress_bar',
 ]
 
 import time
@@ -45,58 +50,15 @@ from matplotlib.path import Path
 from IPython.display import HTML
 from pprint import pprint as pp
 from functools import wraps
+from tqdm import tqdm
 from io import StringIO
 
 from levisim.core.constants import ħ, kB
 from levisim.core.units import Hz, kHz
 from levisim.physics.kick import Kick
 
+from functools import wraps
 
-####################################################################################################
-# handy diagonstic wrappers
-
-def timer(enabled):
-    """ A `perf_counter` timer decorator """
-    def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-
-            if not enabled:
-                return func(*args, **kwargs)
-
-            start_time = time.perf_counter()
-            result = func(*args, **kwargs)
-            end_time = time.perf_counter()
-            print(f"Function '{func.__name__}' executed in {end_time - start_time:.4f} seconds.")
-            return result
-        return wrapper
-    return decorator
-
-
-def profiler(enabled):
-    """ A cProfile profiling decorator """
-    def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            if not enabled:
-                return func(*args, **kwargs)
-
-            profiler = cProfile.Profile()
-            profiler.enable()
-            result = func(*args, **kwargs)
-            profiler.disable()
-
-            # capture the profiling results
-            result_stream = StringIO()
-            stats = pstats.Stats(profiler, stream=result_stream)
-            # sort by time
-            stats.sort_stats(pstats.SortKey.TIME)
-            stats.print_stats()
-
-            print(result_stream.getvalue())
-            return result
-        return wrapper
-    return decorator
 
 ####################################################################################################
 # data to calculate the V/m calibration factor
@@ -399,15 +361,17 @@ def compare_methods(
             print(f'{spectral_type} -- {method}')
 
             label = spectral_type
+            calc_kwargs = {}
             if spectral_type == 'PSDs':
                 calc_func = mtr.calculate_all_hybridised_position_spectra
+                calc_kwargs['zpf_units'] = False
                 label = mtr.labels
             elif spectral_type == 'homodyne':
                 calc_func = mtr.calculate_homodyne_spectrum
             elif spectral_type == 'heterodyne':
                 calc_func = mtr.calculate_heterodyne_spectrum
 
-            plot_values = calc_func(method)
+            plot_values = calc_func(method, **calc_kwargs)
             all_plot_values[method][spectral_type] = plot_values
 
             if spectral_type == 'PSDs' and N >= 3 and ax >= 2:
@@ -517,3 +481,98 @@ def calculate_PSD_temperature(multitrap_instance, plot_values, ii, label):
         'phonons': T_via_phonons,
         'variance': T_via_variance,
     }
+
+
+####################################################################################################
+# handy diagonstic wrappers
+
+def timer(enabled):
+    """ A `perf_counter` timer decorator """
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+
+            if not enabled:
+                return func(*args, **kwargs)
+
+            start_time = time.perf_counter()
+            result = func(*args, **kwargs)
+            end_time = time.perf_counter()
+            print(f"Function '{func.__name__}' executed in {end_time - start_time:.4f} seconds.")
+            return result
+        return wrapper
+    return decorator
+
+
+def profiler(enabled):
+    """ A cProfile profiling decorator """
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            if not enabled:
+                return func(*args, **kwargs)
+
+            profiler = cProfile.Profile()
+            profiler.enable()
+            result = func(*args, **kwargs)
+            profiler.disable()
+
+            # capture the profiling results
+            result_stream = StringIO()
+            stats = pstats.Stats(profiler, stream=result_stream)
+            # sort by time
+            stats.sort_stats(pstats.SortKey.TIME)
+            stats.print_stats()
+
+            print(result_stream.getvalue())
+            return result
+        return wrapper
+    return decorator
+
+
+def progress_bar(loop_variable_path, enabled):
+    """
+    A decorator to add a loading bar to a loop in a function. The loop
+    must iterate over an iterable stored in the function's local or nested attributes.
+
+    :param loop_variable_path: The dotted path to the loop variable (e.g., 'self.ω_range').
+    :param enabled: Boolean to toggle the loading bar on or off.
+    """
+    def resolve_variable_path(obj, path):
+        """Resolve a dotted variable path to get the actual value."""
+        parts = path.split('.')
+
+        # handle 'self' as the first part explicitly
+        if parts[0] == 'self':
+            # `obj` is `self` in class methods
+            obj = obj
+            # remove 'self' from the path
+            parts = parts[1:]
+
+        for part in parts:
+            obj = getattr(obj, part)
+        return obj
+
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            if not enabled:
+                return func(*args, **kwargs)
+
+            # Resolve the loop variable path
+            try:
+                # args[0] is 'self'
+                loop_variable = resolve_variable_path(args[0], loop_variable_path)
+            except AttributeError:
+                raise ValueError(f'Variable path "{loop_variable_path}" could not be resolved.')
+
+            # wrap the loop with a progress bar
+            with tqdm(loop_variable, desc=f'Looping through {loop_variable_path}') as prog_bar:
+                result = func(*args, **kwargs)
+                prog_bar.update(len(loop_variable))
+
+            return result
+
+        return wrapper
+
+    return decorator
