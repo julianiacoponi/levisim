@@ -1,3 +1,14 @@
+import pickle
+import scipy.signal
+
+import numpy as np
+import matplotlib.pyplot as plt
+
+from levisim.core.logger import logger
+from levisim.core.units import Hz, kHz
+from levisim.physics.kick import Kick
+
+
 __all__ = [
     # folders where data is kept
     'CALIBRATION_DATA_PATH_ROOT',
@@ -12,10 +23,6 @@ __all__ = [
     'generate_time_array',
     'time_slice',
 
-    # pyplot animations
-    'create_func_animation',
-    'create_artist_animation',
-
     # signal processing
     'apply_filter',
     'calculate_contrast',
@@ -24,44 +31,11 @@ __all__ = [
     'kick_data_path',
     'generate_kick_list',
     'find_kicks',
-
-    # MultiTrap QLT spectra comparison tools
-    'greyscale_diff',
-    'compare_methods',
-
-    # handy diagonstic wrappers
-    'timer',
-    'profiler',
-    'progress_bar',
 ]
-
-import time
-import cProfile
-import pstats
-import cv2
-import pickle
-import scipy.signal
-import matplotlib.animation
-
-import numpy as np
-import matplotlib.pyplot as plt
-
-from matplotlib.path import Path
-from IPython.display import HTML
-from pprint import pprint as pp
-from functools import wraps
-from tqdm import tqdm
-from io import StringIO
-
-from levisim.core.constants import ħ, kB
-from levisim.core.units import Hz, kHz
-from levisim.physics.kick import Kick
-
-from functools import wraps
-
 
 ####################################################################################################
 # data to calculate the V/m calibration factor
+
 CALIBRATION_DATA_PATH_ROOT = ''
 
 # data with directed stochastic noise at varying angles
@@ -76,7 +50,7 @@ KICKS_DATA_PATH_ROOT = '/Users/julian/Downloads/jon-kick-data/Kicksforcalibratio
 
 def save_variable_to_pickle(variable, save_name='default.pickle'):
     """ Save any given python variable to a binary file """
-    print(f'Saving {variable} to "{save_name}"')
+    logger.info(f'Saving variable to "{save_name}"')
     file = open(save_name, 'wb')  # 'wb' = write binary
     pickle.dump(variable, file)
     file.close()
@@ -85,7 +59,7 @@ def save_variable_to_pickle(variable, save_name='default.pickle'):
 
 def load_variable_from_pickle(save_name):
     """ Load any previously saved python variable from a binary file """
-    print(f'Loading variable from "{save_name}"')
+    logger.info(f'Loading variable from "{save_name}"')
     file = open(save_name, 'rb')  # 'rb' = read binary
     variable = pickle.load(file)
     file.close()
@@ -94,6 +68,7 @@ def load_variable_from_pickle(save_name):
 
 ####################################################################################################
 # time arrays
+
 def generate_time_array(start_time, end_time, num_samples):
     """ Returns a `num_samples + 1` length array of time values, i.e. including `end_time` """
     return np.linspace(start_time, end_time, num_samples + 1, endpoint=True)
@@ -110,57 +85,15 @@ def time_slice(array, start_time, end_time, Δt):
 
 
 ####################################################################################################
-# pyplot animations
-
-def create_func_animation(
-    fig,
-    func,
-
-    frames=None,
-    init_func=None,
-    fargs=None,
-
-    interval=200,
-    blit=True,
-):
-    anim = matplotlib.animation.FuncAnimation(
-        fig,
-        func,
-
-        frames=frames,
-        init_func=init_func,
-        fargs=fargs,
-
-        interval=interval,
-        blit=blit,
-    )
-    return anim
-
-
-# TODO: set this up! https://matplotlib.org/stable/users/explain/animations/animations.html
-def create_artist_animation(
-    fig,
-    artists,
-    interval=200,
-):
-    anim = matplotlib.animation.ArtistAnimation(
-        fig,
-        artists,
-        interval=interval,
-    )
-    return anim
-
-
-####################################################################################################
 # signal processing
 
 def apply_filter(signal, Nyquist_freq, centre_freq, filter_type, bandwidth, plot=True):
     kiloHz, MegaHz = 1e3, 1e6
-    print(f'Signal has {len(signal)} samples and Nyquist frequency={Nyquist_freq / MegaHz} MHz')
+    logger.info(f'Signal has {len(signal)} samples and Nyquist frequency={Nyquist_freq / MegaHz} MHz')
 
     if filter_type == 'butter':
         order = 5
-        print(f'Making a {bandwidth / kiloHz}kHz Butterworth bandpass filter, centred @ {centre_freq / kiloHz}kHz ({order}th order)')
+        logger.info(f'Making a {bandwidth / kiloHz}kHz Butterworth bandpass filter, centred @ {centre_freq / kiloHz}kHz ({order}th order)')
         lowcut = centre_freq - bandwidth / 2
         highcut = centre_freq + bandwidth / 2
         low, high = lowcut / Nyquist_freq, highcut / Nyquist_freq
@@ -168,7 +101,7 @@ def apply_filter(signal, Nyquist_freq, centre_freq, filter_type, bandwidth, plot
 
     elif filter_type == 'iirpeak':
         Q_factor = centre_freq / bandwidth
-        print(f'Making a {bandwidth / kiloHz}kHz linewidth IIR peak filter, centred @ {centre_freq / kiloHz}kHz (Q={Q_factor})')
+        logger.info(f'Making a {bandwidth / kiloHz}kHz linewidth IIR peak filter, centred @ {centre_freq / kiloHz}kHz (Q={Q_factor})')
         b, a = scipy.signal.iirpeak(centre_freq, Q_factor, fs=2*Nyquist_freq)
 
     if plot:
@@ -231,7 +164,7 @@ def kick_data_path(gain, run_choice):
     }
 
     assert 0 < int(run_choice) <= runs_per_gain[gain], f'For gain {gain} choice must be between 1 and {runs_per_gain[gain]}'
-    print(f'Getting data path for kicks with gain {gain} -- run choice {run_choice}')
+    logger.info(f'Getting data path for kicks with gain {gain} -- run choice {run_choice}')
     return folder_path_per_gain[gain] + file_name_root_per_gain[gain] + run_choice + '.bin'
 
 
@@ -324,255 +257,3 @@ def find_kicks(
         plt.show()
 
     return kick_times, kick_times_2, kick_voltages
-
-####################################################################################################
-# MultiTrap QLT spectra comparison tools
-
-def greyscale_diff(image_1, image_2):
-    return cv2.cvtColor(cv2.subtract(image_1, image_2), cv2.COLOR_BGR2GRAY)
-
-def compare_methods(
-    multitrap_instance,
-    methods_to_compare,
-    spectra_to_compare,
-    return_PSD_temperatures=False,
-):
-    # this avoids a circular import loop
-    from levisim.multiphysics.quantum_linear_theory_method import QuantumLinearTheoryMethod
-
-    mtr = multitrap_instance
-    methods = methods_to_compare
-    spectral_types = spectra_to_compare
-    N, ax = mtr.num_traps, mtr.Cartesian_axes_per_trap
-
-    if QuantumLinearTheoryMethod.TNT_LINEAR_AMPLIFIER_MODEL in methods:
-        spectral_types = ['PSDs']
-
-    ω_low = min(mtr.ω_range) / kHz
-    ω_high = max(mtr.ω_range) / kHz
-    ω_step = (mtr.ω_range[1] - mtr.ω_range[0]) / kHz
-
-    image_dicts = {}
-    all_plot_values = {}
-    for spectral_type in spectral_types:
-        image_dicts[spectral_type] = {}
-        for method in methods:
-            all_plot_values[method] = {}
-            print(f'{spectral_type} -- {method}')
-
-            label = spectral_type
-            calc_kwargs = {}
-            if spectral_type == 'PSDs':
-                calc_func = mtr.calculate_all_hybridised_position_spectra
-                calc_kwargs['zpf_units'] = False
-                label = mtr.labels
-            elif spectral_type == 'homodyne':
-                calc_func = mtr.calculate_homodyne_spectrum
-            elif spectral_type == 'heterodyne':
-                calc_func = mtr.calculate_heterodyne_spectrum
-
-            plot_values = calc_func(method, **calc_kwargs)
-            all_plot_values[method][spectral_type] = plot_values
-
-            if spectral_type == 'PSDs' and N >= 3 and ax >= 2:
-                PSD_fig = plt.figure(layout='constrained', figsize=(8, 16))
-                PSD_ax_dict = PSD_fig.subplot_mosaic([
-                    ['X1'],
-                    ['Y1'],
-                    ['X2'],
-                    ['Y2'],
-                    ['X3'],
-                    ['Y3'],
-                ])
-                PSD_ax_list = list(PSD_ax_dict.values())
-                for ii, PSD_ax in enumerate(PSD_ax_list):
-                    PSD_ax.plot(mtr.ω_range / kHz, plot_values[:, ii], label=label[ii])
-                    PSD_ax.set_yscale('log')
-                    PSD_ax.legend()
-                    PSD_ax.grid()
-                    PSD_ax.set_xlim(ω_low, ω_high)
-                    PSD_ax.set_ylim(1e-7, 1e1)
-                plt.show()
-
-            plt.plot(
-                mtr.ω_range / kHz,
-                plot_values,
-                label=label,
-            )
-            plt.yscale('log')
-            plt.legend()
-            plt.grid()
-            plt.xlim(ω_low, ω_high)
-            if spectral_type == 'PSDs':
-                plt.ylim(1e-8, 1e1)
-            figname = f'{spectral_type} -- {method}.png'
-            plt.savefig(figname)
-            image_dicts[spectral_type][method] = cv2.imread(figname)
-            plt.show()
-
-            temperatures = {}
-            if spectral_type == 'PSDs':
-                for ii, label in enumerate(mtr.labels):
-                    temperatures[label] = calculate_PSD_temperature(mtr, plot_values, ii, label)
-                if return_PSD_temperatures:
-                    return temperatures
-
-    method_pairs = []
-    # comparing 2
-    if len(methods) >= 2:
-        method_pairs.append((methods[0], methods[1]))
-
-    # comparing 3
-    if len(methods) >= 3:
-        method_pairs.append((methods[1], methods[2]))
-        method_pairs.append((methods[0], methods[2]))
-
-    # comparing 4
-    if len(methods) >= 4:
-        method_pairs.append((methods[2], methods[3]))
-        method_pairs.append((methods[0], methods[3]))
-        method_pairs.append((methods[1], methods[3]))
-
-    # comparing 5
-    if len(methods) >= 5:
-        method_pairs.append((methods[3], methods[4]))
-        method_pairs.append((methods[0], methods[4]))
-        method_pairs.append((methods[1], methods[4]))
-        method_pairs.append((methods[2], methods[4]))
-
-    results_dict = {}
-    all_results = []
-    for spectral_type, image_dict in image_dicts.items():
-
-        results_dict[spectral_type] = {}
-
-        for method_pair in method_pairs:
-            diff = greyscale_diff(image_dict[method_pair[0]], image_dict[method_pair[1]])
-            result = cv2.countNonZero(diff) == 0
-
-            all_results.append(result)
-            results_dict[spectral_type][method_pair] = result
-
-    assert all(all_results), f'🏴‍☠️🏴‍☠️🏴‍☠️🏴‍☠️🏴‍☠️ Failure present! 🏴‍☠️🏴‍☠️🏴‍☠️🏴‍☠️🏴‍☠️\n{results_dict=}'
-    print('🎉🎉🎉🎉🎉 all spectral calculation methods agree :) 🎉🎉🎉🎉🎉')
-    pp(results_dict)
-
-    return
-
-
-def calculate_PSD_temperature(multitrap_instance, plot_values, ii, label):
-    mtr = multitrap_instance
-    jn = mtr.dimensions[label]
-    ħΩ = ħ * jn.Ω
-
-    SQQ_area = np.trapz(plot_values[:, ii], mtr.ω_range / Hz)
-    njn = 0.5 * (SQQ_area - 1)
-    print(f'{label=}')
-    print(f'n{label} = {njn:.6f} phonons')
-    T_via_phonons = njn * ħΩ / kB
-    print(f'T{label} via phonons = {T_via_phonons:.6e} K')
-
-    eqp_f = jn.m * jn.Ω**2 / kB
-    q_variance = SQQ_area * jn.zpf**2
-    T_via_variance = eqp_f * q_variance
-    print(f'T{label} via variance = {T_via_variance:.6e} K')
-
-    return {
-        'phonons': T_via_phonons,
-        'variance': T_via_variance,
-    }
-
-
-####################################################################################################
-# handy diagonstic wrappers
-
-def timer(enabled):
-    """ A `perf_counter` timer decorator """
-    def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-
-            if not enabled:
-                return func(*args, **kwargs)
-
-            start_time = time.perf_counter()
-            result = func(*args, **kwargs)
-            end_time = time.perf_counter()
-            print(f"Function '{func.__name__}' executed in {end_time - start_time:.4f} seconds.")
-            return result
-        return wrapper
-    return decorator
-
-
-def profiler(enabled):
-    """ A cProfile profiling decorator """
-    def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            if not enabled:
-                return func(*args, **kwargs)
-
-            profiler = cProfile.Profile()
-            profiler.enable()
-            result = func(*args, **kwargs)
-            profiler.disable()
-
-            # capture the profiling results
-            result_stream = StringIO()
-            stats = pstats.Stats(profiler, stream=result_stream)
-            # sort by time
-            stats.sort_stats(pstats.SortKey.TIME)
-            stats.print_stats()
-
-            print(result_stream.getvalue())
-            return result
-        return wrapper
-    return decorator
-
-
-def progress_bar(loop_variable_path, enabled):
-    """
-    A decorator to add a loading bar to a loop in a function. The loop
-    must iterate over an iterable stored in the function's local or nested attributes.
-
-    :param loop_variable_path: The dotted path to the loop variable (e.g., 'self.ω_range').
-    :param enabled: Boolean to toggle the loading bar on or off.
-    """
-    def resolve_variable_path(obj, path):
-        """Resolve a dotted variable path to get the actual value."""
-        parts = path.split('.')
-
-        # handle 'self' as the first part explicitly
-        if parts[0] == 'self':
-            # `obj` is `self` in class methods
-            obj = obj
-            # remove 'self' from the path
-            parts = parts[1:]
-
-        for part in parts:
-            obj = getattr(obj, part)
-        return obj
-
-    def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            if not enabled:
-                return func(*args, **kwargs)
-
-            # Resolve the loop variable path
-            try:
-                # args[0] is 'self'
-                loop_variable = resolve_variable_path(args[0], loop_variable_path)
-            except AttributeError:
-                raise ValueError(f'Variable path "{loop_variable_path}" could not be resolved.')
-
-            # wrap the loop with a progress bar
-            with tqdm(loop_variable, desc=f'Looping through {loop_variable_path}') as prog_bar:
-                result = func(*args, **kwargs)
-                prog_bar.update(len(loop_variable))
-
-            return result
-
-        return wrapper
-
-    return decorator

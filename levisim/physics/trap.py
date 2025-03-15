@@ -95,8 +95,14 @@ class Trap:
 
     @property
     def info(self):
-        """ Prints information on the physics of the bead levitating in a tweezer trap, in gas """
-        print(
+        """
+        Prints information on Trap instance
+        """
+        print(self.info_str)
+
+    @property
+    def info_str(self):
+        return (
             f'Trap(id={id(self)}'
             f'\n    trap_index={self.trap_index}'
             f'\n'
@@ -154,7 +160,6 @@ class Trap:
             f'\n    id(gas) = {id(self.gas)}'
             f'\n)'
         )
-        return
 
     ################################################################################################
     # DERIVED PROPERTIES

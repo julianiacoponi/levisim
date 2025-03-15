@@ -4,7 +4,8 @@ class QuantumLinearTheoryMethod(Enum):
     """
     An enumeration class for the choice of method to solve the Heisenberg-Langevin equations of motion
 
-    From the linear Hamiltonian (summing over Cartesian axis labels jn):
+    From the linear Hamiltonian
+    (∑ indicates summing over Cartesian axis labels jn):
 
         H = H_free + H_interaction
 
@@ -173,7 +174,9 @@ class QuantumLinearTheoryMethod(Enum):
     POWER_SERIES_HYBRIDISATION = auto()
 
     def __repr__(self):
-        """ Return an appropriate string when printed """
+        """
+        Return an appropriate string when printed
+        """
 
         if self == QuantumLinearTheoryMethod.LINEAR_AMPLIFIER_MODEL:
             return 'LAM'

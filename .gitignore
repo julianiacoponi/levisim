@@ -5,21 +5,11 @@
 .DS_Store
 .DS_Store?
 
-
 # python generated
 __pycache__/
 
 # setuptools generated
 *.egg-info/
 
-# Simulation() generated
-pickle/
-
 # images generated for in-code comparisons
 *.png
-
-# gfortran compiled binary
-*.out
-
-# fortran output data
-*.dat

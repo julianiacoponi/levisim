@@ -9,8 +9,29 @@ from levisim.core.units import (
 
 
 class Dimension:
-    """ Class to represent a mechanical degree of freedom in the system """
-    def __init__(self, multitrap, label, **kwargs):
+    """
+    Class to represent a mechanical degree of freedom in the system
+        - φ: phase of tweezer that is trapping this dimension [rad]
+
+        - T: thermal bath temperature [K]
+        - m: mass of bead associated with this dimension [kg]
+
+        - Ω: resonant frequency of motion associated with this dimension [rad/s]
+        - Γ: mechanical damping rate [rad/s]
+
+        - g: light-mech coupling rate [rad/s]
+        - gxy, gxz, gyz: mech-mech coupling rates [rad/s]
+
+    There are two ways to initialise this class:
+    1) TOY MODEL:
+    This takes 'toy model' parameters that define the physics directly
+
+    2) PHYSICS MODEL:
+    This derives the parameters from the original physics classes, and includes:
+        - Φ: trapping position [rad]
+
+    """
+    def __init__(self, multitrap, label, **params):
 
         # the multi-dimensional context in which this dimension exists!
         self.multitrap = multitrap
@@ -18,7 +39,7 @@ class Dimension:
         # should be a string with either of 'xyz' as the first character
         # remaining characters are the bead index
         self.label = label
-        self.axis, self.trap_index = label[0], label[1:]
+        self.axis, self.trap_index = label[0], int(label[1:])
         self.sub = multitrap.label_to_sub[label]
         # needed to know to assign Q1D
         self.noise_index = multitrap.label_to_noise_index[label]
@@ -27,19 +48,19 @@ class Dimension:
         # TOY MODEL PARAMETERS
         # ------------------------------------------------------------------------------------------
         # Relative phase of the tweezer associated with this dimension
-        self.φ = kwargs.get('φ')
+        self.φ = params.get('φ')
 
-        self.T = kwargs.get('T')
-        self.m = kwargs.get('m')
+        self.T = params.get('T')
+        self.m = params.get('m')
 
-        # self.Ω = kwargs.get('Ω', self.trap.Ω_CS(self.axis))
-        self.Ω = kwargs.get('Ω')
-        self.Γ = kwargs.get('Γ')
+        # self.Ω = params.get('Ω', self.trap.Ω_CS(self.axis))
+        self.Ω = params.get('Ω')
+        self.Γ = params.get('Γ')
 
-        self.g = kwargs.get('g')
-        self.gxy = kwargs.get('gxy')
-        self.gxz = kwargs.get('gxz')
-        self.gyz = kwargs.get('gyz')
+        self.g = params.get('g')
+        self.gxy = params.get('gxy')
+        self.gxz = params.get('gxz')
+        self.gyz = params.get('gyz')
 
         ############################################################################################
         # PHYSICAL MODEL PARAMETERS
@@ -47,7 +68,7 @@ class Dimension:
         self.Φ = None
         if not self.multitrap.toy_params:
             # e.g. label 'x1' will take traps[0]
-            self.trap = multitrap.traps[int(self.trap_index) - 1]
+            self.trap = multitrap.traps[self.trap_index - 1]
             # Trapping position of the bead in the cavity's standing wave
             # [rad]
             self.Φ = self.trap.bead.Φ
@@ -160,10 +181,18 @@ class Dimension:
 
     @property
     def info(self):
-        """ Prints information on the dimension """
-        Φ_str = '' if not self.Φ else f'\n    (Φ{self.trap_index}/2π) = (x0/λ) = {self.Φ / (2*π):.5f}'
+        """
+        Prints information on the dimension
+        """
+        print(self.info_str)
 
-        print(
+    @property
+    def info_str(self):
+        """
+        A string with information on the dimension
+        """
+        Φ_str = '' if not self.Φ else f'\n    (Φ{self.trap_index}/2π) = (x0/λ) = {self.Φ / (2*π):.5f}'
+        return (
             f'Dimension('
             f'\n    jn = label = {self.label}'
             f'\n    subscript = {self.sub}'
@@ -218,7 +247,6 @@ class Dimension:
             'x': 0,
             'y': 0,
             'z': π/2 if self.φ else sympy.pi / 2,
-            'z': π/2,
         }[self.axis]
 
     @property
@@ -335,4 +363,3 @@ class Dimension:
         Q[index + 1] = np.sqrt(Γ) * χM_star / M
         # Q should be empty in all other indices, since it is just the vector for the 1D position
         return Q
-

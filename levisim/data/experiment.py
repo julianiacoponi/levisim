@@ -36,8 +36,17 @@ class Experiment:
 
     @property
     def info(self):
-        """ Prints info on the trace """
-        print(
+        """
+        Prints information on the Experiment instance
+        """
+        print(self.info_str)
+
+    @property
+    def info_str(self):
+        """
+        String describing the Experiment instance
+        """
+        return (
             f'Experiment(id={id(self)}'
             f'\n    file_name = {self.file_name}'
             f'\n    channel_dict = {self.channel_dict}'

@@ -34,14 +34,23 @@ class Kick:
 
     @property
     def info(self):
-        """ Prints info on the kick """
+        """
+        Prints information on the Kick instance
+        """
+        print(self.info_str)
+
+    @property
+    def info(self):
+        """
+        String describing the Kick instance
+        """
         F0 = f'{self.F0 / fN:.1f} fN' if self.F0 is not None else 'n/a'
         Fx = f'{self.Fx / fN:.1f} fN' if self.Fx is not None else 'n/a'
         Fy = f'{self.Fy / fN:.1f} fN' if self.Fy is not None else 'n/a'
 
         p = f'{self.p:.5e} kg.m/s' if self.p is not None else 'n/a'
         p_keVc = f'{self.p / (keV/c):.1f} keV/c' if self.p is not None else 'n/a'
-        print(
+        return (
             f'Kick(id={id(self)}'
             f'\n    start = {self.start / ms:.6f} ms'
             f'\n    end = {self.end / ms:.6f} ms'

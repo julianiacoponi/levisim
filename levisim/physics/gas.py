@@ -49,7 +49,14 @@ class Gas:
         """
         Prints information on the Gas instance
         """
-        print(
+        print(self.info_str)
+
+    @property
+    def info_str(self):
+        """
+        String describing the Gas instance
+        """
+        return (
             f'Gas(id={id(self)}'
             f'\n    m = {self.m :.5e} kg'
             f'\n    P = {self.P / mbar:.5e} mbar'
@@ -62,7 +69,6 @@ class Gas:
             f'\n    〈KE〉= {self.KE / kB:.5f} K'
             f'\n)'
         )
-        return
 
     ################################################################################################
     # DERIVED PROPERTIES

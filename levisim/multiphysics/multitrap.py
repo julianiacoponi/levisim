@@ -1,7 +1,11 @@
+import os
 import time
+import random
 import sympy
+import scipy
 import numpy as np
 
+from pathlib import Path
 from copy import copy
 from functools import cached_property, partial
 
@@ -9,7 +13,7 @@ from levisim.core.constants import (
     π, ħ, kB,
     m_air,
     shot_noise,
-    node, halfnode, antinode,
+    antinode, halfnode, node,
 )
 from levisim.core.units import (
     nm,
@@ -18,7 +22,9 @@ from levisim.core.units import (
     mbar,
 )
 
-from levisim.core.utils import timer, profiler, progress_bar
+from levisim.core.logger import logger
+from levisim.core.utils import load_variable_from_pickle
+from levisim.core.wrappers import timer, profiler, progress_bar
 
 from levisim.physics.tweezer import Tweezer
 from levisim.physics.bead import Bead
@@ -28,8 +34,12 @@ from levisim.physics.trap import Trap
 
 from levisim.multiphysics.dimension import Dimension
 from levisim.multiphysics.quantum_linear_theory_method import QuantumLinearTheoryMethod
-from levisim.multiphysics.hybridisation import HybridisationTerm, generate_deranged_terms, truncate_power_series
-
+from levisim.multiphysics.hybridisation import (
+    HybridisationTerm,
+    generate_subscripts_and_labels,
+    generate_all_hybridisation_functions,
+    generate_determinant_and_adjugate_by_order,
+)
 
 # some debug options
 TIMER = False
@@ -52,12 +62,20 @@ class MultiTrap:
         self.Cartesian_axes_per_trap = kwargs.get('Cartesian_axes_per_trap', 2)
         self.ω_range = kwargs.get('ω_range', np.arange(-400, 400, 0.5) * kHz)
 
+        logger.info(f'Initialising {self}: ({self.num_traps=}, {self.Cartesian_axes_per_trap=})')
+        logger.info(
+            f'Spectra will be calculated over'
+            f' ω_range=[{self.ω_range.min() / kHz:.1f}, {self.ω_range.max() / kHz:.1f}] kHz'
+            f' over {len(self.ω_range)} steps'
+            f' with resolution Δω = {(self.ω_range.max() - self.ω_range.min()) / len(self.ω_range) / kHz:.1f} kHz'
+        )
+
         self.num_total_dims = self.num_traps * self.Cartesian_axes_per_trap
         # we assume there is one light degree of freedom, with just 2 in the noise vector: a_in, a_in^dagger
         # for each dimension we have 2 entries in the noise vector: bjn,in, bjn,in^dagger
         self.num_operators = 2 * self.num_total_dims + 2
 
-        self.subscripts, self.labels = self.generate_subscripts_and_labels()
+        self.subscripts, self.labels = generate_subscripts_and_labels(self.num_traps, self.Cartesian_axes_per_trap)
 
         # e.g. 'c': 'z1' 1 particle, xyz
         self.sub_to_label = {sub: label for sub, label in zip(self.subscripts, self.labels)}
@@ -78,8 +96,10 @@ class MultiTrap:
 
         gas_kwargs = kwargs.get('gas_kwargs', {})
         self.gas = Gas(**gas_kwargs)
+
         cavity_kwargs = kwargs.get('cavity_kwargs', {})
         self.cavity = Cavity(**cavity_kwargs)
+
         self.toy_params = kwargs.get('toy_params')
         if self.toy_params:
             self.setup_toy_parameters(**self.toy_params)
@@ -88,8 +108,8 @@ class MultiTrap:
             self.setup_linearised_coherent_scattering_physics(**kwargs)
             self.dimensions = {label: Dimension(self, label) for label in self.labels}
 
-        self.G = {label: dim.G for label, dim in self.dimensions.items()}
-        self.G_array = np.array(list(self.G.values()))
+        self.G_dict = {label: dim.G for label, dim in self.dimensions.items()}
+        self.G_array = np.array(list(self.G_dict.values()))
 
         self.quantum_factor_per_noise_operator = [
             # photon annihilation operator, <a_in(ω).a_in†(ω)> = np + 1
@@ -112,51 +132,133 @@ class MultiTrap:
             # phonon creation operators, <bjn_in†(ω).bjn_in(ω)> = njn
             self.quantum_factor_per_noise_operator.append(njn)
 
+        # this is the quickest, because it is the direct numerical inversion of the smallest matrix
+        self.QLT_method = kwargs.get('QLT_method', QuantumLinearTheoryMethod.NUMERICAL_HYBRIDISATION)
+        logger.info(f'Setting {self}.QLT_method={self.QLT_method}')
+
         self.setup_linear_amplifier_model_matrices()
 
-        self.setup_hybrid_ps = kwargs.get('setup_hybridisation_power_series', False)
-        if self.setup_hybrid_ps:
-            self.__truncation_order = kwargs.get('truncation_order')
-            self.setup_hybridisation_power_series()
+        self.all_Rjk = generate_all_hybridisation_functions(self.labels)
+
+        # don't allow a larger max order than 9
+        self.max_order = min(kwargs.get('max_order', 9), self.num_total_dims)
+        self.evaluation_order = kwargs.get('evaluation_order', self.max_order)
+
+        self.load_in_power_series = kwargs.get('load_in_power_series', False)
+        self.generate_power_series = kwargs.get('generate_power_series', False)
+
+        if self.load_in_power_series:
+            N, ax = self.num_traps, self.Cartesian_axes_per_trap
+            n , max_order = N * ax, self.max_order
+
+            # NOTE: these pickle files were made using the save_power_series_to_pickle.ipynb notebook
+            filename = f'{n}D_{N}x{ax}_up_to_{max_order}.pickle'
+            current_file_path = Path(__file__).resolve()
+            # currently this file sits in levisim/levisim/multiphysics/
+            # we want to go to the base directeroy levisim/
+            base_levisim_dir = current_file_path.parent.parent.parent
+            power_series_file_path = (
+                base_levisim_dir
+                / 'notebooks'
+                / 'multiphysics'
+                / 'power_series'
+                / 'pickle'
+                / f'{filename}'
+            )
+            power_series_data = load_variable_from_pickle(power_series_file_path)
+            self.deranged_determinant_by_order, self.deranged_adjugate_by_order = power_series_data
+
+            if self.num_total_dims > 1:
+                a, b = random.sample(self.labels, 2)
+                aa, ab = f'{a}{a}', f'{a}{b}'
+                for order in range(1, max_order + 1):
+                    logger.trace(f'{len(self.deranged_determinant_by_order[order])} terms in determinant of order {order} of {n}')
+                    logger.trace(f'{len(self.deranged_adjugate_by_order[order][aa])} terms in {a} diagonal adjugate of order {order} of {n}')
+                    logger.trace(f'{len(self.deranged_adjugate_by_order[order][ab])} terms in {ab} off-diagonal adjugate of order {order} of {n}')
+
+        elif self.generate_power_series:
+            self.deranged_determinant_by_order, self.deranged_adjugate_by_order = generate_determinant_and_adjugate_by_order(
+                n=self.num_total_dims,
+                labels=self.labels,
+                max_order=self.max_order
+            )
 
         self.compare_Rjk_calculations = kwargs.get('compare_Rjk_calculations', False)
+
+        logger.info(self.info_str)
+        logger.info(self.cavity.info_str)
+        logger.info(self.gas.info_str)
+        if self.toy_params:
+            logger.info(self.toy_params_info_str)
+        for dimension in self.dimensions.values():
+            logger.info(dimension.info_str)
+
+    def __repr__(self):
+        """
+        String to represent an instance of MultiTrap
+        """
+        return f'MultiTrap({self.num_traps}×{self.Cartesian_axes_per_trap})'
 
     ################################################################################################
     # INFORMATION PRINTING FUNCTIONS
     # ----------------------------------------------------------------------------------------------
     @property
-    def info(self):
-        print(
+    def info_str(self):
+        """
+        String describing the MultiTrap instance
+        """
+        return (
             f'MultiTrap('
             f'\n    num_traps = {self.num_traps}'
             f'\n    Cartesian_axes_per_trap = {self.Cartesian_axes_per_trap}'
             f'\n    ω_range = [{self.ω_range.min() / kHz}, {self.ω_range.max() / kHz}] kHz'
             f'\n    num_ω_points = {len(self.ω_range)}'
             f'\n'
-            f'\n    setup_hybridisation_power_series = {self.setup_hybrid_ps}'
-            f'\n    truncation_order = {"N/A" if not self.setup_hybrid_ps else self.truncation_order}'
+            f'\n    QLT_method = {self.QLT_method}'
+            f'\n'
+            f'\n    load_in_power_series = {self.load_in_power_series}'
+            f'\n    generate_power_series = {self.generate_power_series}'
+            f'\n    max_order = {self.max_order}'
+            f'\n    evaluation_order = {self.evaluation_order}'
+            f'\n'
             f'\n    compare_Rjk_calculations = {self.compare_Rjk_calculations}'
             f'\n'
             f'\n    id(gas) = {id(self.gas)}'
             f'\n    id(cavity) = {id(self.cavity)}'
             f'\n)'
         )
+
+    @property
+    def info(self):
+        """
+        Prints information on the MultiTrap instance
+        """
+        print(self.info_str)
         if self.toy_params:
             self.toy_params_info
 
     @property
     def info_per_dimension(self):
+        """
+        Prints information on each Dimension instance
+        """
         for dimension in self.dimensions.values():
             dimension.info
 
     @property
     def info_per_trap(self):
+        """
+        Prints information on each Trap instance
+        """
         if not self.toy_params:
             for trap in self.traps:
                 trap.info
 
     @property
-    def toy_params_info(self):
+    def toy_params_info_str(self):
+        """
+        String describing the toy model parameters
+        """
         if not self.toy_params:
             return
 
@@ -171,23 +273,19 @@ class MultiTrap:
             Γ_str = (
                 f'\n    Γ = {self.toy_Γ / kHz:.5e} kHz'
             )
-        print(
+        return (
             'toy_params = {'
-            f'\n    type = {self.toy_param_model}'
-            f'{self.toy_model_description}'
-            f'\n    Ωz_to_Ωx_multiplier = {self.Ωz_to_Ωx_multiplier:.1f}'
+            f'\n    Ω_model = {self.Ω_model}'
+            f'{self.Ω_model_description}'
+            f'\n'
             f'\n'
             f'\n    ρ = {self.toy_ρ:.1f} kg/m³'
             f'\n    r = {self.toy_r / nm:.1f} nm'
             f'\n    m = {self.toy_m:.5e} kg'
             f'\n'
-            f'\n    P = {self.toy_P / mbar:.1f} mbar'
+            f'\n    P = {self.toy_P / mbar:.1e} mbar'
             f'\n    T = {self.toy_T:.1f} K'
             f'\n    〈v〉 = {self.toy_vth:.1f} m/s'
-            f'\n'
-            f'\n    all Ωx = {self.toy_Ωxs / kHz} kHz'
-            f'\n    all Ωy = {self.toy_Ωys / kHz} kHz'
-            f'\n    all Ωz = {self.toy_Ωzs / kHz} kHz'
             f'\n'
             f'{Γ_str}'
             f'\n'
@@ -202,60 +300,19 @@ class MultiTrap:
             '\n}'
         )
 
+    @property
+    def toy_params_info(self):
+        """
+        Prints information on the toy parameters
+        """
+        print(self.toy_params_info_str)
+
     ################################################################################################
     # SETUP FUNCTIONS
     # ----------------------------------------------------------------------------------------------
-    def generate_subscripts_and_labels(self):
-        """
-        Generates:
-        - the unique subscripts for the hybridisation functions
-            e.g. 'abcd' for 4 total dimensions
-        - the unique labels of the form
-            e.g. ['x1' 'y1', 'x2', 'y2'] for 2 particles xy
-
-        Possible combinations (up to 10 total dimensions)
-            10 = 10 particles, x (10x1)
-            10 = 5 particles, xy (5x2)
-
-            9 = 9 particles, x (9x1)
-            9 = 3 particles, xyz (3x3)
-
-            8 = 8 particles, x (8x1)
-            8 = 4 particles, xy (4x2)
-
-            7 = 7 particles, x (7x1)
-
-            6 = 6 particles, x (6x1)
-            6 = 3 particles, xy (3x2)
-            6 = 2 particles, xyz (2x3)
-
-            5 = 5 particles, x (5x1)
-
-            4 = 4 particles, x (4x1)
-            4 = 2 particles, xy (2x2)
-
-            3 = 3 particles, x (3x1)
-            3 = 1 particle, xyz (1x3)
-
-            2 = 2 particles, x (2x1)
-            2 = 1 particle, xy (1x2)
-
-            1 = 1 particle, x (1x1)
-        """
-        alphabet = 'abcdefghijklmnopqrstuvwxyz'
-        subscripts = alphabet[:self.num_total_dims]
-
-        labels = []
-        for trap_index in range(1, self.num_traps + 1):
-            for Cartesian_index in range(self.Cartesian_axes_per_trap):
-                label = str('xyz'[Cartesian_index]) + str(trap_index)
-                labels.append(label)
-
-        return subscripts, labels
-
     def setup_levitated_physics(self, **kwargs):
         """
-        Setup the physics of a levitated bead
+        Setup the physics of many beads levitated in tweezer traps
         """
         # roughly 42 degrees
         θtw = 0.731991
@@ -305,7 +362,8 @@ class MultiTrap:
 
     def setup_linearised_coherent_scattering_physics(self, **kwargs):
         """
-        Setup the linearised properties of a levitated bead coherent scattering into the cavity
+        Setup the linearised properties of tweezers levitating beads
+        which are all coherently scattering into the same cavity
 
         Linearisation splits the optical degrees of freedom into 2 parts
         α = a dominant, static, complex valued part
@@ -339,9 +397,11 @@ class MultiTrap:
         """
 
         for trap in self.traps:
-            # Cavity drive energy for a particular bead in a particular tweezer trap [J]
+            # Cavity drive energy for a particular bead in a particular tweezer trap
+            # [J]
             trap.Ed = 0.5 * trap.bead.α * trap.tweezer.εtw * self.cavity.εcav
-            # Cavity drive frequency for a particular bead in a particular tweezer trap [rad/s]
+            # Cavity drive frequency for a particular bead in a particular tweezer trap
+            # [rad/s]
             trap.ωd = trap.Ed / ħ
 
         # ∑ ωd.sinθ.cosΦ
@@ -370,66 +430,105 @@ class MultiTrap:
 
     def setup_toy_parameters(self, **params):
         """ Setup parameters for the model directly """
-        self.toy_param_model = params.get('model')
+        # __________________________________________________________________________________________
+        # MECHANICAL FREQUENCIES
 
-        # NOTE: this is attempting to copy the 'Mechanical Mode Comb' paper
-        # define xyz frequencies a certain span around a midpoint
-        if self.toy_param_model == 'spread':
-            self.ω_mid = params.get('ω_mid')
-            self.ω_span = params.get('ω_span')
-            low = self.ω_mid - self.ω_span / 2
-            high = self.ω_mid + self.ω_span / 2
-            gap = self.ω_span / self.num_traps
-            self.toy_Ωxs = np.arange(low, high, gap)
-            self.Ω_gap = params.get('Ω_gap')
-            self.toy_Ωys = np.array([Ωx - self.Ω_gap for Ωx in self.toy_Ωxs])
-            self.toy_model_description = (
-                f'\n    ω_mid = {self.ω_mid / kHz:.1f} kHz'
-                f'\n    ω_span = {self.ω_span / kHz:.1f} kHz'
-                f'\n    Ω_gap = {self.Ω_gap / kHz:.1f} kHz'
-            )
+        # the type of model determines how the x or x,y frequencies are set
+        self.Ω_model = params.get('Ω_model', 'pairs')
+        logger.info(f'Setting up toy model {self.Ω_model=}')
 
         # NOTE: this is copying Tania's 'ParametersNpair.f90'
-        elif self.toy_param_model == 'pairs':
-            self.first_Ωx = params.get('first_Ωx')
-            self.Ω_gap = params.get('Ω_gap')
+        if self.Ω_model == 'pairs':
+            self.Ω_first = params.get('Ω_first', 300*kHz)
+            self.Ω_intrapair_gap = params.get('Ω_intrapair_gap', 1.5*kHz)
+            self.Ω_interpair_gap = params.get('Ω_interpair_gap', 15*kHz)
 
-            self.toy_Ωxs = [self.first_Ωx]
-            self.toy_Ωys = []
-            for ii in range(self.num_traps):
-                self.toy_Ωxs.append(self.toy_Ωxs[0] - (ii + 1) * self.Ω_gap)
-                self.toy_Ωys.append(self.toy_Ωxs[ii] + self.Ω_gap / 10)
+            Ωs = {}
+            Ω_value = self.Ω_first
+            count = 0
+            for label in self.labels:
+                if label[0] != 'z':
+                    if not count % 2:
+                        # even index is the first in a pair
+                        # start with the first value, add intrapair gap for next value
+                        Ωs[label] = Ω_value
+                        Ω_value += self.Ω_intrapair_gap
+                    else:
+                        # odd index the first in a pair
+                        # minus the intrapair gap
+                        Ωs[label] = Ω_value
+                        Ω_value -= (self.Ω_interpair_gap + self.Ω_intrapair_gap)
+                    count += 1
 
-            self.toy_Ωxs = np.array(self.toy_Ωxs)
-            self.toy_Ωys = np.array(self.toy_Ωys)
-
-            self.toy_model_description = (
-                f'\n    first_Ωx = {self.first_Ωx / kHz:.1f} kHz'
-                f'\n    Ω_gap = {self.Ω_gap / kHz:.1f} kHz'
+            self.Ω_model_description = (
+                f'\n    Ω_first = {self.Ω_first / kHz:.1f} kHz'
+                f'\n    Ω_intrapair_gap = {self.Ω_intrapair_gap / kHz:.1f} kHz'
+                f'\n    Ω_interpair_gap = {self.Ω_interpair_gap / kHz:.1f} kHz'
             )
 
-        elif self.toy_param_model == 'custom':
-            self.toy_Ωxs = np.array(params.get('Ωxs'))
-            self.toy_Ωys = np.array(params.get('Ωys'))
-            self.toy_model_description = ''
+        # NOTE: this is attempting to copy the 'Mechanical Mode Comb' paper
+        # define x,y frequencies across a certain span around a midpoint
+        elif self.Ω_model == 'uniform':
+            self.Ω_mid = params.get('Ω_mid', 300*kHz)
+            self.Ω_span = params.get('Ω_span', 100*kHz)
 
-        self.Ωz_to_Ωx_multiplier = params.get('Ωz_to_Ωx_multiplier', 10)
-        self.toy_Ωzs = np.array([freq / self.Ωz_to_Ωx_multiplier for freq in self.toy_Ωxs])
+            Ω_low = self.Ω_mid - self.Ω_span / 2
+            Ω_high = self.Ω_mid + self.Ω_span / 2
 
-        Ωs_iter = {}
-        Ωs_iter['x'] = iter(self.toy_Ωxs)
-        if 2 <= self.Cartesian_axes_per_trap <= 3:
-            Ωs_iter['y'] = iter(self.toy_Ωys)
+            num_non_z_dims = len([_ for _ in self.labels if _[0] != 'z'])
+            # divide by one fewer than the number of things to fill the span
+            Ω_gap = self.Ω_span / (num_non_z_dims - 1)
+
+            Ωs = {}
+            Ω_value = Ω_low
+            for label in self.labels:
+                if label[0] != 'z':
+                    Ωs[label] = Ω_value
+                    Ω_value += Ω_gap
+
+            self.Ω_model_description = (
+                f'\n    Ω_mid = {self.Ω_mid / kHz:.1f} kHz'
+                f'\n    Ω_span = {self.Ω_span / kHz:.1f} kHz'
+            )
+
+        if self.Ω_model == 'custom':
+            Ωs = params.get('toy_Ωs')
+            self.Ω_model_description = ''
+
         if self.Cartesian_axes_per_trap == 3:
-            Ωs_iter['z'] = iter(self.toy_Ωzs)
+            # allow for custom z frequencies, but if not provided, then always do a factor of x freqs
+            if self.Ω_model != 'custom':
+                self.Ωz_to_Ωx_multiplier = params.get('Ωz_to_Ωx_multiplier', 10)
+                for ii in range(self.num_traps):
+                    n = ii + 1
+                    xn, zn = f'x{n}', f'z{n}'
+                    Ωs[zn] = Ωs[xn] / self.Ωz_to_Ωx_multiplier
+                    self.Ω_model_description += f'\n    Ωz_to_Ωx_multiplier = {self.Ωz_to_Ωx_multiplier:.1f}'
 
-        Ωs = {label: next(Ωs_iter[label[0]]) for label in self.labels}
+        for label, Ω in Ωs.items():
+            logger.trace(f'{label} frequency = {Ω / kHz:.1f} kHz')
+
+        if self.Cartesian_axes_per_trap >= 1:
+            Ωxs = np.array([Ωs[label] for label in self.labels if label[0] == 'x'])
+            self.Ω_model_description += f'\n    all Ωx = {np.array2string(Ωxs / kHz, precision=2, separator=", ")} kHz'
+
+        if self.Cartesian_axes_per_trap >= 2:
+            Ωys = np.array([Ωs[label] for label in self.labels if label[0] == 'y'])
+            self.Ω_model_description += f'\n    all Ωy = {np.array2string(Ωys / kHz, precision=2, separator=", ")} kHz'
+
+        if self.Cartesian_axes_per_trap == 3:
+            Ωzs = np.array([Ωs[label] for label in self.labels if label[0] == 'z'])
+            self.Ω_model_description += f'\n    all Ωz = {np.array2string(Ωzs / kHz, precision=2, separator=", ")} kHz'
 
 
+        # __________________________________________________________________________________________
+        # BEAD
         self.toy_ρ = params.get('ρ', 2200)  # kg/m³
         self.toy_r = params.get('r', 75*nm)
         self.toy_m = params.get('m', self.toy_ρ * (4/3) * π * self.toy_r**3)
 
+        # __________________________________________________________________________________________
+        # THERMAL BATH
         self.toy_P = params.get('P', self.gas.P)
         self.toy_T = params.get('T', self.gas.T)
         self.toy_vth = params.get('vth', self.gas.vth)
@@ -450,10 +549,11 @@ class MultiTrap:
         # or define damping rate directly
         else:
             self.toy_Γ = params.get('toy_Γ', 1e-5*Hz)
-            Γs_dict = {label: self.Γ_choice for label in self.labels}
+            Γs_dict = {label: self.toy_Γ for label in self.labels}
             Γs = params.get('Γs', Γs_dict)
 
-        # define the coupling rates
+        # __________________________________________________________________________________________
+        # LINEAR COUPLINGS
         self.toy_gx = params.get('toy_gx', 0*kHz)
         self.toy_gy = params.get('toy_gy', 0*kHz)
         self.toy_gz = params.get('toy_gz', 0*kHz)
@@ -473,25 +573,25 @@ class MultiTrap:
         self.toy_gxz = params.get('toy_gxz', 0*kHz)
         self.toy_gyz = params.get('toy_gyz', 0*kHz)
 
+        # __________________________________________________________________________________________
+        # TWEEZER PHASES
         φ1 = params.get('φ1', 0*degrees)
         φ2 = params.get('φ2', 0*degrees)
         φs_dict = {}
         for label in self.labels:
-            j, n = label[0], label[1:]
-            if int(n) % 2:
+            j, n = label[0], int(label[1:])
+            if n % 2:
                 φs_dict[n] = φ1
             else:
                 φs_dict[n] = φ2
         φs = params.get('φs', φs_dict)
 
-        antinode, halfnode, node = 0, π/4, π/2
-        Φs_dict = {label[1:]: node for label in self.labels}
-        Φs = params.get('Φs', Φs_dict)
-
+        # __________________________________________________________________________________________
+        # DIMENSION DEFINITIONS
         self.dimensions = {}
         for _ in range(self.num_total_dims):
             label = self.labels[_]
-            j, n = label[0], label[1:]
+            j, n = label[0], int(label[1:])
             self.dimensions[label] = Dimension(
                 self,
                 label,
@@ -689,61 +789,6 @@ class MultiTrap:
         # njn = phonons due to jn degree of freedom ~ kBT/ħΩjn (Bose-Einstein distribution)
         self.noise_matrix = np.matrix(np.diag(self.γ * self.quantum_factor_per_noise_operator))
 
-    def setup_hybridisation_power_series(self):
-        """ Setup the determinant and adjugate terms for the hybridisation matrix """
-        # this generates the terms up to an originally defined truncation order
-        self.__deranged_determinant_terms = generate_deranged_terms(
-            self.num_total_dims,
-            dimension_labels=self.labels,
-            truncation_order=self.truncation_order,
-        )
-
-        self.__deranged_adjugate_terms = {}
-        for row_index, row_label in enumerate(self.labels):
-            for column_index, column_label in enumerate(self.labels):
-                ij = row_label + column_label
-                self.__deranged_adjugate_terms[ij] = generate_deranged_terms(
-                    self.num_total_dims,
-                    row_index, column_index,
-                    dimension_labels=self.labels,
-                    truncation_order=self.truncation_order
-                )
-
-    @cached_property
-    def deranged_determinant_terms(self):
-        return self.__deranged_determinant_terms
-
-    @cached_property
-    def deranged_adjugate_terms(self):
-        return self.__deranged_adjugate_terms
-
-    @property
-    def truncation_order(self):
-        return self.__truncation_order
-
-    @truncation_order.setter
-    def truncation_order(self, new_truncation_order):
-        # only allow setting a lower truncation order
-        if self.__truncation_order is not None:
-            assert new_truncation_order <= self.__truncation_order
-        self.__truncation_order = new_truncation_order
-
-        self.__dict__.pop('deranged_determinant_terms', None)
-        self.__deranged_determinant_terms = truncate_power_series(
-            # self.deranged_determinant_terms,
-            self.__deranged_determinant_terms,
-            new_truncation_order,
-        )
-
-        for row_index, row_label in enumerate(self.labels):
-            for column_index, column_label in enumerate(self.labels):
-                ij = row_label + column_label
-                self.__deranged_adjugate_terms[ij] = truncate_power_series(
-                    self.deranged_adjugate_terms[ij],
-                    new_truncation_order,
-                )
-
-
     ################################################################################################
     # FREQUENCY FUNCTIONS
     # ----------------------------------------------------------------------------------------------
@@ -760,6 +805,7 @@ class MultiTrap:
         T(ω) = (-iω.I - drift)⁻¹
         """
         return np.linalg.inv(-1j*ω * self.identity_matrix - self.drift_matrix)
+        # return scipy.linalg.inv(-1j*ω * self.identity_matrix - self.drift_matrix)
 
     def c_noise_vector(self, ω):
         """
@@ -923,7 +969,7 @@ class MultiTrap:
                         assert np.isclose(Rjk_B2, Rjk, rtol=rtol, atol=atol)
                         assert np.isclose(Rjk_B1, Rjk_B2, rtol=rtol, atol=atol)
                     except AssertionError as error:
-                        print(debug_str + f'\n{Rjk=}, {Rjk_B1=}, {Rjk_B2=}')
+                        logger.critical(debug_str + f'\n{Rjk=}, {Rjk_B1=}, {Rjk_B2=}')
                         raise error()
 
             value *= Rjk
@@ -931,18 +977,21 @@ class MultiTrap:
         return term.sign * value
 
     def deranged_determinant_value(self, ω):
-        """ The value of the deranged determinant at a given frequency """
+        """
+        The value of the deranged determinant at a given frequency
+        """
         value = 0
-        terms = self.deranged_determinant_terms
-        for ii, term in enumerate(terms):
+        for term in self.deranged_determinant_by_order[self.evaluation_order]:
             value += self.hybridisation_term_value(term, ω)
         return value
 
+
     def deranged_adjugate_entry_value(self, ij, ω):
-        """The value of given adjugate entry of the derangement matrix at a given frequency """
+        """
+        The value of given adjugate entry of the derangement matrix at a given frequency
+        """
         value = 0
-        terms = self.deranged_adjugate_terms[ij]
-        for ii, term in enumerate(terms):
+        for term in self.deranged_adjugate_by_order[self.evaluation_order][ij]:
             value += self.hybridisation_term_value(term, ω)
         return value
 
@@ -959,6 +1008,7 @@ class MultiTrap:
         # numerical method simply inverts D directly
         if method == QuantumLinearTheoryMethod.NUMERICAL_HYBRIDISATION:
             return np.linalg.inv(self.derangement_matrix(ω))
+            # return scipy.linalg.inv(self.derangement_matrix(ω))
 
         if method == QuantumLinearTheoryMethod.POWER_SERIES_HYBRIDISATION:
             # 'power series' method inverts D symbolically
@@ -992,7 +1042,7 @@ class MultiTrap:
         return X1D
 
     # ----------------------------------------------------------------------------------------------
-    # Method dependent functions
+    # QuantumLinearTheoryMethod dependent functions
     # ----------------------------------------------------------------------------------------------
     def hybridised_X(self, method, ω):
         """
@@ -1109,7 +1159,7 @@ class MultiTrap:
         [1/√Hz]
         """
         # if self.cavity.Ωhet:
-            # TODO: this should be a sum of CSDs
+            # TODO: should this be a sum of CSDs?
             # a_out_hat_p, a_out_dag_p = self.output_light_noise_vectors(method, ω + self.cavity.Ωhet)
             # a_out_hat_m, a_out_dag_m = self.output_light_noise_vectors(method, ω - self.cavity.Ωhet)
             # return a_out_hat_p * a_out_dag_p + a_out_dag_m * a_out_hat_m
@@ -1127,7 +1177,7 @@ class MultiTrap:
         return np.sum(self.quantum_factor_per_noise_operator * np.abs(noise_vector)**2)
 
     ################################################################################################
-    # SPECTRUM FUNCTIONS
+    # SPECTRAL CALCULATION FUNCTIONS
     # ----------------------------------------------------------------------------------------------
     @timer(TIMER)
     @profiler(PROFILER)
@@ -1143,25 +1193,30 @@ class MultiTrap:
 
         Calculate PSDs based on the squares of x as a noise vector
         """
-
+        logger.info(f'Calculating all PSDs with {method=} {zpf_units=}')
         if method == QuantumLinearTheoryMethod.TNT_LINEAR_AMPLIFIER_MODEL:
-            return self.position_power_spectra_array
+            psd_array = self.position_power_spectra_array
 
-        num_ω_points = len(self.ω_range)
-        N = self.num_operators
-        hybrid_X_array = np.zeros((num_ω_points, self.num_total_dims, self.num_operators), dtype=np.complex128)
-        psd_array = np.zeros((num_ω_points, self.num_total_dims))
+        else:
+            num_ω_points = len(self.ω_range)
+            N = self.num_operators
+            hybrid_X_array = np.zeros((num_ω_points, self.num_total_dims, self.num_operators), dtype=np.complex128)
+            psd_array = np.zeros((num_ω_points, self.num_total_dims))
 
-        for ii, ω in enumerate(self.ω_range):
-            hybrid_X_array[ii] = self.hybridised_X(method, ω)
+            for ii, ω in enumerate(self.ω_range):
+                hybrid_X_array[ii] = self.hybridised_X(method, ω)
 
-            # for each dimension in X, calculate the psd
-            for dd, dimension in enumerate(self.dimensions.values()):
-                psd_array[ii, dd] = self.noise_vector_to_power_spectrum(hybrid_X_array[ii, dd])
-                if zpf_units:
-                    psd_array[ii, dd] *= dimension.zpf**2
+                # for each dimension in X, calculate the psd
+                for dd, dimension in enumerate(self.dimensions.values()):
+                    psd_array[ii, dd] = self.noise_vector_to_power_spectrum(hybrid_X_array[ii, dd])
+                    if zpf_units:
+                        psd_array[ii, dd] *= dimension.zpf**2
 
-        return psd_array
+        psd_dict = {}
+        for dd, dimension in enumerate(self.dimensions.values()):
+            psd_dict[dimension.label] = psd_array[:, dd]
+
+        return psd_array, psd_dict
 
     @timer(TIMER)
     @profiler(PROFILER)
@@ -1172,6 +1227,7 @@ class MultiTrap:
         h = a†_out.exp(iθ) + a_out.exp(-iθ) = A_out.cos(θ) + P_out.sin(θ)
         θ = homodyne angle
         """
+        logger.info(f'Calculating homodyne spectrum with {method=}')
         homodyne_spectrum = []
         for ii, ω in enumerate(self.ω_range):
             homodyne_spectrum.append(self.noise_vector_to_power_spectrum(self.homodyne_noise_vector(method, ω)))
@@ -1185,9 +1241,14 @@ class MultiTrap:
         Calculates the heterodyne spectrum of output light from the cavity, S_het
         S_het(ω) = S_aa†(ω + Ω) + S_a†a(ω - Ω)
         """
+        logger.info(f'Calculating heterodyne spectrum with {method=}')
         heterodyne_spectrum = []
         for ii, ω in enumerate(self.ω_range):
-            heterodyne_spectrum.append(self.noise_vector_to_power_spectrum(self.heterodyne_noise_vector(method, ω)))
+            heterodyne_value = self.noise_vector_to_power_spectrum(self.heterodyne_noise_vector(method, ω))
+            # the value is allowed to be 'broken' < 1 if using the lower order approximations...
+            if method != QuantumLinearTheoryMethod.POWER_SERIES_HYBRIDISATION and self.evaluation_order != self.num_total_dims:
+                assert heterodyne_value >= 1, f'{heterodyne_value=} < 1 - this should never happen since 1 is the shot noise limit!'
+            heterodyne_spectrum.append(heterodyne_value)
         return np.array(heterodyne_spectrum)
 
     # ----------------------------------------------------------------------------------------------
@@ -1206,6 +1267,9 @@ class MultiTrap:
         return value
 
     @cached_property
+    @timer(TIMER)
+    @profiler(PROFILER)
+    @progress_bar('self.ω_range', PROGRESS_BAR)
     def quantum_operator_spectral_density_array(self):
         """
         Calculate all the spectra 'at once' using 'TNT' Linear Amplifier Model (TNT LAM)
@@ -1216,8 +1280,6 @@ class MultiTrap:
         num_ω_points = len(self.ω_range)
         Scc_array = np.zeros((num_ω_points, N, N), dtype=np.complex128)
         for ii, ω in enumerate(self.ω_range):
-            if not ii % 100:
-                print(f'{ω / kHz} kHz')
             T = self.T_matrix(ω)
             Scc_array[ii] = T @ self.noise_matrix @ T.H
         return Scc_array
@@ -1231,13 +1293,22 @@ class MultiTrap:
             ai = self.label_to_noise_index[label]
             # creation operator index
             ci = ai + 1
-            # SXX_array[:, dd] = Scc_array[:, ci, ci] + Scc_array[:, ai, ai]
-            SXX_array[:, dd] = np.real(Scc_array[:, ci, ci] + Scc_array[:, ai, ai])
+            SXX_array[:, dd] = np.real(
+                Scc_array[:, ci, ci]
+                + Scc_array[:, ai, ai]
+                # NOTE: make sure to add the cross bb† and b†b contributions!
+                # this fixes https://github.com/julianiacoponi/levisim/issues/1
+                + Scc_array[:, ai, ci]
+                + Scc_array[:, ci, ai]
+            )
         return SXX_array
 
+    @timer(TIMER)
+    @profiler(PROFILER)
+    @progress_bar('self.ω_range', PROGRESS_BAR)
     def calculate_power_spectrum(self, label, zpf_units=True):
         """ Calculates the power spectrum of a given dimension """
-        print(f'Calculating PSD({label})')
+        logger.info(f'Calculating PSD({label})')
 
         j, n = label[0], label[1:]
         zpf = self.dimensions[label_A].zpf if not zpf_units else 1
@@ -1247,9 +1318,12 @@ class MultiTrap:
             psd.append(value)
         return np.array(psd) * zpf**2
 
+    @timer(TIMER)
+    @profiler(PROFILER)
+    @progress_bar('self.ω_range', PROGRESS_BAR)
     def calculate_cross_spectrum(self, label_A, label_B, zpf_units=True):
         """ Calculates the cross correlation spectrum of the given dimensions """
-        print(f'Calculating CSD({label_A},{label_B})')
+        logger.info(f'Calculating CSD({label_A},{label_B})')
 
         j, n = label_A[0], label_A[1:]
         zpf_A = self.dimensions[label_A].zpf if not zpf_units else 1

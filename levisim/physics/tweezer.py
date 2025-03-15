@@ -66,7 +66,14 @@ class Tweezer:
         """
         Prints information on the Tweezer instance
         """
-        print(
+        print(self.info_str)
+
+    @property
+    def info_str(self):
+        """
+        String describing the Tweezer instance
+        """
+        return (
             f'Tweezer(id={id(self)}'
             f'\n    Power = {self.Power / mW:.5f} mW'
             f'\n    λ = {self.λ / nm:.5f} nm'
@@ -87,7 +94,6 @@ class Tweezer:
             f'\n    φ = {self.φ / degrees:.5f} °'
             f'\n)'
         )
-        return
 
     ################################################################################################
     # DERIVED PROPERTIES

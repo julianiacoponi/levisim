@@ -71,7 +71,14 @@ class Bead:
         """
         Prints information on the Bead instance
         """
-        print(
+        print(self.info_str)
+
+    @property
+    def info_str(self):
+        """
+        String describing the Gas instance
+        """
+        return (
             f'Bead(id={id(self)}'
             f'\n    r = {self.r / nm:.1f} nm'
             f'\n    ρ = {self.ρ:.1f} kg/m³'
@@ -86,7 +93,6 @@ class Bead:
             f'\n    Φ/2π = x0/λtw = {self.Φ /(2*π):.3f}'
             f'\n)'
         )
-        return
 
     ################################################################################################
     # DERIVED PROPERTIES

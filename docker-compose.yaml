@@ -1,0 +1,66 @@
+# INSTRUCTIONS TO SETUP THE DOCKER IMAGES:
+
+# 1. Make sure the docker daemon is running (i.e. that `docker ps` returns something!)
+#   - if on MacOS, this means downloading Docker Desktop and seeing the Docker whale in menu bar
+
+# 2. Download the latest docker images for `elasticsearch` and `kibana` that work with your machine's architecture (arm64, amd64 etc.)
+#   - assing these images in the `services:images:` entries below
+
+# 3. `docker-compose up -d` will setup these two images
+
+# 4. `http://localhost:9200` will give you a json printout with details of the elasticsearch instance
+# {
+#   "name" : "5ff30c836c64",
+#   "cluster_name" : "docker-cluster",
+#   "cluster_uuid" : "37l1ZljzSrm-L1_ujgdmgw",
+#   "version" : {
+#     "number" : "8.17.1-SNAPSHOT",
+#     "build_flavor" : "default",
+#     "build_type" : "docker",
+#     "build_hash" : "85f8a64177fe95d80b99b9b8c8060bdd666c351a",
+#     "build_date" : "2025-01-14T23:12:07.629233410Z",
+#     "build_snapshot" : true,
+#     "lucene_version" : "9.12.0",
+#     "minimum_wire_compatibility_version" : "7.17.0",
+#     "minimum_index_compatibility_version" : "7.0.0"
+#   },
+#   "tagline" : "You Know, for Search"
+
+# 5. `http://localhost:5601` should send you to a kibana-style web app
+#   - go to Stack Management > Index Patterns and ensure the `loguru-logs*` index pattern exists.
+#   - go to Discover and select the `loguru-logs*` index pattern.
+#   - (something like this URL below should do something similar)
+# http://localhost:5601/app/discover#/?_g=(filters:!(),refreshInterval:(pause:!t,value:60000),time:(from:now-15m,to:now))&_a=(columns:!(),dataSource:(dataViewId:'5eeff2e0-4cf7-4581-9410-d62b6e585fb2',type:dataView),filters:!(),interval:auto,query:(language:kuery,query:''),sort:!(!(timestamp,desc)))
+
+# NOTE: to configure the loguru-logger further, see `levisim/levisim/core/logger.py`
+
+services:
+  elasticsearch:
+    # latest arm64 image from https://www.docker.elastic.co/r/elasticsearch
+    image: docker.elastic.co/elasticsearch/elasticsearch:sha256-ffdaa5c751e98670c85154b3dd9601abd64c1b4b2498433e9c9fefa197b5a754
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - xpack.security.enabled=false
+    ports:
+      - "9200:9200"
+    networks:
+      - elk
+
+  kibana:
+    # latest arm64 image from https://www.docker.elastic.co/r/kibana
+    image: docker.elastic.co/kibana/kibana:sha256-ffbf7d6a3d73064036ff232dd7f680b7b124397fd3617d1e2370ccac93c59403
+    container_name: kibana
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    depends_on:
+      - elasticsearch
+    networks:
+      - elk
+
+networks:
+  elk:
+    driver: bridge

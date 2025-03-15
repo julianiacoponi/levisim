@@ -97,6 +97,13 @@ class Cavity:
         """
         Prints information on the Cavity instance
         """
+        print(self.info_str)
+
+    @property
+    def info_str(self):
+        """
+        String describing the Cavity instance
+        """
         multitrap_str = ''
         if self.A0:
             multitrap_str = (
@@ -107,7 +114,7 @@ class Cavity:
                 f'\n    ωd_total/2π = {self.ωd_total / Hz:.5e} Hz'
                 f'\n    Ed_total = {self.Ed_total:.5e} J'
             )
-        print(
+        return (
             f'Cavity(id={id(self)}'
             f'\n    Length = {self.L / cm:.5f} cm'
             f'\n    waist = {self.waist / μm:.5f} μm'
@@ -127,7 +134,6 @@ class Cavity:
             f'{multitrap_str}'
             f'\n)'
         )
-        return
 
     ################################################################################################
     # DERIVED PROPERTIES

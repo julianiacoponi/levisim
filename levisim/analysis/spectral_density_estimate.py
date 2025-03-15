@@ -241,8 +241,9 @@ class SpectralDensityEstimate:
 
     @property
     def info(self):
-        """ Prints info on the spectral density estimate """
-
+        """
+        Prints info on the spectral density estimate
+        """
         fit_str = ''
         if self.type == 'PSD':
             fit_str = (
@@ -253,7 +254,6 @@ class SpectralDensityEstimate:
                 f'\n    temperature_via_area = {self.temperature_via_area:.3f} K'
                 f'\n'
             )
-
         print(
             f'SpectralDensityEstimate(id={id(self)}'
             f'\n    S_AB = S_{self.AB}'
@@ -299,8 +299,8 @@ class SpectralDensityEstimate:
         Δf = 1 / segment_time
         equivalent to
         Δf = num_segments / time_length
-        Δf = sample_rate / num_samples_per_segment (where sample_rate = 1/Δt)
-        Δf = the index-to-frequency(Hz) conversion factor, in Hz
+        Δf = sample_rate / num_samples_per_segment (where sample_rate = 1 / Δt)
+        Δf = the index-to-frequency(Hz) conversion factor, in Hertz
 
         Also, in particular:
         segment_time = time length of each segment, equivalent to:
@@ -418,7 +418,9 @@ class SpectralDensityEstimate:
         lower_bound_Hz,
         upper_bound_Hz,
     ):
-        """ Converts a lower and upper frequency bound (in Hz) into the indices of the arrays of the spectral estimate """
+        """
+        Converts a lower and upper frequency bound (in Hz) into the indices of the arrays of the spectral estimate
+        """
         assert lower_bound_Hz < upper_bound_Hz
 
         # the maximum frequency that can be estimated (for a given sample rate = 1/Δt) is the Nyquist frequency = sample_rate / 2
@@ -444,7 +446,7 @@ class SpectralDensityEstimate:
             return lower_index, upper_index
 
         # for two-sided spectra, I reorder the frequencies to be:
-        # freq_range = [ -nΔf, -(n-1)Δf, ..., -2Δf, -Δf, 0, Δf, 2Δf, ... (n-1)Δf, nΔf], len = 2n = num_samples_per_segment
+        # freq_range = [-nΔf, -(n-1)Δf, ..., -2Δf, -Δf, 0, Δf, 2Δf, ... (n-1)Δf, nΔf], len = 2n = num_samples_per_segment
         # so, if the bounds are negative, then the indices will be negative too
         # so adding this to the halfway index will give the desired index
         return self.halfway_index + lower_index, self.halfway_index + upper_index
@@ -454,7 +456,9 @@ class SpectralDensityEstimate:
         lower_bound_Hz,
         upper_bound_Hz,
     ):
-        """ Returns the portions of the arrays given by the lower and upper frequency bounds """
+        """
+        Returns the portions of the arrays given by the lower and upper frequency bounds
+        """
         lb, ub = self.frequency_to_index(lower_bound_Hz, upper_bound_Hz)
         freqs = self.freq_range[lb:ub]
         values = self.values[lb:ub]
