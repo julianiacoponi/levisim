@@ -54,7 +54,7 @@ class Trap:
         # DEFINED PROPERTIES
         # ------------------------------------------------------------------------------------------
         # Feedback mechanical damping rates of (x,y,z)-motion oscillations
-        # [rad/s]
+        # [2π·Hz]
         self.Γ_fbx = float(kwargs.get('Γ_fbx', 2.1*kHz))
         self.Γ_fby = float(kwargs.get('Γ_fby', 2.5*kHz))
         self.Γ_fbz = float(kwargs.get('Γ_fbz', 0.0*kHz))
@@ -168,7 +168,7 @@ class Trap:
     def Γth(self):
         """
         Thermal gas mechanical damping rate
-        [rad/s]
+        [2π·Hz]
         """
         # NOTE: many publications in our field use varying different expressions...
         # my choice is derived from: http://dx.doi.org/10.1016/j.physleta.2010.06.041
@@ -186,7 +186,7 @@ class Trap:
         """
         (Alternative formula for)
         Thermal gas mechanical damping rate
-        [rad/s]
+        [2π·Hz]
         """
         return 15 * self.gas.P * self.bead.r**2 / (self.bead.m * self.gas.vth)
 
@@ -195,7 +195,7 @@ class Trap:
         """
         (Alternative formula for)
         Thermal gas mechanical damping rate
-        [rad/s]
+        [2π·Hz]
         """
         return 16 * self.gas.P / (π * self.bead.ρ * self.bead.r * self.gas.vth)
 
@@ -327,7 +327,7 @@ class Trap:
     def Γx(self):
         """
         Total mechanical damping rate of (x,y,z)-motion oscillations
-        [rad/s]
+        [2π·Hz]
         """
         return self.Γth + self.Γ_fbx
 
@@ -335,7 +335,7 @@ class Trap:
     def Γy(self):
         """
         Total mechanical damping rate of y-motion oscillations
-        [rad/s]
+        [2π·Hz]
         """
         return self.Γth + self.Γ_fby
 
@@ -343,7 +343,7 @@ class Trap:
     def Γz(self):
         """
         Total mechanical damping rate of z-motion oscillations
-        [rad/s]
+        [2π·Hz]
         """
         return self.Γth + self.Γ_fbz
 
@@ -351,7 +351,7 @@ class Trap:
     def Γj(self):
         """
         Dict of total mechanical damping rates for (x,y,z)-motion oscillations
-        [rad/s]
+        [2π·Hz]
         """
         return {
             'x': self.Γx,
@@ -439,7 +439,7 @@ class Trap:
     def Ωx(self):
         """
         Resonant frequencies for x-axis oscillation
-        [rad/s]
+        [2π·Hz]
         """
         if self.override_Ω_dict:
             return self.override_Ω_dict['x']
@@ -449,7 +449,7 @@ class Trap:
     def Ωy(self):
         """
         Resonant frequencies for y-axis oscillation
-        [rad/s]
+        [2π·Hz]
         """
         if self.override_Ω_dict:
             return self.override_Ω_dict['y']
@@ -459,7 +459,7 @@ class Trap:
     def Ωz(self):
         """
         Resonant frequencies for z-axis oscillation
-        [rad/s]
+        [2π·Hz]
         """
         if self.override_Ω_dict:
             return self.override_Ω_dict['z']
@@ -469,7 +469,7 @@ class Trap:
     def Ωj(self):
         """
         Resonant frequencies for y-axis oscillation
-        [rad/s]
+        [2π·Hz]
         """
         return {
             'x': self.Ωx,
@@ -668,7 +668,7 @@ class Trap:
     def A_rad(self):
         """
         Scaling factor for the theoretical PSD fitting expression
-        [m²(rad/s)²]
+        [m²(2π·Hz)²]
         A_rad = A / 2π = kBT / π m
         """
         # TODO: figure out why A/2π and not A/(2π)² ?
@@ -678,7 +678,7 @@ class Trap:
     def equipartition_factor(self):
         """
         Conversion factor of position variance into temperature
-        [kg.(rad/s)² / (J/K)] = [K.(rad/m)]
+        [kg.(2π·Hz)² / (J/K)] = [K.(2π/m)]
         Equipartition theorem states
         kinetic energy from oscillation = thermal energy
         ½mΩ²〈x²〉 = ½kB*T

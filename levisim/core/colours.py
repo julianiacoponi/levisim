@@ -1,4 +1,7 @@
 # colours (hex codes)
+black = '#000000'
+white = '#ffffff'
+
 # https://www.statisticalpoint.com/matplotlib-default-colors/
 blue = '#1f77b4'
 orange = '#ff7f0e'

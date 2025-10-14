@@ -26,8 +26,11 @@ def compare_methods(
     methods_to_compare,
     spectra_to_compare,
     return_PSD_temperatures=False,
+    **kwargs,
 ):
     logger.info(f'Using {multitrap}, comparing {spectra_to_compare} using methods {methods_to_compare}')
+
+    # plt.close('all')
 
     methods = methods_to_compare
     spectrum_types = spectra_to_compare
@@ -86,12 +89,19 @@ def compare_methods(
                 plot_values,
                 label=label,
             )
-            plt.yscale('log')
+            if kwargs.get('yscale_log', True):
+                plt.yscale('log')
             plt.legend()
             plt.grid()
             plt.xlim(ω_low, ω_high)
             if spectrum_type == SpectrumType.PSD:
                 plt.ylim(1e-8, 1e1)
+            # if spectrum_type == SpectrumType.HETERODYNE:
+            #     het_ylims = kwargs.get('heterodyne_ylims', (5e-1, 1e1))
+            #     plt.ylim(*het_ylims)
+            # if spectrum_type == SpectrumType.HOMODYNE:
+            #     hom_ylims = kwargs.get('homodyne_ylims', (0, 5))
+            #     plt.ylim(*hom_ylims)
             figname = f'{str(spectrum_type)} -- {method}.png'
             plt.savefig(figname)
             image_dicts[spectrum_type][method] = cv2.imread(figname)

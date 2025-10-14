@@ -41,17 +41,17 @@ class Cavity:
 
         # ------------------------------------------------------------------------------------------
         # Detuning from tweezer
-        # [rad/s]
+        # [2π·Hz]
         self.Δ = float(kwargs.get('Δ', -180*kHz))
 
         # ------------------------------------------------------------------------------------------
         # Manually overriden value for the cavity energy decay rate
-        # [rad/s]
+        # [2π·Hz]
         self.override_κ = kwargs.get('κ')
 
         # ------------------------------------------------------------------------------------------
         # Tweezer angular frequency
-        # [rad/s]
+        # [2π·Hz]
         # TODO: for now, can only handle one tweezer frequency, even if many fill the cavity
         self.ωtw = float(kwargs.get('ωtw', Tweezer().ω))
 
@@ -71,7 +71,7 @@ class Cavity:
 
         # ------------------------------------------------------------------------------------------
         # Total cavity drive angular frequency of all tweeer bead traps scattering into the cavity
-        # [rad/s]
+        # [2π·Hz]
         self.ωd_total = float()
 
         # ------------------------------------------------------------------------------------------
@@ -80,13 +80,13 @@ class Cavity:
         self.Ed_total = float()
 
         # ------------------------------------------------------------------------------------------
-        # Homodyne angle
-        # [rad]
-        self.θhom = float(kwargs.get('θhom', 0))
+        # Homodyne phase
+        # [·]
+        self.θhom = float(kwargs.get('θhom', 0*degrees))
 
         # ------------------------------------------------------------------------------------------
         # Heterodyne frequency
-        # [rad/s]
+        # [2π·Hz]
         self.Ωhet = float(kwargs.get('Ωhet', 0*kHz))
 
     ################################################################################################
@@ -124,7 +124,7 @@ class Cavity:
             f'\n    κ/2π = {self.κ / kHz:.5f} kHz'
             f'\n    Volume = {self.V:.5e} m³'
             f'\n    ω/2π = {self.ω / THz:.5f} THz'
-            f'\n    k = {self.k:.5e} rad/m'
+            f'\n    k = {self.k:.5e} m⁻¹'
             f'\n    λ = {self.λ:.5e} m'
             f'\n    xR = {self.xR:.5e} m'
             f'\n    εcav = {self.εcav:.5e} V/m'
@@ -142,7 +142,7 @@ class Cavity:
     def κ(self):
         """
         Cavity energy decay rate
-        [rad/s]
+        [2π·Hz]
         """
         if self.override_κ:
             return float(self.override_κ)
@@ -162,7 +162,7 @@ class Cavity:
     def ω(self):
         """
         Angular frequency of the cavity mode
-        [rad/s]
+        [2π·Hz]
         """
         return self.ωtw - self.Δ
 
@@ -170,7 +170,7 @@ class Cavity:
     def k(self):
         """
         Angular wavenumber of the cavity mode
-        [rad/m]
+        [2π/m]
         """
         return self.ω / c
 
@@ -207,7 +207,7 @@ class Cavity:
         """
         The optical susceptibility
         for photon annihilation in the cavity
-        [complex (rad/s)⁻¹]
+        [complex (2π·Hz)⁻¹]
         """
         return (-1j*(ω + self.Δ) + self.κ / 2)**(-1)
 
@@ -215,7 +215,7 @@ class Cavity:
         """
         The difference of the conjugate optical susceptibilities
         for photon annihilation and creation in the cavity
-        [complex (rad/s)⁻¹]
+        [complex (2π·Hz)⁻¹]
         """
         return self.χC(ω) - np.conjugate(self.χC(-ω))
 
@@ -223,7 +223,7 @@ class Cavity:
         """
         The sum of the conjugate optical susceptibilities
         for photon annihilation and creation in the cavity
-        [complex (rad/s)⁻¹]
+        [complex (2π·Hz)⁻¹]
         """
         return self.χC(ω) + np.conjugate(self.χC(-ω))
 
@@ -232,7 +232,7 @@ class Cavity:
         Generalised optical susceptibilities
         for photon annihilation and creation in the cavity
         (Amplitude form ~ χC* + χC)
-        [complex (rad/s)⁻¹]
+        [complex (2π·Hz)⁻¹]
         """
         return  np.conjugate(self.χC(-ω)) * np.exp(1j*φ) + self.χC(ω) * np.exp(-1j*φ)
 
@@ -241,7 +241,7 @@ class Cavity:
         Generalised optical susceptibilities
         for photon annihilation and creation in the cavity
         (Phase form ~ i(χC* - χC))
-        [complex (rad/s)⁻¹]
+        [complex (2π·Hz)⁻¹]
         """
         return  1j* (np.conjugate(self.χC(-ω)) * np.exp(1j*φ) - self.χC(ω) * np.exp(-1j*φ))
 
@@ -250,6 +250,6 @@ class Cavity:
         Generalised optical susceptibilities
         for photon annihilation and creation in the cavity
         (Tania's form ~ χC - χC*)
-        [complex (rad/s)⁻¹]
+        [complex (2π·Hz)⁻¹]
         """
         return  self.χC(ω) * np.exp(-1j*φ) - np.conjugate(self.χC(-ω)) * np.exp(1j*φ)

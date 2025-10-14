@@ -468,7 +468,7 @@ class MultiTrap:
 
         # NOTE: this is attempting to copy the 'Mechanical Mode Comb' paper
         # define x,y frequencies across a certain span around a midpoint
-        elif self.Ω_model == 'uniform':
+        elif self.Ω_model == 'equal spacing':
             self.Ω_mid = params.get('Ω_mid', 300*kHz)
             self.Ω_span = params.get('Ω_span', 100*kHz)
 
@@ -491,7 +491,26 @@ class MultiTrap:
                 f'\n    Ω_span = {self.Ω_span / kHz:.1f} kHz'
             )
 
-        if self.Ω_model == 'custom':
+        elif self.Ω_model == 'degenerate':
+            self.Ω0 = params.get('Ω0', 300*kHz)
+            Ωs = {label: self.Ω0 for label in self.labels if label[0] != 'z'}
+            self.Ω_model_description = (
+                f'\n    Ω0 = {self.Ω0 / kHz:.1f} kHz'
+            )
+
+        elif self.Ω_model == 'multiband':
+            if self.Cartesian_axes_per_trap == 3:
+                raise Exception(f'{self.Ω_model=} only supports x,y frequencies')
+
+            self.Ω_model_description = (
+                f'\n    Ω_centers = {self.Ω_centers / kHz:.1f} kHz'
+                f'\n    Ω_spans = {self.Ω_spans / kHz:.1f} kHz'
+            )
+            for center, span in zip(self.Ω_centers, self.Ω_spans):
+                Ω_low = center - span / 2
+                Ω_high = center + span / 2
+
+        elif self.Ω_model == 'custom':
             Ωs = params.get('toy_Ωs')
             self.Ω_model_description = ''
 

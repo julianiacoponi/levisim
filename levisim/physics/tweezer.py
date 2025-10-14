@@ -25,7 +25,7 @@ class Tweezer:
         # DEFINED PROPERTIES
         # ------------------------------------------------------------------------------------------
         # Tweezer laser power
-        # [J/s]
+        # [W]
         # Jon says 200mW, Tania uses 485mW
         self.Power = float(kwargs.get('Power', 485*mW))
 
@@ -54,7 +54,7 @@ class Tweezer:
 
         # ------------------------------------------------------------------------------------------
         # Tweezer phase
-        # [rad]
+        # [·]
         # relevant if making two tweezers interact via a cavity
         self.φ = float(kwargs.get('φ', 0.0*degrees))
 
@@ -102,7 +102,7 @@ class Tweezer:
     def k(self):
         """
         Angular wavenumber of the tweezer light
-        [rad/m]
+        [2π/m]
         """
         return 2*π / self.λ
 
@@ -110,7 +110,7 @@ class Tweezer:
     def ω(self):
         """
         Angular frequency of the tweezer light
-        [rad/s]
+        [2π·Hz]
         """
         return c * self.k
 
@@ -229,7 +229,7 @@ class Tweezer:
     def Gouy(self, z):
         """
         The Gouy phase shift
-        [rad]
+        [·]
         NOTE: https://www.rp-photonics.com/gouy_phase_shift.html
         """
         return -np.arctan2(z / self.zR)
@@ -244,7 +244,7 @@ class Tweezer:
     def phase(self, z, t):
         """
         The time-dependent phase of the electric field
-        [rad]
+        [·]
         """
         # NOTE: this is the only temporal function, but is not actually used
         # since this oscillation is averaged out via the rotating wave approximation

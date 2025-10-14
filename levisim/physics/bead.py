@@ -59,7 +59,7 @@ class Bead:
         # MULTI-TRAP PROPERTIES
         # ------------------------------------------------------------------------------------------
         # Trapping position away from the antinode of a the cavity standing
-        # [rad]
+        # [·]
         antinode, halfnode, node  = 0, π/4, π/2
         self.Φ = float(kwargs.get('Φ', node))
 
