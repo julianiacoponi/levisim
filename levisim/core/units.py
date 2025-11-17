@@ -4,68 +4,90 @@ from levisim.core.constants import π, e
 # conversion constants: "divide by this factor to go from..."
 
 # samples
-Megasamples = 1e6  # samples to Megasamples
+megasamples = 1e6  # samples to megasamples
+
+
+# angle
+degrees = π  / 180  # radians to degrees
 
 
 # space
+m = 1  # metre
 cm = 1e-2  # metres to centimetres
 mm = 1e-3  # metres to millimetres
 μm = 1e-6  # metres to microns
 nm = 1e-9  # metres to nanometres
-pm = 1e-12 # metres to picometres
+pm = 1e-12  # metres to picometres
 
 
 # time
+s = 1  # second
 ms = 1e-3  # seconds to milliseconds
 μs = 1e-6  # seconds to microseconds
 ns = 1e-9  # seconds to nanoseconds
 
 
-# angular
-degrees = π  / 180  # radians to degrees
-Hz = π + π  # radians/second to Hertz
-kHz = 1e3 * Hz  # radians/second to kiloHertz
-MHz = 1e6 * Hz  # radians/second to MegaHertz
-GHz = 1e9 * Hz  # radians/second to GigaHertz
-THz = 1e12 * Hz  # radians/second to TeraHertz
+# rotational frequency
+# NOTE: these also just convert "angular" frequency to linear frequency
+# i.e. via ω = 2πf, where [ω] = [2π·Hz] i.e. with no radians!
+Hz = π + π  # radians/second to hertz
+kHz = 1e3 * Hz  # radians/second to kilohertz
+MHz = 1e6 * Hz  # radians/second to megahertz
+GHz = 1e9 * Hz  # radians/second to gigahertz
+THz = 1e12 * Hz  # radians/second to terahertz
 
 
 # frequency (sad namespace clash)
-kiloHz = 1e3  # Hertz to kiloHertz
-MegaHz = 1e6  # Hertz to MegaHertz
-GigaHz = 1e9  # Hertz to GigaHertz
-TeraHz = 1e12  # Hertz to TeraHertz
+hertz = 1  # hertz
+kiloHz = 1e3  # hertz to kilohertz
+megaHz = 1e6  # hertz to megahertz
+gigaHz = 1e9  # hertz to gigahertz
+teraHz = 1e12  # hertz to terahertz
 
 
 # mass
-ng = 1e-9 * 1e-3 # kilograms to femtograms
-pg = 1e-12 * 1e-3 # kilograms to femtograms
-fg = 1e-15 * 1e-3 # kilograms to femtograms
+kg = 1  # kilogram
+grams = 1e-3 * kg  # kilograms to grams (namespace clash with gravitational g)
+ng = 1e-9 * grams  # kilograms to nanograms
+pg = 1e-12 * grams  # kilograms to picograms
+fg = 1e-15 * grams  # kilograms to femtograms
 
 
 # energy
-eV = e  # Joules to electron-Volts
-keV = 1e3 * eV  # Joules to kilo-electron-Volts
-MeV = 1e6 * eV  # Joules to Mega-electron-Volts
+eV = e  # joules to electronvolts
+keV = 1e3 * eV  # joules to kiloelectronvolts
+MeV = 1e6 * eV  # joules to megaelectronvolts
 
 
 # power
-mW = 1e-3  # Watts to milliWatts
+W = 1  # watt
+mW = 1e-3  # watts to milliwatts
 
 
 # force
-fN = 1e-15  # Newtons to femtoNewtons
-aN = 1e-18  # Newtons to attoNewtons
-zN = 1e-21  # Newtons to zeptoNewtons
-yN = 1e-24  # Newtons to yoctoNewtons
+N = 1  # newton
+fN = 1e-15  # newtons to femtonewtons
+aN = 1e-18  # newtons to attonewtons
+zN = 1e-21  # newtons to zeptonewtons
+yN = 1e-24  # newtons to yoctonewtons
 
 
 # pressure
-bar = 100_000  # Pascals to bar
-mbar = 1e-3 * bar  # Pascals to millibar
-Torr = 133.3224  # Pascals to Torr, roughly 4/3 mbar!
+bar = 100_000  # pascals to bar
+mbar = 1e-3 * bar  # pascals to millibar
+torr = 133.3224  # pascals to torr, roughly 4/3 mbar!
 
 
 # temperature
-K = 1  # Kelvin
-mK = 1e-3  # Kelvin to milliKelvin
+K = 1  # kelvin
+mK = 1e-3  # kelvin to millikelvin
+
+
+# voltage
+V = 1  # volt
+mV = 1e-3  # volts to millivolts
+
+
+# current
+A = 1
+mA = 1e-3  # amps to milliamps

@@ -8,6 +8,7 @@ A module to handle all the physics involved in levitation
 
 
 __all__ = [
+    'FocussingOptics',
     'Tweezer',
     'Bead',
     'Gas',
@@ -17,6 +18,7 @@ __all__ = [
 ]
 
 
+from levisim.physics.focussing_optics import FocussingOptics
 from levisim.physics.tweezer import Tweezer
 from levisim.physics.bead import Bead
 from levisim.physics.gas import Gas

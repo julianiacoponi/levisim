@@ -1,3 +1,4 @@
+import numpy as np
 from functools import cached_property
 
 from levisim.core.constants import π, ε0, g
@@ -43,22 +44,23 @@ class Bead:
         # [·]
         # NOTE: Refractive index depends on wavelength, so this should be Tweezer dependent...
         # TODO: make the above happen! Use the dispersion formula at refractiveindex.info?
-        # n = √(εR*μR); μR = 1
-        # εR = n²
+        # n = √(εr*μr); μr = 1
+        # εr = n²
         # for SiO2 @ λ = 1064nm
         # https://refractiveindex.info/?shelf=main&book=SiO2&page=Malitson
         # n = 1.4496
         # https://refractiveindex.info/?shelf=main&book=SiO2&page=Arosa
         # n = 1.4497
-        # εR = n² = 2.1016...
-        # Tania uses εR=1.98, implies n = 1.407...
+        # εr = n² = 2.1016...
+        # Tania uses εr=1.98, implies n = 1.407...
         # TODO: ask why?
-        self.εR = float(kwargs.get('εR', 1.98))
+        self.εr = float(kwargs.get('εr', 1.98))
 
         ############################################################################################
         # MULTI-TRAP PROPERTIES
         # ------------------------------------------------------------------------------------------
-        # Trapping position away from the antinode of a the cavity standing
+        # Trapping position phase away from the antinode of a the cavity standing
+        # Φ = k·x0
         # [·]
         antinode, halfnode, node  = 0, π/4, π/2
         self.Φ = float(kwargs.get('Φ', node))
@@ -82,21 +84,30 @@ class Bead:
             f'Bead(id={id(self)}'
             f'\n    r = {self.r / nm:.1f} nm'
             f'\n    ρ = {self.ρ:.1f} kg/m³'
-            f'\n    εR = {self.εR:.2f}'
+            f'\n    εr = {self.εr:.2f}'
             f'\n'
-            f'\n    Volume = {self.V:.5e} m³'
-            f'\n    Area = {self.A:.5e} m²'
+            f'\n    volume = {self.V:.5e} m³'
+            f'\n    area = {self.A:.5e} m²'
             f'\n    mass = {self.m / fg:.5f} fg'
             f'\n    weight = {self.weight / aN:.5f} aN'
+            f'\n    refractive index, n = {self.n:.5f}'
             f'\n    α = {self.α:.5e} Fm²'
             f'\n'
-            f'\n    Φ/2π = x0/λtw = {self.Φ /(2*π):.3f}'
+            f'\n    trapping position phase, Φ/2π = x0/λtw = {self.Φ /(2*π):.3f}'
             f'\n)'
         )
 
     ################################################################################################
     # DERIVED PROPERTIES
     # ----------------------------------------------------------------------------------------------
+    @cached_property
+    def n(self):
+        """
+        Refractive index of the (non-magnetic, μr=1) bead
+        [·]
+        """
+        return np.sqrt(self.εr)
+
     @cached_property
     def V(self):
         """
@@ -132,9 +143,9 @@ class Bead:
     @cached_property
     def α(self):
         """
-        Polarisability of the bead
+        Static polarisability of the bead
         [Capacitance × Area] = [Fm²]
         [F] = [Farad] = Capacitance = Charge / Electric Potential = [C/V]
         NOTE: https://en.wikipedia.org/wiki/Clausius–Mossotti_relation#Lorentz–Lorenz_equation
         """
-        return 3 * self.V * ε0 * (self.εR - 1) / (self.εR + 2)
+        return 3 * self.V * ε0 * (self.εr - 1) / (self.εr + 2)

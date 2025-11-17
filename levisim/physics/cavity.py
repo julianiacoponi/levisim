@@ -127,7 +127,7 @@ class Cavity:
             f'\n    k = {self.k:.5e} m⁻¹'
             f'\n    λ = {self.λ:.5e} m'
             f'\n    xR = {self.xR:.5e} m'
-            f'\n    εcav = {self.εcav:.5e} V/m'
+            f'\n    E0 = {self.E0:.5e} V/m'
             f'\n'
             f'\n    θhom = {self.θhom / degrees:.5f} °'
             f'\n    Ωhet = {self.Ωhet / kHz:.5f} kHz'
@@ -192,7 +192,7 @@ class Cavity:
         return π * self.waist**2 / self.λ
 
     @cached_property
-    def εcav(self):
+    def E0(self):
         """
         Magnitude of the cavity's electric field at the origin
         [V/m]

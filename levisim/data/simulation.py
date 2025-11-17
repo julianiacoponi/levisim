@@ -3,7 +3,7 @@ import numpy as np
 from os import makedirs
 
 from levisim.core.units import (
-    Megasamples,
+    megasamples,
     nm,
     ms, μs,
     Hz,
@@ -24,7 +24,7 @@ class Simulation:
         self.debug = kwargs.pop('debug', False)
         self.rk_loop_debug = kwargs.pop('rk_loop_debug', False)
 
-        self.num_samples = int(kwargs.get('num_samples', 1*Megasamples))
+        self.num_samples = int(kwargs.get('num_samples', 1*megasamples))
         self.Δt = float(kwargs.get('Δt', 0.1*μs))
         self.trap = kwargs.get('trap', Trap())
         self.X0 = kwargs.get('X0', np.array([0, 0, 0, 0, 0, 0]))  # initial conditions of [x, y, z, px, py, pz]
@@ -514,7 +514,7 @@ class Simulation:
         )
 
         # NOTE: ignore saving the momenta, not needed
-        # start, end, units = 0, self.time_length, 'kg.m/s'
+        # start, end, units = 0, self.time_length, 'kg·m/s'
         # self.px, self.py, self.pz = (
         #     Trace(
         #         X[:, 3],

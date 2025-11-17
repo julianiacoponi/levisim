@@ -399,7 +399,7 @@ class MultiTrap:
         for trap in self.traps:
             # Cavity drive energy for a particular bead in a particular tweezer trap
             # [J]
-            trap.Ed = 0.5 * trap.bead.α * trap.tweezer.εtw * self.cavity.εcav
+            trap.Ed = 0.5 * trap.bead.α * trap.tweezer.E0 * self.cavity.E0
             # Cavity drive frequency for a particular bead in a particular tweezer trap
             # [rad/s]
             trap.ωd = trap.Ed / ħ

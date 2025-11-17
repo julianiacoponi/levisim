@@ -48,7 +48,7 @@ class Kick:
         Fx = f'{self.Fx / fN:.1f} fN' if self.Fx is not None else 'n/a'
         Fy = f'{self.Fy / fN:.1f} fN' if self.Fy is not None else 'n/a'
 
-        p = f'{self.p:.5e} kg.m/s' if self.p is not None else 'n/a'
+        p = f'{self.p:.5e} kg·m/s' if self.p is not None else 'n/a'
         p_keVc = f'{self.p / (keV/c):.1f} keV/c' if self.p is not None else 'n/a'
         return (
             f'Kick(id={id(self)}'

@@ -85,7 +85,8 @@ class Tweezer:
             f'\n    w0 = {self.w0 / μm:.5f} μm'
             f'\n    zR = {self.zR / μm:.5f} μm'
             f'\n    wz0 = {self.wz0 / μm:.5f} μm'
-            f'\n    εtw = {self.εtw:.5e} V/m'
+            f'\n    E0 = {self.E0:.5e} V/m'
+            f'\n    I0 = {self.I0:.5e} W/m²'
             f'\n'
             f'\n    ellipticity = {self.ellipticity:.5f}'
             f'\n    flattening = {self.flattening:.5f}'
@@ -129,11 +130,6 @@ class Tweezer:
         (distance where beam waist becomes √2 its waist at the origin)
         [m]
         """
-        # NOTE: could use a separate zR for x and y, i.e.
-        # zRx = π * wx**2 / λ
-        # zRy = π * wy**2 / λ
-        # Conversation with Antonio suggests I could, but it clearly won't make much difference for these parameters
-        # TODO: It would require redoing of the z-derivative of Utw
         return π * self.w0**2 / self.λ
 
     @cached_property
@@ -157,14 +153,20 @@ class Tweezer:
         }
 
     @cached_property
-    def εtw(self):
+    def E0(self):
         """
         Magnitude of the electric field at the origin
         [V/m]
         """
-        # NOTE: As above, this could have different amplitudes for x, y direction
-        # return np.sqrt(4 * self.Power / (self.zR * self.λ * ε0 * c))
         return np.sqrt(4 * self.Power / (π * self.w0**2 * ε0 * c))
+
+    @cached_property
+    def I0(self):
+        """
+        Magnitude of the electric field intensity at the origin
+        [W/m²]
+        """
+        return 2 * self.Power / (π * self.w0**2)
 
     @cached_property
     def ellipticity(self):
@@ -219,6 +221,13 @@ class Tweezer:
         """
         return self.wz0 * self.w(z)
 
+    def q(self, z):
+        """
+        Complex beam parameter
+        [complex m]
+        """
+        return z - 1j * self.zR
+
     def ellipse(self, x, y, z):
         """
         The beam ellipse profile
@@ -230,18 +239,26 @@ class Tweezer:
         """
         The Gouy phase shift
         [·]
-        NOTE: https://www.rp-photonics.com/gouy_phase_shift.html
+        NOTE: The lack of minus sign is due to the choice of convention for wave propagation
+        i.e. using the physicists exp i(kz - ωt)
         """
-        return -np.arctan2(z / self.zR)
+        return np.arctan2(z / self.zR)
 
-    def amplitude(self, x, y, z):
+    def R(self, z):
+        """
+        The radius of curvature of the wavefront
+        [m]
+        """
+        return z * (1 + self.zR**2 / z**2)
+
+    def E_field_amplitude(self, x, y, z):
         """
         The peak spatial amplitude of the electric field at a given point in 3D space
         [V/m]
         """
-        return (self.εtw / self.w(z)) * np.exp(-self.ellipse(x, y, z))
+        return (self.E0 / self.w(z)) * np.exp(-self.ellipse(x, y, z))
 
-    def phase(self, z, t):
+    def E_field_phase(self, z, t):
         """
         The time-dependent phase of the electric field
         [·]
@@ -250,18 +267,13 @@ class Tweezer:
         # since this oscillation is averaged out via the rotating wave approximation
         return self.k * z + self.Gouy(z) + self.ω * t + self.φ
 
-    def E(self, x, y, z):
+    def E_field(self, x, y, z, t):
         """
         The tweezer's electric field
         [V/m]
         """
-        # A = self.amplitude(x, y, z)
-        # θ = self.phase(z)
-        # return  A * np.cos(θ)
-
-        # NOTE: 1064nm tweezer light oscillates at about 2.8 THz >> kHz oscillations of the bead.
+        # NOTE: 1064nm tweezer light oscillates at about 282 THz >> kHz oscillations of the bead.
         # This means we do not do the above (which would be proper).
         # Instead, we consider that the cos²(θ) oscillation averages to ½ (when finding the potential Utw ~ |E|² in the Trap class).
-
         # So, we *artificially* include this ½ in the forces calculated in the Trap class.
-        return self.amplitude(x, y, z)
+        return  self.E_field_amplitude(x, y, z) * np.cos(self.E_field_phase(z, t))

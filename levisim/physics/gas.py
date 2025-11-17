@@ -63,7 +63,7 @@ class Gas:
             f'\n    T = {self.T :.5f} K'
             f'\n'
             f'\n    〈v〉 = {self.vth :.5f} m/s'
-            f'\n    〈p〉 = {self.pth :.5e} kg.m/s'
+            f'\n    〈p〉 = {self.pth :.5e} kg·m/s'
             f'\n    〈p〉 = {self.pth / (keV/c):.5f} keV/c'
             f'\n    〈KE〉 = {self.KE / eV:.5f} eV'
             f'\n    〈KE〉= {self.KE / kB:.5f} K'
@@ -94,7 +94,7 @@ class Gas:
     def pth(self):
         """
         Average momentum of a gas molecule
-        [kg.m/s]
+        [kg·m/s]
         """
         return self.m * self.vth
 

@@ -518,10 +518,10 @@ class SpectralDensityEstimate:
         )
 
         # fit params are all in Hz, since the PSDs curves x-axis values are in Hz
-        A, Γ, Ω = self.fit_params
+        A_fit, Γ, Ω = self.fit_params
 
         # just like we convert FWHM from Hz to rad/s, need to convert A from V²Hz² to V²(rad/s)²
-        self.Afit = A * Hz**2
+        self.Afit = A_fit * Hz**2
         self.Γfit = Γ * Hz
         self.Ωfit = Ω * Hz
 

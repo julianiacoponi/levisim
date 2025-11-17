@@ -1,7 +1,7 @@
 import numpy as np
 
 from levisim.core.units import (
-    Megasamples,
+    megasamples,
     ms, ns,
 )
 from levisim.core.utils import generate_time_array, calculate_contrast
@@ -20,7 +20,7 @@ class Trace:
             e.g. 'x', 'y', 'z', 'px', 'py', 'pz', 'kick'
         - units:
             'm' for simulation of x,y,z translation in metres
-            'kg.m/s' for simulation of px,py,pz momentum in kilogram-metres-per-second
+            'kg·m/s' for simulation of px,py,pz momentum in kilogram-metres-per-second
             'V' for experimental data in Volts
         - source: either of type Simulation, or Experiment
     """

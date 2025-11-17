@@ -1,9 +1,9 @@
 import numpy as np
 from functools import cached_property
 
-from levisim.core.constants import π, ħ, c, kB
+from levisim.core.constants import π, ħ, c, kB, ε0
 from levisim.core.units import (
-    pm,
+    μm, pm,
     ms,
     degrees,
     Hz, kHz,
@@ -137,10 +137,14 @@ class Trap:
             f'\n    ky = {self.ky:.5e} N/m'
             f'\n    kz = {self.kz:.5e} N/m'
             f'\n'
+            f'\n    α_eff = {self.α_eff:.5e} Fm²'
+            f'\n    σ_scattering = {self.σ_scattering:.5e} m²'
+            f'\n    z_eq = {self.z_eq/ μm:.5f} μm'
+            f'\n'
             f'\n    U_depth = {self.U_depth / eV:.5f} eV'
             f'\n    U_depth = {self.U_depth / kB:.5e} K'
             f'\n    v_escape = {self.v_escape:.5f} m/s'
-            f'\n    p_escape = {self.p_escape:.5e} kg.m/s'
+            f'\n    p_escape = {self.p_escape:.5e} kg·m/s'
             f'\n'
             f'\n    F_gas = {self.F_gas:.5e} N'
             f'\n    mean_free_path = {self.mean_free_path:.5e} m'
@@ -401,7 +405,7 @@ class Trap:
         Spring constant of the restoring force in the x-axis due to the tweezer potential
         [N/m]
         """
-        return self.bead.α * self.tweezer.εtw**2 / self.tweezer.wx0**2
+        return np.real(self.α_eff) * self.tweezer.E0**2 / self.tweezer.wx0**2
 
     @cached_property
     def ky(self):
@@ -409,7 +413,7 @@ class Trap:
         Spring constant of the restoring force in the y-axis due to the tweezer potential
         [N/m]
         """
-        return self.bead.α * self.tweezer.εtw**2 / self.tweezer.wy0**2
+        return np.real(self.α_eff) * self.tweezer.E0**2 / self.tweezer.wy0**2
 
     @cached_property
     def kz(self):
@@ -417,7 +421,7 @@ class Trap:
         Spring constant of the restoring force in the z-axis due to the tweezer potential
         [N/m]
         """
-        return self.bead.α * self.tweezer.εtw**2 / self.tweezer.wz0**2
+        return np.real(self.α_eff) * self.tweezer.E0**2 / self.tweezer.wz0**2
 
     @cached_property
     def kj(self):
@@ -599,7 +603,7 @@ class Trap:
         """
         # due to tweezer-bead dipole interaction = -α/2 * |Etw(0)|**2
         # tweezer potential is negative, so this is an absolute depth size
-        return np.abs(-(self.bead.α / 2) * np.abs(self.tweezer.E(0, 0, 0))**2)
+        return np.abs(self.Utw(0, 0, 0))
 
     @cached_property
     def v_escape(self):
@@ -613,7 +617,7 @@ class Trap:
     def p_escape(self):
         """
         Momentum the bead needs to escape the potential
-        [kg.m/s]
+        [kg·m/s]
         """
         return self.bead.m * self.v_escape
 
@@ -643,6 +647,31 @@ class Trap:
         """
         zR = self.tweezer.zR
         return max(np.array([self.Ftwz(0, 0, z) for z in np.linspace(-zR, zR, 1000)]))
+
+    @cached_property
+    def α_eff(self):
+        """
+        Effective polarisability of the bead that accounts for the radiation reaction force
+        [complex Fm²]
+        """
+        return self.bead.α / (1 - 1j * (self.tweezer.k**3 / (6*π*ε0)) * self.bead.α)
+
+    @cached_property
+    def σ_scattering(self):
+        """
+        Scattering cross section for tweezer light hitting the bead
+        [m²]
+        """
+        return self.k * np.imag(self.α_eff) / ε0
+
+    @cached_property
+    def z_eq(self):
+        """
+        Equilibrium point between optical gradient and scattering forces
+        [m]
+        """
+        γ0 = self.tweezer.zR**2 - self.tweezer.zR / self.tweezer.k
+        return (np.imag(self.α_eff) / np.real(self.α_eff)) * self.tweezer.k * γ0
 
     # ----------------------------------------------------------------------------------------------
     # SCALE FACTORS FOR FITTING
@@ -695,36 +724,50 @@ class Trap:
     # ----------------------------------------------------------------------------------------------
     def kinetic_energy(self, px, py, pz):
         """
-        Energy associated with the nanoparticle Hamiltonian [J]
-        H_np = p**2 / 2m
+        Energy associated with the nanoparticle Hamiltonian
+        H_np = p² / 2m
+        [J]
         """
         return (px**2 + py**2 + pz**2) / (2 * self.bead.m)
 
     def Utw(self, x, y, z):
         """
-        Energy of the tweezer-bead interaction Hamiltonian [J]
-        H_tw = -α/2 * |Etw|**2
+        Energy of the tweezer-bead interaction Hamiltonian
+        H_tw = -α/2 * |Etw|²
+        [J]
         i.e. energy of tweezer-bead dipole interaction
         """
-        # NOTE: 1064nm tweezer light oscillates at about 2.8 THz >> kHz oscillations of the bead.
+        # NOTE: 1064nm tweezer light oscillates at about 282 THz >> kHz oscillations of the bead.
         # Since this is too quick to matter for the dynamics, the cos²(θ) oscillation is averaged to ½.
         # This factor is thus *artificially* included for the final tweezer force functions Ftwx, Ftwy, Ftwz
-        return -(self.bead.α / 2) * np.abs(self.tweezer.E(x, y, z))**2
+        return -(np.real(self.α_eff) / 2) * self.tweezer.E_field_amplitude(x, y, z)**2
 
     def Ftwx(self, x, y, z):
-        """ Force due to the tweezer in the x-direction: Ftw,x = -dUtw/dx (derived manually) [N] """
+        """
+        Gradient force due to the tweezer potential in the x-direction
+        Ftw,x = -dUtw/dx (derived manually)
+        [N]
+        """
         wx = self.tweezer.wx(z)
         # NOTE: *artificially* include this ½ to account for the averaging of the very fast cos²(θ) of the light fields oscillations
         return 0.5 * (4 * x / wx**2) * self.Utw(x, y, z)
 
     def Ftwy(self, x, y, z):
-        """ Force due to the tweezer in the y-direction: Ftw,y = -dUtw/dy (derived manually) [N] """
+        """
+        Gradient force due to the tweezer potential in the y-direction
+        Ftw,y = -dUtw/dy (derived manually)
+        [N]
+        """
         wy = self.tweezer.wy(z)
         # NOTE: *artificially* include this ½ to account for the averaging of the very fast cos²(θ) of the light fields oscillations
         return 0.5 * (4 * y / wy**2) * self.Utw(x, y, z)
 
     def Ftwz(self, x, y, z):
-        """ Force due to the tweezer in the z-direction: Ftw,z = -dUtw/dz (derived manually) [N] """
+        """
+        Gradient force due to the tweezer potential in the z-direction
+        Ftw,z = -dUtw/dz (derived manually)
+        [N]
+        """
         wz = self.tweezer.wz(z)
         ellipse = self.tweezer.ellipse(x, y, z)
         # NOTE: *artificially* include this ½ to account for the averaging of the very fast cos²(θ) of the light fields oscillations
@@ -735,10 +778,10 @@ class Trap:
     # def σR(self):
     #     """ Effective Rayleigh scattering cross section """
     #     λ = self.tweezer.λ
-    #     V, εR = self.bead.V, self.bead.εR
+    #     V, εr = self.bead.V, self.bead.εr
 
     #     # equivalent to α / V.ε0
-    #     χ0 = 3 * (εR - 1) / (εR + 2)
+    #     χ0 = 3 * (εr - 1) / (εr + 2)
     #     return (8*π/3) * (π**2 * V**2 / λ**4) * χ0**2
 
     # def F_photon_recoil(self, x, y, z):

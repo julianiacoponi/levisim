@@ -4,7 +4,7 @@
 #   - if on MacOS, this means downloading Docker Desktop and seeing the Docker whale in menu bar
 
 # 2. Download the latest docker images for `elasticsearch` and `kibana` that work with your machine's architecture (arm64, amd64 etc.)
-#   - assing these images in the `services:images:` entries below
+#   - assign these images in the `services:images:` entries below
 
 # 3. `docker-compose up -d` will setup these two images
 

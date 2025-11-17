@@ -5,9 +5,9 @@ from scipy.io import loadmat
 
 
 from levisim.core.units import (
-    Megasamples,
+    megasamples,
     ms, ns,
-    MegaHz,
+    megaHz,
 )
 from levisim.core.utils import generate_time_array
 from levisim.physics.trap import Trap
@@ -52,11 +52,11 @@ class Experiment:
             f'\n    channel_dict = {self.channel_dict}'
             f'\n    V_per_m_calibrations_dict = {self.V_per_m_calibrations_dict}'
             f'\n'
-            f'\n    num_samples = {self.num_samples / Megasamples:.6f} Megasamples'
+            f'\n    num_samples = {self.num_samples / megasamples:.6f} megasamples'
             f'\n    Δt = {self.Δt / ns:.6f} ns'
             f'\n'
             f'\n    sample_rate = {self.sample_rate:.6f} Hz'
-            f'\n    Nyquist_frequency = {self.Nyquist_frequency / MegaHz:.6f} MHz'
+            f'\n    Nyquist_frequency = {self.Nyquist_frequency / megaHz:.6f} MHz'
             f'\n'
             f'\n    time_length = {self.time_length / ms:.6f} ms'
             f'\n    min_Δf = {self.min_Δf:.6f} Hz'
