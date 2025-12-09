@@ -1,8 +1,14 @@
 # colours (hex codes)
 black = '#000000'
 white = '#ffffff'
+pure_red = '#ff0000'
+pure_green = '#00ff00'
+pure_blue = '#0000ff'
+cyan = '#00ffff'
+magenta = '#ff00ff'
+yellow = '#ffff00'
 
-# https://www.statisticalpoint.com/matplotlib-default-colors/
+# https://matplotlib.org/stable/gallery/color/named_colors.html
 blue = '#1f77b4'
 orange = '#ff7f0e'
 green = '#2ca02c'
@@ -13,11 +19,18 @@ pink = '#e377c2'
 grey = '#7f7f7f'
 dark_yellow = '#bcbd22'
 light_blue = '#17becf'
-cyan = '#00ffff'
-magenta = '#ff00ff'
 purple = '#8031a7'
 
 all_colours = {
+    # maxed out RGB colours
+    'pure_red': pure_red,
+    'pure_green': pure_green,
+    'pure_blue': pure_blue,
+    'cyan': cyan,
+    'magenta': magenta,
+    'yellow': yellow,
+
+    # matplotlib colours
     'blue': blue,
     'orange': orange,
     'green': green,
@@ -28,8 +41,6 @@ all_colours = {
     'grey': grey,
     'dark_yellow': dark_yellow,
     'light_blue': light_blue,
-    'cyan': cyan,
-    'magenta': magenta,
     'purple': purple,
 }
 

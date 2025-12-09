@@ -8,6 +8,7 @@ import numpy as np
 from pathlib import Path
 from copy import copy
 from functools import cached_property, partial
+from itertools import permutations, chain
 
 from levisim.core.constants import (
     π, ħ, kB,
@@ -16,9 +17,10 @@ from levisim.core.constants import (
     antinode, halfnode, node,
 )
 from levisim.core.units import (
-    nm,
     degrees,
+    m, nm,
     Hz, kHz,
+    kg,
     mbar,
 )
 
@@ -100,6 +102,8 @@ class MultiTrap:
         cavity_kwargs = kwargs.get('cavity_kwargs', {})
         self.cavity = Cavity(**cavity_kwargs)
 
+        self.tweezer_phase_sign_convention = kwargs.get('tweezer_phase_sign_convention', +1)
+
         self.toy_params = kwargs.get('toy_params')
         if self.toy_params:
             self.setup_toy_parameters(**self.toy_params)
@@ -108,13 +112,29 @@ class MultiTrap:
             self.setup_linearised_coherent_scattering_physics(**kwargs)
             self.dimensions = {label: Dimension(self, label) for label in self.labels}
 
+        # NOTE: the two setup functions above should each define self.φn_dict
+        self.φns = np.array(list(self.φn_dict.values()))
+        self.φnm_dict = {}
+
+        for (n, m), (φn, φm) in zip(
+            permutations(list(range(1, self.num_traps + 1)), 2),
+            permutations(self.φns, 2),
+        ):
+            self.φnm_dict[f'φ{n}{m}'] = φn - φm
+
+        # NOTE: could use itertools.combinations instead, and not bother with asserting the symmetry
+        assert all([
+            self.φnm_dict[f'φ{n}{m}'] == -self.φnm_dict[f'φ{m}{n}']
+            for n, m in permutations(list(range(1, len(self.φns) + 1)), 2)
+        ])
+
         self.G_dict = {label: dim.G for label, dim in self.dimensions.items()}
         self.G_array = np.array(list(self.G_dict.values()))
 
         self.quantum_factor_per_noise_operator = [
-            # photon annihilation operator, <a_in(ω).a_in†(ω)> = np + 1
+            # photon annihilation operator, 〈a_in(ω)·a_in†(-ω)〉= np + 1
             shot_noise + 1,
-            # photon creation operator, <a_in(ω)†.a_in(ω)> = np
+            # photon creation operator, 〈a_in(ω)†·a_in(-ω)〉= np
             shot_noise,
         ]
 
@@ -127,9 +147,9 @@ class MultiTrap:
             # njn = self.dimensions[label].noise_phonons_approx
             njn = self.dimensions[label].noise_phonons_exact
 
-            # phonon annihilation operators, <bjn_in(ω).bjn_in†(ω)> = njn + 1
+            # phonon annihilation operators, 〈bjn_in(ω)·bjn_in†(-ω)〉= njn + 1
             self.quantum_factor_per_noise_operator.append(njn + 1)
-            # phonon creation operators, <bjn_in†(ω).bjn_in(ω)> = njn
+            # phonon creation operators, 〈bjn_in†(ω)·bjn_in(-ω)〉= njn
             self.quantum_factor_per_noise_operator.append(njn)
 
         # this is the quickest, because it is the direct numerical inversion of the smallest matrix
@@ -155,7 +175,7 @@ class MultiTrap:
             filename = f'{n}D_{N}x{ax}_up_to_{max_order}.pickle'
             current_file_path = Path(__file__).resolve()
             # currently this file sits in levisim/levisim/multiphysics/
-            # we want to go to the base directeroy levisim/
+            # and the base directory is levisim/
             base_levisim_dir = current_file_path.parent.parent.parent
             power_series_file_path = (
                 base_levisim_dir
@@ -215,6 +235,10 @@ class MultiTrap:
             f'\n    num_ω_points = {len(self.ω_range)}'
             f'\n'
             f'\n    QLT_method = {self.QLT_method}'
+            f'\n'
+            f'\n    tweezer_phase_sign_convention = {self.tweezer_phase_sign_convention}'
+            f'\n    g_RMS = {self.g_RMS / kHz:.3f} kHz'
+            f'\n    gbar = {self.gbar / kHz:.3f} kHz'
             f'\n'
             f'\n    load_in_power_series = {self.load_in_power_series}'
             f'\n    generate_power_series = {self.generate_power_series}'
@@ -308,6 +332,27 @@ class MultiTrap:
         print(self.toy_params_info_str)
 
     ################################################################################################
+    # COLLECTIVE PROPERTIES
+    # ----------------------------------------------------------------------------------------------
+    @cached_property
+    def g_RMS(self):
+        """
+        Root-mean-square of all the dimensions' light-mech coupling rates
+        [2π·Hz]
+        """
+        return np.sqrt(
+            np.sum([dim.g**2 for dim in self.dimensions.values()]) / self.num_total_dims
+        )
+
+    @cached_property
+    def gbar(self):
+        """
+        The total coupling rate for the phase-dependent collective modes Q,Q†
+        [2π·Hz]
+        """
+        return np.sqrt(self.num_total_dims) * self.g_RMS
+
+    ################################################################################################
     # SETUP FUNCTIONS
     # ----------------------------------------------------------------------------------------------
     def setup_levitated_physics(self, **kwargs):
@@ -328,13 +373,14 @@ class MultiTrap:
             Tweezer(wx0=925*nm, wy0=1045*nm, θ=θtw, φ=70*degrees),
             Tweezer(wx0=935*nm, wy0=1035*nm, θ=θtw, φ=80*degrees),
         ][:self.num_traps]
+        self.φn_dict = {ii + 1: tweezer.φ for ii, tweezer in enumerate(self.tweezers)}
 
         # NOTE: all mech-mech, and z-light couplings are 0 at the node
         # for the mech-mech couplings:
         # x-y couplings depend on A0, and j-z couplings on P0
         # A0, and P0 depend on the static light field
         # the static light field sums each trap's 'drive' energy into the cavity
-        # each of these cavity drive energies goes as cosΦ, due to the linearised potential Vcs
+        # each of these cavity drive energies goes as cos(Φ), due to the linearised potential Vcs
         # z-light couplings also go with cosΦ, due to the linearised potential Vcs
         Φbead = node
         self.beads = [
@@ -401,7 +447,7 @@ class MultiTrap:
             # [J]
             trap.Ed = 0.5 * trap.bead.α * trap.tweezer.E0 * self.cavity.E0
             # Cavity drive frequency for a particular bead in a particular tweezer trap
-            # [rad/s]
+            # [2π·Hz]
             trap.ωd = trap.Ed / ħ
 
         # ∑ ωd.sinθ.cosΦ
@@ -411,25 +457,31 @@ class MultiTrap:
         α_prefactor = self.ωd_total / (self.cavity.Δ**2 + (self.cavity.κ/2)**2)
         self.Ed_total = ħ * self.ωd_total
 
-        # Real part of the static part of the photon annihilation operator [·]
+        # Real part of the static part of the photon annihilation operator
+        # [·]
         self.cavity.αR = α_prefactor * (-self.cavity.Δ)
 
-        # Imaginary part of the static part of the photon annihilation operator [·]
+        # Imaginary part of the static part of the photon annihilation operator
+        # [·]
         self.cavity.αI = α_prefactor * (self.cavity.κ/2)
 
-        # Static part of the amplitude quadrature [·]
+        # Static part of the amplitude quadrature
         # A0 = α* + α = 2αR
+        # [·]
         self.cavity.A0 = 2 * self.cavity.αR
 
-        # Static part of the phase quadrautre [·]
+        # Static part of the phase quadrautre
         # P0 = i(α* - α) = 2αI
+        # [·]
         self.cavity.P0 = 2 * self.cavity.αI
 
         # TODO: figure out how to add optical spring corrections (per tweezer?) and
         # coherent scattering corrections (overall?) to this
 
     def setup_toy_parameters(self, **params):
-        """ Setup parameters for the model directly """
+        """
+        Setup parameters for the model directly
+        """
         # __________________________________________________________________________________________
         # MECHANICAL FREQUENCIES
 
@@ -443,20 +495,20 @@ class MultiTrap:
             self.Ω_intrapair_gap = params.get('Ω_intrapair_gap', 1.5*kHz)
             self.Ω_interpair_gap = params.get('Ω_interpair_gap', 15*kHz)
 
-            Ωs = {}
             Ω_value = self.Ω_first
             count = 0
+            self.Ωjn_dict = {}
             for label in self.labels:
                 if label[0] != 'z':
                     if not count % 2:
                         # even index is the first in a pair
                         # start with the first value, add intrapair gap for next value
-                        Ωs[label] = Ω_value
+                        self.Ωjn_dict[label] = Ω_value
                         Ω_value += self.Ω_intrapair_gap
                     else:
                         # odd index the first in a pair
                         # minus the intrapair gap
-                        Ωs[label] = Ω_value
+                        self.Ωjn_dict[label] = Ω_value
                         Ω_value -= (self.Ω_interpair_gap + self.Ω_intrapair_gap)
                     count += 1
 
@@ -467,7 +519,7 @@ class MultiTrap:
             )
 
         # NOTE: this is attempting to copy the 'Mechanical Mode Comb' paper
-        # define x,y frequencies across a certain span around a midpoint
+        # define x, y frequencies across a certain span around a midpoint
         elif self.Ω_model == 'equal spacing':
             self.Ω_mid = params.get('Ω_mid', 300*kHz)
             self.Ω_span = params.get('Ω_span', 100*kHz)
@@ -479,11 +531,11 @@ class MultiTrap:
             # divide by one fewer than the number of things to fill the span
             Ω_gap = self.Ω_span / (num_non_z_dims - 1)
 
-            Ωs = {}
             Ω_value = Ω_low
+            self.Ωjn_dict = {}
             for label in self.labels:
                 if label[0] != 'z':
-                    Ωs[label] = Ω_value
+                    self.Ωjn_dict[label] = Ω_value
                     Ω_value += Ω_gap
 
             self.Ω_model_description = (
@@ -493,7 +545,7 @@ class MultiTrap:
 
         elif self.Ω_model == 'degenerate':
             self.Ω0 = params.get('Ω0', 300*kHz)
-            Ωs = {label: self.Ω0 for label in self.labels if label[0] != 'z'}
+            self.Ωjn_dict = {label: self.Ω0 for label in self.labels if label[0] != 'z'}
             self.Ω_model_description = (
                 f'\n    Ω0 = {self.Ω0 / kHz:.1f} kHz'
             )
@@ -511,7 +563,7 @@ class MultiTrap:
                 Ω_high = center + span / 2
 
         elif self.Ω_model == 'custom':
-            Ωs = params.get('toy_Ωs')
+            self.Ωjn_dict = params.get('toy_Ωjn_dict')
             self.Ω_model_description = ''
 
         if self.Cartesian_axes_per_trap == 3:
@@ -521,28 +573,28 @@ class MultiTrap:
                 for ii in range(self.num_traps):
                     n = ii + 1
                     xn, zn = f'x{n}', f'z{n}'
-                    Ωs[zn] = Ωs[xn] / self.Ωz_to_Ωx_multiplier
+                    self.Ωjn_dict[zn] = self.Ωjn_dict[xn] / self.Ωz_to_Ωx_multiplier
                     self.Ω_model_description += f'\n    Ωz_to_Ωx_multiplier = {self.Ωz_to_Ωx_multiplier:.1f}'
 
-        for label, Ω in Ωs.items():
+        for label, Ω in self.Ωjn_dict.items():
             logger.trace(f'{label} frequency = {Ω / kHz:.1f} kHz')
 
         if self.Cartesian_axes_per_trap >= 1:
-            Ωxs = np.array([Ωs[label] for label in self.labels if label[0] == 'x'])
+            Ωxs = np.array([self.Ωjn_dict[label] for label in self.labels if label[0] == 'x'])
             self.Ω_model_description += f'\n    all Ωx = {np.array2string(Ωxs / kHz, precision=2, separator=", ")} kHz'
 
         if self.Cartesian_axes_per_trap >= 2:
-            Ωys = np.array([Ωs[label] for label in self.labels if label[0] == 'y'])
+            Ωys = np.array([self.Ωjn_dict[label] for label in self.labels if label[0] == 'y'])
             self.Ω_model_description += f'\n    all Ωy = {np.array2string(Ωys / kHz, precision=2, separator=", ")} kHz'
 
         if self.Cartesian_axes_per_trap == 3:
-            Ωzs = np.array([Ωs[label] for label in self.labels if label[0] == 'z'])
+            Ωzs = np.array([self.Ωjn_dict[label] for label in self.labels if label[0] == 'z'])
             self.Ω_model_description += f'\n    all Ωz = {np.array2string(Ωzs / kHz, precision=2, separator=", ")} kHz'
 
 
         # __________________________________________________________________________________________
         # BEAD
-        self.toy_ρ = params.get('ρ', 2200)  # kg/m³
+        self.toy_ρ = params.get('ρ', 2200*kg/m**3)
         self.toy_r = params.get('r', 75*nm)
         self.toy_m = params.get('m', self.toy_ρ * (4/3) * π * self.toy_r**3)
 
@@ -563,13 +615,13 @@ class MultiTrap:
             # choose Tania's fortran formula for now
             self.toy_Γ_formula = self.toy_Γ_formula_from_Tania_fortran
 
-            Γs = {label: self.toy_Γ_formula for label in self.labels}
+            self.Γjn_dict = {label: self.toy_Γ_formula for label in self.labels}
 
         # or define damping rate directly
         else:
             self.toy_Γ = params.get('toy_Γ', 1e-5*Hz)
-            Γs_dict = {label: self.toy_Γ for label in self.labels}
-            Γs = params.get('Γs', Γs_dict)
+            Γjn_dict = {label: self.toy_Γ for label in self.labels}
+            self.Γjn_dict = params.get('Γjn_dict', Γjn_dict)
 
         # __________________________________________________________________________________________
         # LINEAR COUPLINGS
@@ -578,15 +630,15 @@ class MultiTrap:
         self.toy_gz = params.get('toy_gz', 0*kHz)
 
         # assuming each bead is at the node, z and mech-mech are zero
-        gs_dict = {}
+        gjn_dict = {}
         for label in self.labels:
             if 'x' in label:
-                gs_dict[label] = self.toy_gx
+                gjn_dict[label] = self.toy_gx
             if 'y' in label:
-                gs_dict[label] = self.toy_gy
+                gjn_dict[label] = self.toy_gy
             if 'z' in label:
-                gs_dict[label] = self.toy_gz
-        gs = params.get('gs', gs_dict)
+                gjn_dict[label] = self.toy_gz
+        self.gjn_dict = params.get('gjn_dict', gjn_dict)
 
         self.toy_gxy = params.get('toy_gxy', 0*kHz)
         self.toy_gxz = params.get('toy_gxz', 0*kHz)
@@ -594,16 +646,16 @@ class MultiTrap:
 
         # __________________________________________________________________________________________
         # TWEEZER PHASES
-        φ1 = params.get('φ1', 0*degrees)
-        φ2 = params.get('φ2', 0*degrees)
-        φs_dict = {}
+        φ_odd_n = params.get('φ_odd_n', 0*degrees)
+        φ_even_n = params.get('φ_even_n', 0*degrees)
+        φn_dict = {}
         for label in self.labels:
             j, n = label[0], int(label[1:])
             if n % 2:
-                φs_dict[n] = φ1
+                φn_dict[n] = φ_odd_n
             else:
-                φs_dict[n] = φ2
-        φs = params.get('φs', φs_dict)
+                φn_dict[n] = φ_even_n
+        self.φn_dict = params.get('φn_dict', φn_dict)
 
         # __________________________________________________________________________________________
         # DIMENSION DEFINITIONS
@@ -614,15 +666,15 @@ class MultiTrap:
             self.dimensions[label] = Dimension(
                 self,
                 label,
-                φ=φs[n],
+                φ=self.φn_dict[n],
 
                 T=self.toy_T,
                 m=self.toy_m,
 
-                Ω=Ωs[label],
-                Γ=Γs[label],
+                Ω=self.Ωjn_dict[label],
+                Γ=self.Γjn_dict[label],
 
-                g=gs[label],
+                g=self.gjn_dict[label],
 
                 gxy=self.toy_gxy,
                 gxz=self.toy_gxz,
@@ -635,43 +687,42 @@ class MultiTrap:
         to help solve the quantum Langevin equations directly
         via a Linear Amplifier Model (LAM) approach
 
-        dc(t)/dt = A.c(t) + c_in(t)
+        dc(t)/dt = A·c(t) + c_in(t)
 
         Heisenberg (commutator with Hamiltonian)
         +
         Langevin (minus dissipation, plus input noise)
         = (
-            da/dt = i[H/ħ, a] - (κ/2)a + √κ.a_in
-            da†/dt = i[H/ħ, a†] - (κ/2)a† + √κ.a_in†
+            da/dt = i[H/ħ, a] - (κ/2)a + √κ·a_in
+            da†/dt = i[H/ħ, a†] - (κ/2)a† + √κ·a_in†
             ...
-            dbjn/dt = i[H/ħ, bjn] - (Γjn/2)bjn + √Γjn.bjn_in
-            dbjn†/dt = i[H/ħ, bjn†] - (Γjn/2)bjn† + √Γjn.bjn†_in
+            dbjn/dt = i[H/ħ, bjn] - (Γjn/2)bjn + √Γjn·bjn_in
+            dbjn†/dt = i[H/ħ, bjn†] - (Γjn/2)bjn† + √Γjn·bjn†_in
             ...
         )
 
-        c = (a, a†, ..., bjn, bjn†, ...)^T = vector of annihilation and creation operators
+        c = (a, a†, ..., bjn, bjn†, ...)^⊤ = vector of annihilation and creation operators
 
         c_in
-        = (√κ.a_in, √κ.a_in†, ..., √Γjn.bjn_in, √Γjn.bjn_in†, ...)^T
+        = (√κ·a_in, √κ·a_in†, ..., √Γjn·bjn_in, √Γjn·bjn_in†, ...)^⊤
         = noise column vector times the square root of the damping rate
 
         A = matrix of couplings between them
         """
-        N = self.num_operators
         self.identity_matrix = np.matrix(np.eye(self.num_operators))
-        self.drift_matrix = np.matrix(np.zeros((N, N), dtype=np.complex128))
+        self.drift_matrix = np.matrix(np.zeros((self.num_operators, self.num_operators), dtype=np.complex128))
 
         Δ, κ = self.cavity.Δ, self.cavity.κ
 
         # the overall dampings for the nosies in the PSDs
-        self.γ = np.zeros(N)
+        self.γ = np.zeros(self.num_operators)
         self.γ[0] = κ
         self.γ[1] = κ
 
         self.drift_matrix[0, 0] = 1j*Δ - κ/2
         self.drift_matrix[1, 1] = -1j*Δ - κ/2
 
-        for ii in range(2, N):
+        for ii in range(2, self.num_operators):
             label_jn = self.noise_index_to_label[ii]
             j, n = label_jn[0], label_jn[1:]
 
@@ -784,25 +835,32 @@ class MultiTrap:
                         self.drift_matrix[ii, ii - 3] = -igyz
                         self.drift_matrix[ii, ii - 2] = -igyz
 
-        # (√κ.a_in, √κ.a_in†, ..., √Γjn.bjn_in, √Γjn.bjn_in†, ...)
+        # c_in = (
+        #   √κ·a_in
+        #   √κ·a_in†
+        #   ...
+        #   √Γjn·bjn_in
+        #   √Γjn·bjn_in†
+        #   ...
+        # )
         self.c_in = np.sqrt(self.γ)
 
         # Noise matrix
         # N = diag(
-        #       κ.<a_in(ω),a_in†(ω)>,
-        #       κ<a_in†(ω),a_in(ω)>,
-        #       ...,
-        #       Γjn<bjn_in(ω),bjn_in†(ω)>,
-        #       Γjn<bjn_in†(ω),bjn_in(ω)>,
-        #       ...,
+        #       κ〈a_in(ω)[a_in(ω)]†
+        #       κ〈a_in†(ω)[a_in†(ω)]†〉
+        #       ...
+        #       Γjn〈bjn_in(ω)[bjn_in(ω)]†〉
+        #       Γjn〈bjn_in†(ω)[bjn_in†(ω)]†〉
+        #       ...
         #   )
         #   = diag(
-        #       κ.(np + 1),
-        #       κ.np,
-        #       ...,
-        #       Γjn.(njn + 1),
-        #       Γjn.njn,
-        #       ...,
+        #       κ(np + 1)
+        #       κ·np
+        #       ...
+        #       Γjn(njn + 1)
+        #       Γjn·njn
+        #       ...
         #   )
         # np = photons due to optical noise = 0 for shot noise
         # njn = phonons due to jn degree of freedom ~ kBT/ħΩjn (Bose-Einstein distribution)
@@ -864,9 +922,11 @@ class MultiTrap:
         return D_mat
 
     # calculation step functions - these are calculated for a given frequency
-    # TODO: make this a partial() function? i.e. precalculate all N^2 - N of them
+    # TODO: make this a partial() function? i.e. precalculate all N² - N of them
     def hybridisation_term_value(self, term, ω):
-        """ The value of a hybridisation term at a given frequency """
+        """
+        The value of a hybridisation term at a given frequency
+        """
         value = complex(1)
         for pair in term.pairs:
             label_jn, label_km = pair
@@ -939,7 +999,7 @@ class MultiTrap:
                         # NOTE: Tania's form is related to the phase form
                         # ηC_φ_T = iηC_φ_P
                         # iηC_φ_T = -ηC_φ_P
-                        #  ηC_φ_T = self.cavity.ηφ_T(φnm, ω)
+                        # ηC_φ_T = self.cavity.ηφ_T(φnm, ω)
                         # Rjk_B2 = (1j * μj / Mj) * (1j * ηC_φ_T) * gjn * gkm
 
                     # amplitude-phase coupling
@@ -1004,7 +1064,6 @@ class MultiTrap:
             value += self.hybridisation_term_value(term, ω)
         return value
 
-
     def deranged_adjugate_entry_value(self, ij, ω):
         """
         The value of given adjugate entry of the derangement matrix at a given frequency
@@ -1024,13 +1083,13 @@ class MultiTrap:
         Invert it to solve the fully hybridised position vector using the 1D noise vectors
         X = D⁻¹ @ X1D
         """
-        # numerical method simply inverts D directly
         if method == QuantumLinearTheoryMethod.NUMERICAL_HYBRIDISATION:
+            # this method inverts D directly/numerically
             return np.linalg.inv(self.derangement_matrix(ω))
             # return scipy.linalg.inv(self.derangement_matrix(ω))
 
         if method == QuantumLinearTheoryMethod.POWER_SERIES_HYBRIDISATION:
-            # 'power series' method inverts D symbolically
+            # this method inverts D symbolically
             # D⁻¹ = adj(D)/det(D)
 
             # det(D) = determinant of D = power series of deranged cycles ν
@@ -1059,6 +1118,109 @@ class MultiTrap:
         for ii, dimension in enumerate(self.dimensions.values()):
             X1D[ii] = dimension.Q1D(ω)
         return X1D
+
+    # ----------------------------------------------------------------------------------------------
+    # Collective normalisation and transduction functions from phase-dependent analytic results
+    # ----------------------------------------------------------------------------------------------
+    def F(self, n, ω):
+        """
+        Phase-dependent collective coupling and mechanical susceptibility rate
+        [complex 2π·Hz]
+        """
+        return np.sum([
+            dim.g**2 * dim.μm(ω) * np.exp(1j * n * dim.φ)
+            for dim in self.dimensions.values()
+        ])
+
+    def P(self, ω):
+        """
+        Collective phase-dependent function that equals zero when all phases are zero
+        [complex]
+        """
+        return self.cavity.ξC(ω) * (self.F(2, ω)*self.F(-2, ω) - self.F(0, ω)**2)
+
+    def M_TOT(self, ω):
+        """
+        Normalisation function for transducing all input noises into the collective modes Q, Q†
+        [complex]
+        """
+        return 1 + self.cavity.ηm(ω) * self.F(0, ω) + self.P(ω)
+
+    def Fa(self, ω):
+        """
+        Transduction function to collective mode Q
+        from annihilation operator of cavity input noise photons a_in
+        Q ∝ Fa·a_in
+        [complex (2π·Hz)⁻¹]
+        """
+        iκg = 1j * np.sqrt(self.cavity.κ) / self.gbar
+        return iκg * (self.cavity.χC(ω) * self.F(0, ω) + self.P(ω))
+
+    def Fa_dag(self, ω):
+        """
+        Transduction function to collective mode Q
+        from creation operator of cavity input noise photons a_in†
+        Q ∝ Fa_dag·a_in†
+        [complex (2π·Hz)⁻¹]
+        """
+        iκg = 1j * np.sqrt(self.cavity.κ) / self.gbar
+        return iκg * np.conjugate(self.cavity.χC(-ω)) * self.F(self.tweezer_phase_sign_convention * 2, ω)
+
+    def FFa(self, ω):
+        """
+        Transduction function to collective mode Q†
+        Q† ∝ FFa·a_in
+        i.e. from annihilation operator of cavity input noise photons a_in
+        [complex (2π·Hz)⁻¹]
+        """
+        iκg = 1j * np.sqrt(self.cavity.κ) / self.gbar
+        return iκg * self.cavity.χC(ω) * self.F(-self.tweezer_phase_sign_convention * 2, ω)
+
+    def FFa_dag(self, ω):
+        """
+        Transduction function to collective mode Q†
+        from creation operator of cavity input noise photons a_in†
+        Q† ∝ FFa_dag·a_in†
+        [complex (2π·Hz)⁻¹]
+        """
+        iκg = 1j * np.sqrt(self.cavity.κ) / self.gbar
+        return iκg * (np.conjugate(self.cavity.χC(-ω)) * self.F(0, ω) - self.P(ω))
+
+    def FQ(self, ω):
+        """
+        Transduction function to collective mode Q
+        from annihilation operator of collective thermal noise mode Q_TOT
+        Q ∝ FQ·Q_TOT
+        [complex]
+        """
+        return 1 - np.conjugate(self.cavity.χC(-ω)) * self.F(0, ω)
+
+    def FQ_dag(self, ω):
+        """
+        Transduction function to collective mode Q
+        from creation operator of collective thermal noise mode Q_TOT†
+        Q ∝ FQ_dag·Q_TOT†
+        [complex]
+        """
+        return np.conjugate(self.cavity.χC(-ω)) * self.F(self.tweezer_phase_sign_convention * 2, ω)
+
+    def FFQ(self, ω):
+        """
+        Transduction function to collective mode Q†
+        from annihilation operator of collective thermal noise mode Q_TOT
+        Q† ∝ FFQ·Q_TOT
+        [complex]
+        """
+        return -self.cavity.χC(ω) * self.F(-self.tweezer_phase_sign_convention * 2, ω)
+
+    def FFQ_dag(self, ω):
+        """
+        Transduction function to collective mode Q†
+        from creation operator of collective thermal noise mode Q_TOT†
+        Q† ∝ FFQ_dag·Q_TOT†
+        [complex]
+        """
+        return 1 + self.cavity.χC(ω) * self.F(0, ω)
 
     # ----------------------------------------------------------------------------------------------
     # QuantumLinearTheoryMethod dependent functions
@@ -1093,24 +1255,78 @@ class MultiTrap:
         - Numerical inversion of derangement matrix
         - Symbolic inversion of derangement matrix
         - Linear Amplifier Model (LAM)
+        - Analytically derived phase-dependent formulae
         """
+        if method == QuantumLinearTheoryMethod.ANALYTIC_VIA_INSIDE_CAVITY:
+            assert self.Cartesian_axes_per_trap <= 2, (
+                f'Analytic results only works for x and y degrees of freedom i.e. those coupled'
+                f'to the amplitude of the cavity light under coherent scattering'
+                f' (not z, which is coupled to the phase)'
+            )
+            sign = self.tweezer_phase_sign_convention
+            g, κ = self.gbar, self.cavity.κ
+            χC, χC_star = self.cavity.χC(ω), np.conjugate(self.cavity.χC(-ω))
+            ξC = χC * χC_star
+            MTOT_m1 = self.M_TOT(ω)**(-1)
+            F_Q, F_Q_dag = self.FQ(ω), self.FQ_dag(ω)
+            FF_Q, FF_Q_dag = self.FFQ(ω), self.FFQ_dag(ω)
 
-        if method == QuantumLinearTheoryMethod.LINEAR_AMPLIFIER_MODEL:
+            a_hat = χC * np.array([
+                # a_in
+                1j * g * MTOT_m1 * self.Fa(ω) + np.sqrt(κ),
+                # a_in†
+                1j * g * MTOT_m1 * self.Fa_dag(ω),
+                # https://stackoverflow.com/questions/37279653/unpacking-tuples-in-a-python-list-comprehension-cannot-use-the-operator
+                *list(chain.from_iterable(
+                    (
+                        # bjn_in
+                        1j * dim.g * np.sqrt(dim.Γ) * MTOT_m1 * dim.χM(ω)
+                        *
+                        (F_Q * np.exp(sign * 1j * dim.φ) + F_Q_dag * np.exp(-sign * 1j * dim.φ)),
+                        # bjn_in†
+                        1j * dim.g * np.sqrt(dim.Γ) * MTOT_m1 * np.conjugate(dim.χM(-ω))
+                        *
+                        (F_Q * np.exp(sign * 1j * dim.φ) + F_Q_dag * np.exp(-sign * 1j * dim.φ)),
+                    )
+                    for dim in self.dimensions.values()
+                ))
+            ])
+            a_dag = χC_star * np.array([
+                # a_in
+                -1j * g * MTOT_m1 * self.FFa(ω),
+                # a_in†
+                -1j * g * MTOT_m1 * self.FFa_dag(ω) + np.sqrt(κ),
+                # https://stackoverflow.com/questions/37279653/unpacking-tuples-in-a-python-list-comprehension-cannot-use-the-operator
+                *list(chain.from_iterable(
+                    (
+                        # bjn_in
+                        -1j * dim.g * np.sqrt(dim.Γ) * MTOT_m1 * dim.χM(ω)
+                        *
+                        (FF_Q * np.exp(sign * 1j * dim.φ) + FF_Q_dag * np.exp(-sign * 1j * dim.φ)),
+                        # bjn_in†
+                        -1j * dim.g * np.sqrt(dim.Γ) * MTOT_m1 * np.conjugate(dim.χM(-ω))
+                        *
+                        (FF_Q * np.exp(sign * 1j * dim.φ) + FF_Q_dag * np.exp(-sign * 1j * dim.φ)),
+                    )
+                    for dim in self.dimensions.values()
+                ))
+            ])
+
+        elif method == QuantumLinearTheoryMethod.LINEAR_AMPLIFIER_MODEL:
             # goes straight to the LAM solution for the light field operators
             # already accounts for noises a_in, a_in†
             c = self.c_noise_vector(ω)
             a_hat, a_dag = c[0], c[1]
 
         else:
-            # a = χC (i ∑GX  + √κ a_in)
-            # a† = χC* (-i ∑GX + √κ a_in†)
+            # a = χC(ω) (i ∑GX  + √κ·a_in)
+            # a† = χC*(-ω) (-i ∑GX + √κ·a_in†)
 
             # this is the light coupling multiplied by the position operator (as a noise vector)
-            # i.e. ∑GX = (Gx1 * x1) + (Gy1 * y1) + ...
-            # each jn=x1,y1,... is a noise vector
+            # i.e. ∑GX = (Gx1·x1) + (Gy1·y1) + ...
+            # each jn = x1, y1, ... is a noise vector
 
             χC, χC_star = self.cavity.χC(ω), np.conjugate(self.cavity.χC(-ω))
-            κ = self.cavity.κ
             hybrid_X = self.hybridised_X(method, ω)
             if method == QuantumLinearTheoryMethod.HYBRID_LINEAR_AMPLIFIER_MODEL:
                 # calculates the hybridised_X using LAM, and then uses the QLT Fourier solution
@@ -1125,10 +1341,11 @@ class MultiTrap:
                 a_hat = np.squeeze(np.asarray(a_hat))
                 a_dag = np.squeeze(np.asarray(a_dag))
 
+            κ = self.cavity.κ
             # adds cavity-filtered noise contribution
-            # χC (√κ a_in)
+            # χC(ω) (√κ·a_in)
             a_hat[0] += χC * np.sqrt(κ)
-            # χC* (√κ a_in†)
+            # χC*(-ω) (√κ·a_in†)
             a_dag[1] += χC_star * np.sqrt(κ)
 
         return a_hat, a_dag
@@ -1136,17 +1353,81 @@ class MultiTrap:
     def output_light_noise_vectors(self, method, ω):
         """
         Account for input-output theory to determine output light field
-        a_out = -√κ a + a_in
-        a_out† = -√κ a† + a_in†
+        a_out = -√κ·a + a_in
+        a_out† = -√κ·a† + a_in†
         """
-        a_hat, a_dag = self.light_noise_vectors(method, ω)
+        if method == QuantumLinearTheoryMethod.ANALYTIC_DIRECT_TO_CAVITY_OUTPUT:
+            assert self.Cartesian_axes_per_trap <= 2, (
+                f'Analytic results only works for x and y degrees of freedom i.e. those coupled'
+                f'to the amplitude of the cavity light under coherent scattering'
+                f' (not z, which is coupled to the phase)'
+            )
+            sign = self.tweezer_phase_sign_convention
+            g, κ = self.gbar, self.cavity.κ
+            χC, χC_star = self.cavity.χC(ω), np.conjugate(self.cavity.χC(-ω))
+            MTOT_m1 = self.M_TOT(ω)**(-1)
+            F_Q, F_Q_dag = self.FQ(ω), self.FQ_dag(ω)
+            FF_Q, FF_Q_dag = self.FFQ(ω), self.FFQ_dag(ω)
 
-        κ = self.cavity.κ
-        a_out_hat = -np.sqrt(κ) * a_hat
-        a_out_dag = -np.sqrt(κ) * a_dag
+            a_out_hat = np.array([
+                # a_in, a_in†
+                1 - κ*χC - 1j * g * np.sqrt(κ) * χC * MTOT_m1 * self.Fa(ω),
+                -1j * g * np.sqrt(κ) * χC * MTOT_m1 * self.Fa_dag(ω),
+                # https://stackoverflow.com/questions/37279653/unpacking-tuples-in-a-python-list-comprehension-cannot-use-the-operator
+                *list(chain.from_iterable(
+                    (
+                        # bjn_in
+                        -1j * np.sqrt(κ) * χC * MTOT_m1
+                        *
+                        (F_Q * np.exp(sign * 1j * dim.φ) + F_Q_dag * np.exp(-sign * 1j * dim.φ))
+                        *
+                        np.sqrt(dim.Γ) * dim.g * dim.χM(ω),
+                        # bjn_in†
+                        -1j * np.sqrt(κ) * χC * MTOT_m1
+                        *
+                        (F_Q * np.exp(sign * 1j * dim.φ) + F_Q_dag * np.exp(-sign * 1j * dim.φ))
+                        *
+                        np.sqrt(dim.Γ) * dim.g * np.conjugate(dim.χM(-ω)),
+                    )
+                    for dim in self.dimensions.values()
+                ))
+            ])
 
-        a_out_hat[0] = a_out_hat[0] + 1
-        a_out_dag[1] = a_out_dag[1] + 1
+            a_out_dag = np.array([
+                # a_in
+                1j * g * np.sqrt(κ) * χC_star * MTOT_m1 * self.FFa(ω),
+                # a_in†
+                1 - κ*χC_star + 1j * g * np.sqrt(κ) * χC_star * MTOT_m1 * self.FFa_dag(ω),
+                # https://stackoverflow.com/questions/37279653/unpacking-tuples-in-a-python-list-comprehension-cannot-use-the-operator
+                *list(chain.from_iterable(
+                    (
+                        # bjn_in
+                        1j * np.sqrt(κ) * χC_star * MTOT_m1
+                        *
+                        (FF_Q * np.exp(sign * 1j * dim.φ) + FF_Q_dag * np.exp(-sign * 1j * dim.φ))
+                        *
+                        np.sqrt(dim.Γ) * dim.g * dim.χM(ω),
+
+                        # bjn_in†
+                        1j * np.sqrt(κ) * χC_star * MTOT_m1
+                        *
+                        (FF_Q * np.exp(sign * 1j * dim.φ) + FF_Q_dag * np.exp(-sign * 1j * dim.φ))
+                        *
+                        np.sqrt(dim.Γ) * dim.g * np.conjugate(dim.χM(-ω)),
+                    )
+                    for dim in self.dimensions.values()
+                ))
+            ])
+
+        else:
+            a_hat, a_dag = self.light_noise_vectors(method, ω)
+
+            κ = self.cavity.κ
+            a_out_hat = -np.sqrt(κ) * a_hat
+            a_out_dag = -np.sqrt(κ) * a_dag
+
+            a_out_hat[0] = a_out_hat[0] + 1
+            a_out_dag[1] = a_out_dag[1] + 1
 
         return a_out_hat, a_out_dag
 
@@ -1156,7 +1437,7 @@ class MultiTrap:
         A_out(ω) = a†_out(ω) + a_out(ω)
         P_out(ω) = i(a†_out(ω) - a_out(ω))
         θ = homodyne phase angle
-        S_hom(ω) = a†_out(ω).exp(iθ) + a_out(ω).exp(-iθ) = A_out(ω).cos(θ) + P_out(ω).sin(θ)
+        S_hom(ω) = a†_out(ω)·exp(iθ) + a_out(ω)·exp(-iθ) = A_out(ω)·cos(θ) + P_out(ω)·sin(θ)
         [1/√Hz]
         """
         a_out_hat, a_out_dag = self.output_light_noise_vectors(method, ω)
@@ -1166,9 +1447,9 @@ class MultiTrap:
         # return A_out * np.cos(self.cavity.θhom) + P_out * np.sin(self.cavity.θhom)
         # return a_out_dag * np.exp(1j * self.cavity.θhom) + a_out_hat * np.exp(-1j * self.cavity.θhom)
 
-        # NOTE: Tania defines the opposite phase quadratrue P = i(a-a†)
+        # NOTE: Tania defines the opposite phase quadratrue P = i(a - a†)
         A_out = a_out_hat + a_out_dag
-        P_out = 1j*(a_out_hat - a_out_dag)
+        P_out = 1j * (a_out_hat - a_out_dag)
         return A_out * np.cos(self.cavity.θhom) + P_out * np.sin(self.cavity.θhom)
 
     def heterodyne_noise_vector(self, method, ω):
@@ -1195,6 +1476,12 @@ class MultiTrap:
         """
         return np.sum(self.quantum_factor_per_noise_operator * np.abs(noise_vector)**2)
 
+    def noise_vectors_to_cross_spectrum(self, noise_vector_A, noise_vector_B):
+        """
+        Convert two noise vectors into their cross spectrum
+        """
+        return np.sum(self.quantum_factor_per_noise_operator * noise_vector_A * np.conjugate(noise_vector_B))
+
     ################################################################################################
     # SPECTRAL CALCULATION FUNCTIONS
     # ----------------------------------------------------------------------------------------------
@@ -1204,13 +1491,11 @@ class MultiTrap:
     def calculate_all_hybridised_position_spectra(self, method, zpf_units=True):
         """
         Invert the derangement matrix D to get the hybridisation matrix H
-        This solves the n-dimensional hybridised position vector, x
+        This solves for the multi-dimensional hybridised position vector, X
         in terms of the 1D noise vectors, X1D
         D @ X = X1D
         H = D⁻¹
         X = H @ X1D
-
-        Calculate PSDs based on the squares of x as a noise vector
         """
         logger.info(f'Calculating all PSDs with {method=} {zpf_units=}')
         if method == QuantumLinearTheoryMethod.TNT_LINEAR_AMPLIFIER_MODEL:
@@ -1243,7 +1528,7 @@ class MultiTrap:
     def calculate_homodyne_spectrum(self, method):
         """
         Calculates homodyne spectrum of output light from the cavity, S_hh
-        h = a†_out.exp(iθ) + a_out.exp(-iθ) = A_out.cos(θ) + P_out.sin(θ)
+        h = a†_out·exp(iθ) + a_out·exp(-iθ) = A_out·cos(θ) + P_out·sin(θ)
         θ = homodyne angle
         """
         logger.info(f'Calculating homodyne spectrum with {method=}')
@@ -1274,7 +1559,9 @@ class MultiTrap:
     # TODO: fix these remainining functions
     # ----------------------------------------------------------------------------------------------
     def hybridised_position_operator(self, label, ω):
-        """A specific hybridised position operator (a specific entry in fully hybridised x) """
+        """
+        A specific hybridised position operator (a specific entry in the fully hybridised X)
+        """
         # fill out the adjugate row desired
         adj_row = np.zeros(self.num_total_dims, dtype=np.complex128)
         for ii, column_label in enumerate(self.labels):
@@ -1305,6 +1592,9 @@ class MultiTrap:
 
     @cached_property
     def position_power_spectra_array(self):
+        """
+        Calculates an array of the PSDs of all dimensions' positions
+        """
         SXX_array = np.zeros((len(self.ω_range), self.num_total_dims))
         Scc_array = self.quantum_operator_spectral_density_array
         for dd, label in enumerate(self.labels):
@@ -1326,10 +1616,12 @@ class MultiTrap:
     @profiler(PROFILER)
     @progress_bar('self.ω_range', PROGRESS_BAR)
     def calculate_power_spectrum(self, label, zpf_units=True):
-        """ Calculates the power spectrum of a given dimension """
+        """
+        Calculates the power spectrum of a given dimension
+        """
         logger.info(f'Calculating PSD({label})')
 
-        j, n = label[0], label[1:]
+        j, n = label[0], int(label[1:])
         zpf = self.dimensions[label_A].zpf if not zpf_units else 1
         psd = []
         for ω in self.ω_range:
@@ -1341,13 +1633,15 @@ class MultiTrap:
     @profiler(PROFILER)
     @progress_bar('self.ω_range', PROGRESS_BAR)
     def calculate_cross_spectrum(self, label_A, label_B, zpf_units=True):
-        """ Calculates the cross correlation spectrum of the given dimensions """
+        """
+        Calculates the cross correlation spectrum of the given dimensions
+        """
         logger.info(f'Calculating CSD({label_A},{label_B})')
 
-        j, n = label_A[0], label_A[1:]
+        j, n = label_A[0], int(label_A[1:])
         zpf_A = self.dimensions[label_A].zpf if not zpf_units else 1
 
-        k, m = label_B[0], label_B[1:]
+        k, m = label_B[0], int(label_B[1:])
         zpf_B = self.dimensions[label_B].zpf if not zpf_units else 1
 
         csd = []

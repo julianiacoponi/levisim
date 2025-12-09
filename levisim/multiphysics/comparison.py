@@ -38,6 +38,8 @@ def compare_methods(
 
     if QuantumLinearTheoryMethod.TNT_LINEAR_AMPLIFIER_MODEL in methods:
         spectrum_types = [SpectrumType.PSD]
+    if QuantumLinearTheoryMethod.is_analytic:
+        spectrum_types = [SpectrumType.HETERODYNE, SpectrumType.HOMODYNE]
 
     ω_low = min(multitrap.ω_range) / kHz
     ω_high = max(multitrap.ω_range) / kHz
@@ -158,8 +160,8 @@ def compare_methods(
             except Exception as e:
                 logger.error(f'Error deleting {file}: {e}')
 
-    assert all(all_results), f'🏴‍☠️🏴‍☠️🏴‍☠️🏴‍☠️🏴‍☠️ Failure present! 🏴‍☠️🏴‍☠️🏴‍☠️🏴‍☠️🏴‍☠️\n{results_dict=}'
-    print('🎉🎉🎉🎉🎉 All spectral calculation methods agree :-) 🎉🎉🎉🎉🎉')
+    assert all(all_results), f'🏴‍☠️🏴‍☠️🏴‍☠️🏴‍☠️🏴‍☠️ Failure present in {multitrap}! 🏴‍☠️🏴‍☠️🏴‍☠️🏴‍☠️🏴‍☠️\n{results_dict=}'
+    print(f'🎉🎉🎉🎉🎉 All spectral calculation methods agree for {multitrap} :-) 🎉🎉🎉🎉🎉')
     print(results_dict)
 
     return

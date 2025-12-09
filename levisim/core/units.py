@@ -29,7 +29,7 @@ ns = 1e-9  # seconds to nanoseconds
 
 # rotational frequency
 # NOTE: these also just convert "angular" frequency to linear frequency
-# i.e. via ω = 2πf, where [ω] = [2π·Hz] i.e. with no radians!
+# i.e. via ω = 2πf, where [ω] = 2π·Hz i.e. with no radians!
 Hz = π + π  # radians/second to hertz
 kHz = 1e3 * Hz  # radians/second to kilohertz
 MHz = 1e6 * Hz  # radians/second to megahertz

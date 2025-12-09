@@ -53,7 +53,7 @@ class Trap:
         ############################################################################################
         # DEFINED PROPERTIES
         # ------------------------------------------------------------------------------------------
-        # Feedback mechanical damping rates of (x,y,z)-motion oscillations
+        # Feedback mechanical damping rates of (x, y, z)-motion oscillations
         # [2π·Hz]
         self.Γ_fbx = float(kwargs.get('Γ_fbx', 2.1*kHz))
         self.Γ_fby = float(kwargs.get('Γ_fby', 2.5*kHz))
@@ -271,7 +271,7 @@ class Trap:
     @cached_property
     def fdirj(self):
         """
-        Dict of directed force noises in the (x,y,z)-axes
+        Dict of directed force noises in the (x, y, z)-axes
         [N/√Hz]
         """
         return {
@@ -307,7 +307,7 @@ class Trap:
     @cached_property
     def Sdirj(self):
         """
-        Dict of directed force spectral density for (x,y,z)-axis motion
+        Dict of directed force spectral density for (x, y, z)-axis motion
         [N²/Hz]
         """
         return {
@@ -330,7 +330,7 @@ class Trap:
     @cached_property
     def Γx(self):
         """
-        Total mechanical damping rate of (x,y,z)-motion oscillations
+        Total mechanical damping rate of (x, y, z)-motion oscillations
         [2π·Hz]
         """
         return self.Γth + self.Γ_fbx
@@ -354,7 +354,7 @@ class Trap:
     @cached_property
     def Γj(self):
         """
-        Dict of total mechanical damping rates for (x,y,z)-motion oscillations
+        Dict of total mechanical damping rates for (x, y, z)-motion oscillations
         [2π·Hz]
         """
         return {
@@ -390,7 +390,7 @@ class Trap:
     @cached_property
     def τj(self):
         """
-        Dict of Autocorrelation / thermalisation times for (x,y,z)-motion oscillations
+        Dict of Autocorrelation / thermalisation times for (x, y, z)-motion oscillations
         [s]
         """
         return {
@@ -426,7 +426,7 @@ class Trap:
     @cached_property
     def kj(self):
         """
-        Dict of spring constants of the restoring forces in the (x,y,z)-axes due to the tweezer potential
+        Dict of spring constants of the restoring forces in the (x, y, z)-axes due to the tweezer potential
         [N/m]
         """
         return {
@@ -512,7 +512,7 @@ class Trap:
     @cached_property
     def j_SQL(self):
         """
-        Standard Quantum Limit displacements for (x,y,z)-motions
+        Standard Quantum Limit displacements for (x, y, z)-motions
         [m]
         """
         return {
@@ -548,7 +548,7 @@ class Trap:
     @cached_property
     def Fj_SQL(self):
         """
-        Standard Quantum Limit forces in (x,y,z)-axes
+        Standard Quantum Limit forces in (x, y, z)-axes
         [N]
         """
         return {

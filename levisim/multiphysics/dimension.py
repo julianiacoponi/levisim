@@ -16,11 +16,11 @@ class Dimension:
         - T: thermal bath temperature [K]
         - m: mass of bead associated with this dimension [kg]
 
-        - Ω: resonant frequency of motion associated with this dimension [rad/s]
-        - Γ: mechanical damping rate [rad/s]
+        - Ω: resonant frequency of motion associated with this dimension [2π·Hz]
+        - Γ: mechanical damping rate [2π·Hz]
 
-        - g: light-mech coupling rate [rad/s]
-        - gxy, gxz, gyz: mech-mech coupling rates [rad/s]
+        - g: light-mech coupling rate [2π·Hz]
+        - gxy, gxz, gyz: mech-mech coupling rates [2π·Hz]
 
     There are two ways to initialise this class:
     1) TOY MODEL:
@@ -28,8 +28,7 @@ class Dimension:
 
     2) PHYSICS MODEL:
     This derives the parameters from the original physics classes, and includes:
-        - Φ: trapping position [rad]
-
+        - Φ: trapping position along the cavity's standing wave [rad]
     """
     def __init__(self, multitrap, label, **params):
 
@@ -88,27 +87,28 @@ class Dimension:
         if self.Γ is None:
             self.Γ = self.trap.Γth
 
-        # Light-mech coupling goes H/ħ = -XL
+        # Light-mech coupling goes H/ħ = -X·L
         # X = b† + b
-        # L = g.an† + g*.an
+        # L = g·an† + g*·an
         # g = gAn + igPn
-        # L = gAn.An + gPn.Pn
-        # An = (an† + an)
+        # L = gAn·An + gPn·Pn
+        # An = an† + an
         # Pn = i(an† - an)
 
-        # a†,a = creation, annihilation operator for photons in the single cavity mode
-        # an†,an = creation, annihilation operator for photons per-tweezer, 'rotated' cavity mode
-        # φ = per tweezer phase
-        # an = a.exp(-iφ)
-        # an† = a†.exp(iφ)
+        # NOTE: the below is the '+' tweezer phase convention since G = g·exp(+iφ)
+        # a†, a = creation, annihilation operator for photons in the single, shared cavity mode
+        # an†, an = creation, annihilation operator for photons per-tweezer, 'rotated' cavity mode
+        # φn = per tweezer phase
+        # an = a·exp(-iφn)
+        # an† = a†·exp(iφn)
 
-        # L = g.a†.exp(iφ) + g*.a.exp(-iφ)
-        # L = G.a† + G*.a = GA.A + GP.P
-        # G = g.exp(iφ)
-        # G* = g*.exp(-iφ)
+        # L = g·a†·exp(iφn) + g*·a·exp(-iφn)
+        # L = G·a† + G*·a = GA·A + GP·P
+        # G = g·exp(iφn)
+        # G* = g·exp(-iφn)
 
-        # L = GA.A + GP.P
-        # A = (a† + a)
+        # L = GA·A + GP·P
+        # A = a† + a
         # P = i(a† - a)
         # G = GA + iGP
 
@@ -148,14 +148,23 @@ class Dimension:
         ############################################################################################
         # DERIVED PROPERTIES
         # ------------------------------------------------------------------------------------------
-        # Linear coupling of (x,y,z)-motion to the cavity light quadratures with tweezer phase included
-        # [rad/s]
+        # Linear coupling of (x, y, z)-motion to the cavity light quadratures with tweezer phase included
+        # [2π·Hz]
+        Φjn = self.CS_coupling_phase
         if not self.φ:
-            arg = self.CS_coupling_phase
             # NOTE: only sympy gives exact cos(π/2) = 0
-            self.G = self.g * (float(sympy.cos(arg)) + 1j * float(sympy.sin(arg)))
+            self.G = self.g * (float(sympy.cos(Φjn)) + 1j * float(sympy.sin(Φjn)))
         else:
-            self.G = self.g * np.exp(1j * (self.CS_coupling_phase + self.φ))
+            if self.multitrap.tweezer_phase_sign_convention == +1:
+                # NOTE: this is what my code's derivation implies: G = g·exp(iφ)
+                # i.e. positive phase to the creation operator when using a coupling Hamiltonian
+                # H_CS = q(G*·a + G·a†) = g·q(a·exp(-iφ) + a†·exp(iφ))
+                self.G = self.g * np.exp(1j * (Φjn + self.φ))
+            if self.multitrap.tweezer_phase_sign_convention == -1:
+                # NOTE: this is what Tania's analytic derivation implies: G = g·exp(-iφ)
+                # i.e. positive phase to the annihilation operator when using the coupling Hamiltonian
+                # H_CS = q(G*·a + G·a†) = g·q(a·exp(iφ) + a†·exp(-iφ))
+                self.G = self.g * np.exp(1j * (Φjn - self.φ))
 
         # ------------------------------------------------------------------------------------------
         # Number of phonons due to the thermal bath, via the Bose-Einstein distribution
@@ -237,8 +246,8 @@ class Dimension:
     @property
     def CS_coupling_phase(self):
         """
-        Phase of linear coherent scattering coupling of (x,y,z)-motion to the cavity light
-        C(Φ) = Acos(Φ) + Psin(Φ) = a†.exp(iΦ) + a.exp(-iΦ)
+        Phase of linear coherent scattering coupling of (x, y, z)-motion to the cavity light
+        C(Φ) = A·cos(Φ) + P·sin(Φ) = a†·exp(iΦ) + a·exp(-iΦ)
         - Φ = 0 couples to amplitude quadrature, C(0) = A = a† + a
         - Φ = π/2 couples to phase quadrature, C(π/2) = P = i(a† - a)
         [rad]
@@ -252,8 +261,8 @@ class Dimension:
     @property
     def light_mech_coupling(self):
         """
-        Linear coupling of (x,y,z)-motion to the cavity light quadratures
-        [rad/s]
+        Linear coupling of (x, y, z)-motion to the cavity light quadratures
+        [2π·Hz]
         """
         kc, θtw = self.trap.tweezer.k, self.trap.tweezer.θ
         ωdsinθ = self.trap.ωd * np.sin(θtw)
@@ -275,7 +284,7 @@ class Dimension:
     def mech_mech_coupling(self, axes):
         """
         Linear coupling between 2 axes of motion
-        [rad/s]
+        [2π·Hz]
         """
         kc, θtw = self.trap.tweezer.k, self.trap.tweezer.θ
         Φ = self.trap.bead.Φ
@@ -307,7 +316,7 @@ class Dimension:
     def χM(self, ω):
         """
         The mechanical susceptibility for phonon annihilation
-        [complex (rad/s)⁻¹]
+        [complex (2π·Hz)⁻¹]
         """
         return (-1j*(ω - self.Ω) + self.Γ / 2)**(-1)
 
@@ -315,7 +324,7 @@ class Dimension:
         """
         The difference of the conjugate mechanical susceptibilities
         for phonon annihilation and creation
-        [complex (rad/s)⁻¹]
+        [complex (2π·Hz)⁻¹]
         """
         return self.χM(ω) - np.conjugate(self.χM(-ω))
 
@@ -323,21 +332,21 @@ class Dimension:
         """
         The sum of the conjugate mechanical susceptibilities
         for phonon annihilation and creation
-        [complex (rad/s)⁻¹]
+        [complex (2π·Hz)⁻¹]
         """
         return self.χM(ω) + np.conjugate(self.χM(-ω))
 
     def M(self, ω):
         """
         The 1D normalisation factor for position
-        [·]
+        [complex]
         """
-        return 1 + self.μm(ω) * self.multitrap.cavity.ηm(ω) * np.abs(self.G)**2
+        return 1 +  self.multitrap.cavity.ηm(ω) * np.abs(self.G)**2 * self.μm(ω)
 
     def Q1D(self, ω):
         """
         The 1D noise vector for this dimension
-        [·]
+        [complex]
         """
         κ = self.multitrap.cavity.κ
         Γ = self.Γ

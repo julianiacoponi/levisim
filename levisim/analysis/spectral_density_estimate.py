@@ -471,7 +471,7 @@ class SpectralDensityEstimate:
         Γ0=None,
         Ω0=None,
         # the range of Hz values in which to fit
-        range=(1_000, 500_000),
+        fit_range=(1_000, 500_000),
         # error tolerance on the function evaluations
         ftol=1e-10,
         # maximum number of function evaluations
@@ -486,7 +486,7 @@ class SpectralDensityEstimate:
             """ Function to fitting 1 response curve """
             return A * Γ / ((Ω**2 - ω**2)**2 + (Γ*ω)**2)
 
-        self.fit_range = range
+        self.fit_range = fit_range
 
         if A0 is None:
             # A = kb*T / (π*m) for a displacement PSD
@@ -498,9 +498,9 @@ class SpectralDensityEstimate:
 
         p0_Hz = (A0, Γ0, Ω0)
 
-        freqs, PSD_vals = self.get_plot_points(*range)
+        freqs, PSD_vals = self.get_plot_points(*fit_range)
         if debug:
-            print(f'fit_PSD: range={range}')
+            print(f'fit_PSD: range={fit_range}')
             print(f'fit_PSD: min(freqs)={min(freqs)}')
             print(f'fit_PSD: max(freqs)={max(freqs)}')
             print(f'fit_PSD: A0={A0:.3f}')

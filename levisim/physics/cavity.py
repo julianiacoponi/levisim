@@ -213,7 +213,7 @@ class Cavity:
 
     def ηm(self, ω):
         """
-        The difference of the conjugate optical susceptibilities
+        The difference of the Hermitian conjugate optical susceptibilities
         for photon annihilation and creation in the cavity
         [complex (2π·Hz)⁻¹]
         """
@@ -221,15 +221,23 @@ class Cavity:
 
     def ηp(self, ω):
         """
-        The sum of the conjugate optical susceptibilities
+        The sum of the Hermitian conjugate optical susceptibilities
         for photon annihilation and creation in the cavity
         [complex (2π·Hz)⁻¹]
         """
         return self.χC(ω) + np.conjugate(self.χC(-ω))
 
+    def ξC(self, ω):
+        """
+        Product of the Hermitian conjugate optical susceptibilities
+        for photon annihilation in the cavity
+        [complex (2π·Hz)⁻¹]
+        """
+        return self.χC(ω) * np.conjugate(self.χC(-ω))
+
     def ηφ_A(self, φ, ω):
         """
-        Generalised optical susceptibilities
+        Generalised phase-dependent difference of the Hermitian conjugate optical susceptibilities
         for photon annihilation and creation in the cavity
         (Amplitude form ~ χC* + χC)
         [complex (2π·Hz)⁻¹]
@@ -238,7 +246,7 @@ class Cavity:
 
     def ηφ_P(self, φ, ω):
         """
-        Generalised optical susceptibilities
+        Generalised phase-dependent difference of the Hermitian conjugate optical susceptibilities
         for photon annihilation and creation in the cavity
         (Phase form ~ i(χC* - χC))
         [complex (2π·Hz)⁻¹]
@@ -247,7 +255,7 @@ class Cavity:
 
     def ηφ_T(self, φ, ω):
         """
-        Generalised optical susceptibilities
+        Generalised phase-dependent difference of the Hermitian conjugate optical susceptibilities
         for photon annihilation and creation in the cavity
         (Tania's form ~ χC - χC*)
         [complex (2π·Hz)⁻¹]
