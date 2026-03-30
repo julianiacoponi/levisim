@@ -1,7 +1,7 @@
 # INSTRUCTIONS TO SETUP THE DOCKER IMAGES:
 
 # 1. Make sure the docker daemon is running (i.e. that `docker ps` returns something!)
-#   - if on MacOS, this means downloading Docker Desktop and seeing the Docker whale in menu bar
+#   - if on macOS, this means downloading Docker Desktop and seeing the Docker whale in menu bar
 
 # 2. Download the latest docker images for `elasticsearch` and `kibana` that work with your machine's architecture (arm64, amd64 etc.)
 #   - assign these images in the `services:images:` entries below

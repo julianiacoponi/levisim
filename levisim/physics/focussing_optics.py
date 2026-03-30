@@ -9,7 +9,7 @@ from levisim.core.units import (
     mm, μm, nm,
     THz,
     mW,
-    V,
+    Volt,
 )
 
 
@@ -169,7 +169,7 @@ class FocussingOptics:
             f'\n        aperture radius, a = f sin(θ_max) = {self.aperture_radius / mm:.3f} mm'
             f'\n        filling factor, f0 = w0/a = {self.f0:.3f}'
             f'\n        Fresnel number, F = a²/fλ = {self.Fresnel_number:.3f}'
-            f'\n        Σ = {self.Σ / (V / μm):.3e} V/m'
+            f'\n        Σ = {self.Σ / (Volt / μm):.3e} V/m'
             f'\n        Σ / Z_imp = {self.Σ / self.Z_impedance:.3e} A/m'
             f'\n)'
         )

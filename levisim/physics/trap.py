@@ -133,6 +133,10 @@ class Trap:
             f'\n    Ωy = {self.Ωy / kHz:.5f} kHz'
             f'\n    Ωz = {self.Ωz / kHz:.5f} kHz'
             f'\n'
+            f'\n    Qx = {self.Qx:.5e}'
+            f'\n    Qy = {self.Qy:.5e}'
+            f'\n    Qz = {self.Qz:.5e}'
+            f'\n'
             f'\n    kx = {self.kx:.5e} N/m'
             f'\n    ky = {self.ky:.5e} N/m'
             f'\n    kz = {self.kz:.5e} N/m'
@@ -481,6 +485,43 @@ class Trap:
             'z': self.Ωz,
         }
 
+    @cached_property
+    def Qx(self):
+        """
+        Quality factor of the oscillation in the x-axis
+        [·]
+        """
+        return self.Ωx / self.Γx
+
+    @cached_property
+    def Qy(self):
+        """
+        Quality factor of the oscillation in the y-axis
+        [·]
+        """
+        return self.Ωy / self.Γy
+
+    @cached_property
+    def Qz(self):
+        """
+        Quality factor of the oscillation in the z-axis
+        [·]
+        """
+        return self.Ωz / self.Γz
+
+
+    @cached_property
+    def Q(self):
+        """
+        Dict of quality factors of the oscillations in (x, y, z)-axes
+        [·]
+        """
+        return {
+            'x': self.Qx,
+            'y': self.Qy,
+            'z': self.Qz,
+        }
+
     # ----------------------------------------------------------------------------------------------
     # STANDARD QUANTUM LIMITS
     # ----------------------------------------------------------------------------------------------
@@ -662,7 +703,7 @@ class Trap:
         Scattering cross section for tweezer light hitting the bead
         [m²]
         """
-        return self.k * np.imag(self.α_eff) / ε0
+        return self.tweezer.k * np.imag(self.α_eff) / ε0
 
     @cached_property
     def z_eq(self):

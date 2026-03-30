@@ -211,6 +211,14 @@ class Cavity:
         """
         return (-1j*(ω + self.Δ) + self.κ / 2)**(-1)
 
+    def χC_star(self, ω):
+        """
+        The optical susceptibility
+        for photon creation in the cavity
+        [complex (2π·Hz)⁻¹]
+        """
+        return np.conjugate(self.χC(-ω))
+
     def ηm(self, ω):
         """
         The difference of the Hermitian conjugate optical susceptibilities

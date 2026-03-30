@@ -16,9 +16,9 @@ from levisim.core.units import Hz, kHz
 from levisim.core.colours import discrete_viridis, discrete_plasma, discrete_magma
 
 from levisim.multiphysics.multitrap import MultiTrap
-from levisim.multiphysics.quantum_linear_theory_method import QuantumLinearTheoryMethod
-from levisim.multiphysics.spectrum_type import SpectrumType
-from levisim.multiphysics.parameter import ParameterType
+from levisim.multiphysics.enums.quantum_linear_theory_method import QuantumLinearTheoryMethod
+from levisim.multiphysics.enums.spectrum import SpectrumType
+from levisim.multiphysics.enums.parameter import ParameterType
 
 
 __all__ = [
@@ -56,18 +56,18 @@ def spectrum_type_to_units(spectrum_type):
     Returns a units string given a choice of spectrum
     """
     if spectrum_type.is_optical:
-        return '(photons/Hz)'
-    return '(m$^2$/Hz)'
+        return '[photons/Hz]'
+    return '[m²/Hz]'
 
 
-def calculate_area(multitrap, values):
+def calculate_area(mtrap, values):
     """
     Take the area under the given spectral values
     """
-    return np.trapz(values, multitrap.ω_range / Hz)
+    return np.trapz(values, mtrap.ω_range / Hz)
 
 
-def calculate_phonons_and_temperatures_from_PSD(multitrap, Sqq_values, label):
+def calculate_phonons_and_temperatures_from_PSD(mtrap, Sqq_values, label):
     """
     Take the area under the given PSD to find the number of phonons and temperature
     - area under zpf-normalised PSD = 2n + 1, where n = phonon occupation
@@ -83,12 +83,11 @@ def calculate_phonons_and_temperatures_from_PSD(multitrap, Sqq_values, label):
         ∴
         T = (mΩ² / kB) × 〈q²〉
     """
-    multitrap = multitrap
-    jn = multitrap.dimensions[label]
+    jn = mtrap.dimensions[label]
     ħΩ = ħ * jn.Ω
 
     # convert Sqq(Ω)dΩ to Sqq(f)df with Hz = 2π
-    q_variance = np.trapz(Sqq_values, multitrap.ω_range / Hz)
+    q_variance = np.trapz(Sqq_values, mtrap.ω_range / Hz)
 
     # Convert to Q = q/q_zpf
     SQQ_area = q_variance / jn.zpf**2
@@ -104,7 +103,7 @@ def calculate_phonons_and_temperatures_from_PSD(multitrap, Sqq_values, label):
 
 def update_parameter_in_multitrap_kwargs(multitrap_kwargs, parameter, new_value):
     """
-    Updates the given parameter from `multitrap` instance to the given value
+    Updates the given parameter from `Multitrap` instance to the given value
     """
     logger.info(f'Updating {parameter.type} to {new_value / parameter.units:{parameter.format_specifier}}{parameter.unit_symbol}')
 
@@ -130,10 +129,10 @@ def update_parameter_in_multitrap_kwargs(multitrap_kwargs, parameter, new_value)
         multitrap_kwargs['evaluation_order'] = int(new_value)
 
         # change the calculation method depending on whether evaluating at highest order or not
-        num_total_dims = multitrap_kwargs['num_traps'] * multitrap_kwargs['Cartesian_axes_per_trap']
-        if multitrap_kwargs['evaluation_order'] == num_total_dims:
+        num_dimensions = multitrap_kwargs['num_traps'] * multitrap_kwargs['Cartesian_axes_per_trap']
+        if multitrap_kwargs['evaluation_order'] == num_dimensions:
             multitrap_kwargs['QLT_method'] = QuantumLinearTheoryMethod.NUMERICAL_HYBRIDISATION
-        elif multitrap_kwargs['evaluation_order'] < num_total_dims:
+        elif multitrap_kwargs['evaluation_order'] < num_dimensions:
             multitrap_kwargs['QLT_method'] = QuantumLinearTheoryMethod.POWER_SERIES_HYBRIDISATION
 
     return multitrap_kwargs
@@ -151,7 +150,7 @@ def calculate_spectra_across_y_range_for_one_frame(
     Given a value of the frame variable, returns a spectrum calculated at each value in the
     y-variable's range
     """
-    if spectrum_type == SpectrumType.PSD:
+    if spectrum_type == SpectrumType.POSITION_PSD:
         PSD_label = kwargs.get('PSD_label', 'x1')
 
     # define the value for this frame
@@ -167,24 +166,24 @@ def calculate_spectra_across_y_range_for_one_frame(
 
     for yy, y_value in enumerate(y.range):
         multitrap_kwargs = update_parameter_in_multitrap_kwargs(multitrap_kwargs, y, y_value)
-        multitrap = MultiTrap(**multitrap_kwargs)
+        mtrap = MultiTrap(**multitrap_kwargs)
 
         if spectrum_type == SpectrumType.HETERODYNE:
-            spectra_across_y_range[:, yy] = multitrap.calculate_heterodyne_spectrum(multitrap.QLT_method)
-            area = calculate_area(multitrap, spectra_across_y_range[:, yy])
+            spectra_across_y_range[:, yy] = mtrap.calculate_heterodyne_spectrum(mtrap.QLT_method)
+            area = calculate_area(mtrap, spectra_across_y_range[:, yy])
             area_across_y_range.append(area)
 
         elif spectrum_type == SpectrumType.HOMODYNE:
-            spectra_across_y_range[:, yy] = multitrap.calculate_homodyne_spectrum(multitrap.QLT_method)
-            area = calculate_area(multitrap, spectra_across_y_range[:, yy])
+            spectra_across_y_range[:, yy] = mtrap.calculate_homodyne_spectrum(mtrap.QLT_method)
+            area = calculate_area(mtrap, spectra_across_y_range[:, yy])
             area_across_y_range.append(area)
 
-        elif spectrum_type == SpectrumType.PSD:
-            _, psd_dict = multitrap.calculate_all_hybridised_position_spectra(multitrap.QLT_method)
+        elif spectrum_type == SpectrumType.POSITION_PSD:
+            _, psd_dict = mtrap.calculate_all_position_power_spectra(mtrap.QLT_method)
             spectra_across_y_range[:, yy] = psd_dict[PSD_label]
 
             ph, T_ph, T_var = calculate_phonons_and_temperatures_from_PSD(
-                multitrap,
+                mtrap,
                 spectra_across_y_range[:, yy],
                 PSD_label,
             )
@@ -529,16 +528,16 @@ def animate_spectra(
     }[animation_type]
 
     fig, animation_frames = frame_func(
-            multitrap_kwargs,
-            all_parameters,
-            x, y, frame,
-            spectrum_type,
+        multitrap_kwargs,
+        all_parameters,
+        x, y, frame,
+        spectrum_type,
 
-            all_spectra_by_frame,
-            limits,
-            info_for_all_frames,
+        all_spectra_by_frame,
+        limits,
+        info_for_all_frames,
 
-            **kwargs,
+        **kwargs,
     )
 
     # make each animation 5s long

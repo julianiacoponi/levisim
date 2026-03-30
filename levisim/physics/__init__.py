@@ -3,7 +3,6 @@
 levisim.physics
 ===============
 A module to handle all the physics involved in levitation
-
 """
 
 

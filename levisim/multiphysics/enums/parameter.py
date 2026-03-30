@@ -8,6 +8,7 @@ from levisim.core.units import (
     K,
 )
 
+
 __all__ = [
     'ParameterType',
     'Parameter',
@@ -58,6 +59,7 @@ class ParameterType(Enum):
             return 'Cavity Detuning'
         if self == ParameterType.OPTICAL_DAMPING:
             return 'Optical Damping'
+
         # gas
         if self == ParameterType.AIR_PRESSURE:
             return 'Air Pressure'

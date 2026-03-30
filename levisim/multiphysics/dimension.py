@@ -8,6 +8,11 @@ from levisim.core.units import (
 )
 
 
+__all__ = [
+    'Dimension',
+]
+
+
 class Dimension:
     """
     Class to represent a mechanical degree of freedom in the system
@@ -39,9 +44,23 @@ class Dimension:
         # remaining characters are the bead index
         self.label = label
         self.axis, self.trap_index = label[0], int(label[1:])
-        self.sub = multitrap.label_to_sub[label]
-        # needed to know to assign Q1D
-        self.noise_index = multitrap.label_to_noise_index[label]
+        self.sub = self.multitrap.label_to_sub[label]
+        # needed to assign q1D
+        self.noise_index = self.multitrap.label_to_noise_index[label]
+
+        j, n = f'{self.axis}', f'{self.trap_index}'
+        # the $$ are left out here so these can be slotted in with other latex more easily
+        jn = f'{j}_{{{n}}}'
+        self.latex = rf'{{{jn}}}'
+        self.latex_hat = rf'\hat{{{j}}}_{{{n}}}'
+        self.latex_PSD = rf'S_{{{jn + jn}}}'
+        self.latex_Ω = rf'\Omega_{{{jn}}}'
+        self.latex_Γ = rf'\Gamma_{{{jn}}}'
+        self.latex_χ = rf'\chi_{{{jn}}}(\omega)'
+        self.latex_χ_star = rf'\chi^*_{{{jn}}}(-\omega)'
+        self.latex_μ = rf'\mu_{{{jn}}}'
+        self.latex_μm = rf'\mu^-_{{{jn}}}'
+        self.latex_μp = rf'\mu^+_{{{jn}}}'
 
         ############################################################################################
         # TOY MODEL PARAMETERS
@@ -67,7 +86,7 @@ class Dimension:
         self.Φ = None
         if not self.multitrap.toy_params:
             # e.g. label 'x1' will take traps[0]
-            self.trap = multitrap.traps[self.trap_index - 1]
+            self.trap = self.multitrap.traps[self.trap_index - 1]
             # Trapping position of the bead in the cavity's standing wave
             # [rad]
             self.Φ = self.trap.bead.Φ
@@ -76,7 +95,7 @@ class Dimension:
             self.φ = self.trap.tweezer.φ
 
         if self.T is None:
-            self.T = multitrap.gas.T
+            self.T = self.multitrap.gas.T
 
         if self.m is None:
             self.m = self.trap.bead.m
@@ -116,18 +135,18 @@ class Dimension:
             self.g = self.light_mech_coupling
 
         if self.gxy is None:
-            if multitrap.Cartesian_axes_per_trap == 1:
+            if self.multitrap.Cartesian_axes_per_trap == 1:
                 self.gxy = 0
                 self.gxz = 0
                 self.gyz = 0
 
-            if multitrap.Cartesian_axes_per_trap == 2:
+            if self.multitrap.Cartesian_axes_per_trap == 2:
                 self.gxy = self.mech_mech_coupling('xy')
                 self.gxz = 0
                 self.gyz = 0
 
             if self.gxz is None and self.gyz is None:
-                if multitrap.Cartesian_axes_per_trap == 3:
+                if self.multitrap.Cartesian_axes_per_trap == 3:
                     self.gxy = self.mech_mech_coupling('xy')
                     self.gxz = self.mech_mech_coupling('xz')
                     self.gyz = self.mech_mech_coupling('yz')
@@ -148,23 +167,24 @@ class Dimension:
         ############################################################################################
         # DERIVED PROPERTIES
         # ------------------------------------------------------------------------------------------
+        Φjn_CS = self.linearised_coherent_scattering_coupling_phase
+        sign = self.multitrap.tweezer_phase_sign_convention
+        # ------------------------------------------------------------------------------------------
         # Linear coupling of (x, y, z)-motion to the cavity light quadratures with tweezer phase included
         # [2π·Hz]
-        Φjn = self.CS_coupling_phase
         if not self.φ:
             # NOTE: only sympy gives exact cos(π/2) = 0
-            self.G = self.g * (float(sympy.cos(Φjn)) + 1j * float(sympy.sin(Φjn)))
+            self.G = self.g * (float(sympy.cos(sign * Φjn_CS)) + 1j * float(sympy.sin(sign * Φjn_CS)))
         else:
-            if self.multitrap.tweezer_phase_sign_convention == +1:
-                # NOTE: this is what my code's derivation implies: G = g·exp(iφ)
-                # i.e. positive phase to the creation operator when using a coupling Hamiltonian
-                # H_CS = q(G*·a + G·a†) = g·q(a·exp(-iφ) + a†·exp(iφ))
-                self.G = self.g * np.exp(1j * (Φjn + self.φ))
-            if self.multitrap.tweezer_phase_sign_convention == -1:
-                # NOTE: this is what Tania's analytic derivation implies: G = g·exp(-iφ)
-                # i.e. positive phase to the annihilation operator when using the coupling Hamiltonian
-                # H_CS = q(G*·a + G·a†) = g·q(a·exp(iφ) + a†·exp(-iφ))
-                self.G = self.g * np.exp(1j * (Φjn - self.φ))
+            self.G = self.g * np.exp(sign * 1j * self.φ_coupling)
+
+        # NOTE: "+1" convention is what the majority of my code's derivation implies: G = g·exp(iφ)
+        # i.e. positive phase to the creation operator when using a coupling Hamiltonian
+        # H_CS = q(G*·a + G·a†) = g·q(a†·exp(iφ) + a·exp(-iφ))
+
+        # NOTE: "-1" convention is what Tania's analytic derivation implies: G = g·exp(-iφ)
+        # i.e. positive phase to the annihilation operator when using the coupling Hamiltonian
+        # H_CS = q(G*·a + G·a†) = g·q(a†·exp(-iφ) + a·exp(iφ))
 
         # ------------------------------------------------------------------------------------------
         # Number of phonons due to the thermal bath, via the Bose-Einstein distribution
@@ -234,17 +254,16 @@ class Dimension:
             f'\n)'
         )
 
-    def zero_point_fluctuation(self, axis):
+    @property
+    def all_dimensions_in_other_traps(self):
         """
-        Zero-point fluctuation of the position of the oscillator, per axis
-        [m]
+        Returns a list of all other dimensions that are part of the `MultiTrap` instance
+        (useful for summing over k≠j)
         """
-        # TODO: sort CS frequency corrections
-        # return np.sqrt(ħ/2 / (self.bead.m * self.Ω_CS(axis)))
-        return np.sqrt(ħ/2 / (self.trap.bead.m * self.trap.Ωj[axis]))
+        return [dim for dim in self.multitrap.dimensions.values() if self.trap_index != dim.trap_index]
 
     @property
-    def CS_coupling_phase(self):
+    def linearised_coherent_scattering_coupling_phase(self):
         """
         Phase of linear coherent scattering coupling of (x, y, z)-motion to the cavity light
         C(Φ) = A·cos(Φ) + P·sin(Φ) = a†·exp(iΦ) + a·exp(-iΦ)
@@ -257,6 +276,18 @@ class Dimension:
             'y': 0,
             'z': π/2 if self.φ else sympy.pi / 2,
         }[self.axis]
+
+    @property
+    def φ_coupling(self):
+        """
+        Phase defining which quadrature of cavity light this dimension is coupled to
+        C(φ) = A·cos(φ) + P·sin(φ) = a†·exp(iφ) + a·exp(-iφ)
+        [rad]
+        """
+        # TODO: why is the sign needed here *and* in the analytic noise vector method functions in self.multitrap?
+        # make this choice at a level that also covers the definition of momentum being i(dag - hat) or i(hat - dag)
+        Φjn_CS = self.linearised_coherent_scattering_coupling_phase
+        return self.multitrap.tweezer_phase_sign_convention * float(Φjn_CS + self.φ)
 
     @property
     def light_mech_coupling(self):
@@ -310,15 +341,31 @@ class Dimension:
             kz = (kc - 1 / self.trap.tweezer.zR)
             return -P0 * ωdsinθ * (kc * y_zpf) * (kz * z_zpf) * np.cos(θtw) * np.sin(Φ)
 
+    def zero_point_fluctuation(self, axis):
+        """
+        Zero-point fluctuation of the position of the oscillator, per axis
+        [m]
+        """
+        # TODO: sort CS frequency corrections
+        # return np.sqrt(ħ/2 / (self.bead.m * self.Ω_CS(axis)))
+        return np.sqrt(ħ/2 / (self.trap.bead.m * self.trap.Ωj[axis]))
+
     ################################################################################################
     # FREQUENCY RESPONSE FUNCTIONS
     # ----------------------------------------------------------------------------------------------
-    def χM(self, ω):
+    def χ(self, ω):
         """
         The mechanical susceptibility for phonon annihilation
         [complex (2π·Hz)⁻¹]
         """
         return (-1j*(ω - self.Ω) + self.Γ / 2)**(-1)
+
+    def χ_star(self, ω):
+        """
+        The mechanical susceptibility for phonon creation
+        [complex (2π·Hz)⁻¹]
+        """
+        return np.conjugate(self.χ(-ω))
 
     def μm(self, ω):
         """
@@ -326,7 +373,7 @@ class Dimension:
         for phonon annihilation and creation
         [complex (2π·Hz)⁻¹]
         """
-        return self.χM(ω) - np.conjugate(self.χM(-ω))
+        return self.χ(ω) - np.conjugate(self.χ(-ω))
 
     def μp(self, ω):
         """
@@ -334,7 +381,7 @@ class Dimension:
         for phonon annihilation and creation
         [complex (2π·Hz)⁻¹]
         """
-        return self.χM(ω) + np.conjugate(self.χM(-ω))
+        return self.χ(ω) + np.conjugate(self.χ(-ω))
 
     def M(self, ω):
         """
@@ -343,10 +390,24 @@ class Dimension:
         """
         return 1 +  self.multitrap.cavity.ηm(ω) * np.abs(self.G)**2 * self.μm(ω)
 
-    def Q1D(self, ω):
+    def Q_THERM(self, ω):
+        """
+        The thermal noise vector for this dimension
+        [complex 1/√(2π·Hz)]
+        """
+        χ, χ_star = self.χ(ω), np.conjugate(self.χ(-ω))
+        Q_TH = np.zeros(self.multitrap.num_operators, dtype=np.complex128)
+        index = self.noise_index
+        # bj_in
+        Q_TH[index] = χ
+        # bjn†_in
+        Q_TH[index + 1] = χ_star
+        return Q_TH
+
+    def q1D(self, ω):
         """
         The 1D noise vector for this dimension
-        [complex]
+        [complex 1/√(2π·Hz)]
         """
         κ = self.multitrap.cavity.κ
         Γ = self.Γ
@@ -354,7 +415,7 @@ class Dimension:
         G_star = np.conjugate(G)
 
         χC, χC_star = self.multitrap.cavity.χC(ω), np.conjugate(self.multitrap.cavity.χC(-ω))
-        χM, χM_star = self.χM(ω), np.conjugate(self.χM(-ω))
+        χ, χ_star = self.χ(ω), np.conjugate(self.χ(-ω))
 
         μ = self.μm(ω)
         M = self.M(ω)
@@ -367,8 +428,153 @@ class Dimension:
         # a†_in
         Q[1] = 1j * μ * np.sqrt(κ) * G * χC_star / M
         # bj_in
-        Q[index] = np.sqrt(Γ) * χM / M
+        Q[index] = np.sqrt(Γ) * χ / M
         # bjn†_in
-        Q[index + 1] = np.sqrt(Γ) * χM_star / M
+        Q[index + 1] = np.sqrt(Γ) * χ_star / M
         # Q should be empty in all other indices, since it is just the vector for the 1D position
         return Q
+
+    ################################################################################################
+    # PHASE DEPENDENT ZOO OF FUNCTIONS
+    # ----------------------------------------------------------------------------------------------
+    def K(self, ω):
+        """
+        Core phase-dependent function
+        [complex 2π·Hz]
+        """
+        return 2 * np.sum([
+            dim.g**2
+            * dim.μm(ω)
+            * np.sin(self.φ_coupling - dim.φ_coupling)**2
+            for dim in self.all_dimensions_in_other_traps
+        ])
+
+    def H(self, ω):
+        """
+        Phase-dependent function that depends on K
+        [complex]
+        """
+        return -np.conjugate(self.multitrap.cavity.χC(-ω)) * self.K(ω)
+
+    def H_dag(self, ω):
+        """
+        Hermitian conjugate of H
+        [complex]
+        """
+        return self.multitrap.cavity.χC(ω) * self.K(ω)
+
+    def U(self, ω):
+        """
+        Phase-dependent function that depends on K
+        [complex]
+        """
+        return 1 - np.conjugate(self.multitrap.cavity.χC(-ω)) * self.K(ω)
+
+    def U_dag(self, ω):
+        """
+        Hermitian conjugate of U
+        [complex]
+        """
+        return 1 + self.multitrap.cavity.χC(ω) * self.K(ω)
+
+    def N(self, option, ω):
+        """
+        Phase-dependent function that appears in the normalisation function
+        [complex]
+        """
+        match option:
+            case 'K':
+                return self.multitrap.cavity.ηm(ω) - self.multitrap.cavity.ξC(ω) * self.K(ω)
+            case 'H':
+                return self.multitrap.cavity.ηm(ω) + self.multitrap.cavity.χC(ω) * self.H(ω)
+            case 'U':
+                return self.multitrap.cavity.χC(ω) * self.U(ω) - np.conjugate(self.multitrap.cavity.χC(-ω))
+            case 'H_dag':
+                return self.multitrap.cavity.ηm(ω) - np.conjugate(self.multitrap.cavity.χC(-ω)) * self.H_dag(ω)
+            case 'U_dag':
+                return self.multitrap.cavity.χC(ω) - np.conjugate(self.multitrap.cavity.χC(-ω)) * self.U_dag(ω)
+
+    def K_2(self, ω):
+        """
+        Alternative definition of K
+        [complex 2π·Hz]
+        """
+        return np.sum([
+            dim.g**2
+            * dim.μm(ω)
+            * (1 - np.exp(2j * (self.φ_coupling - dim.φ_coupling)))
+            for dim in self.all_dimensions_in_other_traps
+        ])
+
+    def H_2(self, ω):
+        """
+        Alternative definition of H
+        [complex]
+        """
+        return np.conjugate(self.multitrap.cavity.χC(-ω)) * np.sum([
+            dim.g**2
+            * dim.μm(ω)
+            * (np.exp(2j * (self.φ_coupling - dim.φ_coupling)) - 1)
+            for dim in self.all_dimensions_in_other_traps
+        ])
+
+    def H_dag_2(self, ω):
+        """
+        Alternative definition of H_dag
+        [complex]
+        """
+        return self.multitrap.cavity.χC(ω) * np.sum([
+            dim.g**2
+            * dim.μm(ω)
+            # NOTE: changing this -2j to 2j means the definition of N_2 with H_dag_2 (and hence U_dag_2)
+            # lines up with the other N_2 definitions.
+            # I don't know why the usual 1j to -1j rule for Hermitian conjugation doesn't work here...
+            * (1 - np.exp(-2j * (self.φ_coupling - dim.φ_coupling)))
+            for dim in self.all_dimensions_in_other_traps
+        ])
+
+    def U_2(self, ω):
+        """
+        Alternative definition of U_dag
+        [complex]
+        """
+        return 1 + self.H_2(ω)
+
+    def U_dag_2(self, ω):
+        """
+        Alternative definition of U_dag
+        [complex]
+        """
+        return 1 + self.H_dag_2(ω)
+
+    def N_2(self, option, ω):
+        """
+        Alternative definitions of N
+        [complex]
+        """
+        match option:
+            case 'K':
+                return self.multitrap.cavity.ηm(ω) - self.multitrap.cavity.ξC(ω) * self.K_2(ω)
+            case 'H':
+                return self.multitrap.cavity.ηm(ω) + self.multitrap.cavity.χC(ω) * self.H_2(ω)
+            case 'U':
+                return self.multitrap.cavity.χC(ω) * self.U_2(ω) - np.conjugate(self.multitrap.cavity.χC(-ω))
+            case 'H_dag':
+                return self.multitrap.cavity.ηm(ω) - np.conjugate(self.multitrap.cavity.χC(-ω)) * self.H_dag_2(ω)
+            case 'U_dag':
+                return self.multitrap.cavity.χC(ω) - np.conjugate(self.multitrap.cavity.χC(-ω)) * self.U_dag_2(ω)
+
+    def P(self, ω):
+        """
+        Phase-dependent function that equals zero when all phases are zero
+        [complex]
+        """
+        return self.g**2 * self.μm(ω) * self.K(ω)
+
+    def P_2(self, ω):
+        """
+        Alternative definition of P
+        [complex]
+        """
+        return self.g**2 * self.μm(ω) * self.K_2(ω)
+

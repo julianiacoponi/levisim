@@ -13,6 +13,9 @@ from levisim.core.utils import save_variable_to_pickle, generate_time_array
 from levisim.physics.trap import Trap
 from levisim.data.trace import Trace
 
+__all__ = [
+    'Simulation',
+]
 
 class Simulation:
     """ Tweezer-bead dynamics simulated using a Runge-Kutta (RK) stochastic numerical solver """

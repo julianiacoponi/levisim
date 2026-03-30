@@ -12,7 +12,7 @@ degrees = π  / 180  # radians to degrees
 
 
 # space
-m = 1  # metre
+metre = 1  # metre
 cm = 1e-2  # metres to centimetres
 mm = 1e-3  # metres to millimetres
 μm = 1e-6  # metres to microns
@@ -21,7 +21,7 @@ pm = 1e-12  # metres to picometres
 
 
 # time
-s = 1  # second
+second = 1  # second
 ms = 1e-3  # seconds to milliseconds
 μs = 1e-6  # seconds to microseconds
 ns = 1e-9  # seconds to nanoseconds
@@ -60,12 +60,12 @@ MeV = 1e6 * eV  # joules to megaelectronvolts
 
 
 # power
-W = 1  # watt
+Watt = 1  # watt
 mW = 1e-3  # watts to milliwatts
 
 
 # force
-N = 1  # newton
+Newton = 1  # newton
 fN = 1e-15  # newtons to femtonewtons
 aN = 1e-18  # newtons to attonewtons
 zN = 1e-21  # newtons to zeptonewtons
@@ -84,10 +84,10 @@ mK = 1e-3  # kelvin to millikelvin
 
 
 # voltage
-V = 1  # volt
+Volt = 1  # volt
 mV = 1e-3  # volts to millivolts
 
 
 # current
-A = 1
+Amp = 1
 mA = 1e-3  # amps to milliamps

@@ -8,10 +8,13 @@ from sympy.combinatorics import Permutation
 from sympy.combinatorics.named_groups import SymmetricGroup
 
 from levisim.core.logger import logger
+from levisim.core.wrappers import timer, profiler, progress_bar
+
 
 __all__ = [
     'HybridisationTerm',
     'term_string',
+    'term_latex',
 
     'generate_subscripts_and_labels',
     'symmetric_group_with_min_fixed_points',
@@ -25,18 +28,50 @@ __all__ = [
 ]
 
 
+DEBUG = False
+TIMER = False
+PROFILER = False
+PROGRESS_BAR = False
+
+
+# TODO: make this into a proper class...
 HybridisationTerm = namedtuple('HybridisationTerm', ['sign', 'pairs'])
 
 
 def term_string(term):
+    """
+    Generates a string that represents the hybridistaion term
+    e.g. Rx1y1.Ry1x2.Rx2x1
+    """
     if not term.pairs:
         return '+1'
     t_str = '+' if term.sign == 1 else '-'
     for ii, pair in enumerate(term.pairs):
-        pair0_str = ''.join(pair[0])
-        pair1_str = ''.join(pair[1])
-        dot = '' if ii == len(term.pairs) - 1 else '.'
-        t_str = f'{t_str}R{pair0_str}{pair1_str}{dot}'
+        jn, km = ''.join(pair[0]), ''.join(pair[1])
+        dot = '' if ii == len(term.pairs) - 1 else '·'
+        t_str = f'{t_str}R{jn}{km}{dot}'
+    return t_str
+
+
+def term_latex(term, with_ω=True):
+    """
+    Generates latex that represents the hybridistaion term
+    e.g. R_{x_{1} y{1}} \cdot R_{y{1}x{2}} \cdot R_{x{2}x{1}}
+    """
+    if not term.pairs:
+        return '+1'
+    t_str = '+' if term.sign == 1 else '-'
+    for ii, pair in enumerate(term.pairs):
+        jn, km = ''.join(pair[0]), ''.join(pair[1])
+        j, n, k, m = jn[0], jn[1:], km[0], km[1:]
+        j_n, k_m = f'{j}_{{{n}}}', f'{k}_{{{m}}}'
+
+        if with_ω:
+            dot = '(\omega)' if ii == len(term.pairs) - 1 else '(\omega) \cdot '
+        else:
+            dot = '' if ii == len(term.pairs) - 1 else ' \cdot '
+
+        t_str = rf'{t_str}R_{{{j_n + k_m}}}{dot}'
     return t_str
 
 
@@ -120,12 +155,14 @@ def symmetric_group_with_min_fixed_points(
 # TODO: set this up so that the loop only has to happen once to generate
 # all determinant and adjugate terms required...
 # TODO: figure out why the performance of adjugate calculations is so slow...
+@timer(TIMER, debug=DEBUG)
+@profiler(PROFILER)
 def generate_deranged_terms(
     n,
     i=None, j=None,
     dimension_labels=None,
     max_order=None,
-    debug=False,
+    debug=DEBUG,
 ):
     """
     n = overall order of system
@@ -281,7 +318,7 @@ def generate_deranged_terms(
 
             term = HybridisationTerm(sign=sign, pairs=pairs)
             if debug:
-                logger.debug(perm.full_cyclic_form, term_string(term))
+                logger.debug(f'{perm.full_cyclic_form=}, {term_string(term)=}')
 
             # NOTE: sorted() could help with unit testing, but not needed for now
             # doesn't seem to affect performance that much
@@ -315,6 +352,10 @@ def generate_all_hybridisation_functions(labels, sign=1):
     return all_Rjk
 
 
+@timer(TIMER)
+@profiler(PROFILER)
+# TODO: fix progress_bar for this
+# @progress_bar(loop_variable_path='labels', enabled=PROGRESS_BAR)
 def generate_determinant_and_adjugate_by_order(n, labels, max_order=None):
     """
     Generate the determinant and adjguate terms for the hybridisation matrix
@@ -351,7 +392,7 @@ def generate_determinant_and_adjugate_by_order(n, labels, max_order=None):
         logger.info(f'{len(deranged_adjugate_by_order[max_order][aa])} terms in {a} diagonal adjugate of order {max_order} of {n}')
         logger.info(f'{len(deranged_adjugate_by_order[max_order][ab])} terms in {ab} off-diagonal adjugate of order {max_order} of {n}')
 
-    logger.info('Truncating power series...')
+    logger.info('🪚 Truncating power series...')
     # next, truncate the power series down to order 1
     for truncation_order in list(range(1, max_order))[::-1]:
         deranged_determinant_by_order[truncation_order] = truncate_power_series(
@@ -368,7 +409,7 @@ def generate_determinant_and_adjugate_by_order(n, labels, max_order=None):
                     deranged_adjugate_by_order[truncation_order + 1][ij],
                     truncation_order,
                 )
-    logger.info('Truncation complete!')
+    logger.info('🪵 Truncation complete!')
 
     return deranged_determinant_by_order, deranged_adjugate_by_order
 

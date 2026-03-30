@@ -5,12 +5,14 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from levisim.core.logger import logger
-from levisim.core.units import Hz, kHz
+from levisim.core.constants import ħ, kB
+from levisim.core.units import Hz, kHz, kiloHz, megaHz
+
 from levisim.physics.kick import Kick
 
 
 __all__ = [
-    # folders where data is kept
+    # folders where experimental data is kept
     'CALIBRATION_DATA_PATH_ROOT',
     'DIRECTED_FORCE_DATA_PATH_ROOT',
     'KICKS_DATA_PATH_ROOT',
@@ -33,9 +35,10 @@ __all__ = [
     'find_kicks',
 ]
 
+
 ####################################################################################################
 # data to calculate the V/m calibration factor
-
+# --------------------------------------------------------------------------------------------------
 CALIBRATION_DATA_PATH_ROOT = ''
 
 # data with directed stochastic noise at varying angles
@@ -47,6 +50,7 @@ KICKS_DATA_PATH_ROOT = '/Users/julian/Downloads/jon-kick-data/Kicksforcalibratio
 
 ####################################################################################################
 # binary pickle files
+# --------------------------------------------------------------------------------------------------
 
 def save_variable_to_pickle(variable, save_name='default.pickle'):
     """ Save any given python variable to a binary file """
@@ -68,7 +72,7 @@ def load_variable_from_pickle(save_name):
 
 ####################################################################################################
 # time arrays
-
+# --------------------------------------------------------------------------------------------------
 def generate_time_array(start_time, end_time, num_samples):
     """ Returns a `num_samples + 1` length array of time values, i.e. including `end_time` """
     return np.linspace(start_time, end_time, num_samples + 1, endpoint=True)
@@ -86,10 +90,9 @@ def time_slice(array, start_time, end_time, Δt):
 
 ####################################################################################################
 # signal processing
-
+# --------------------------------------------------------------------------------------------------
 def apply_filter(signal, Nyquist_freq, centre_freq, filter_type, bandwidth, plot=True):
-    kiloHz, MegaHz = 1e3, 1e6
-    logger.info(f'Signal has {len(signal)} samples and Nyquist frequency={Nyquist_freq / MegaHz} MHz')
+    logger.info(f'Signal has {len(signal)} samples and Nyquist frequency={Nyquist_freq / megaHz} MHz')
 
     if filter_type == 'butter':
         order = 5
@@ -109,12 +112,12 @@ def apply_filter(signal, Nyquist_freq, centre_freq, filter_type, bandwidth, plot
         freq, h = scipy.signal.freqz(b, a, fs=2*Nyquist_freq)
         _, ax = plt.subplots(2, 1, figsize=(8, 6))
         ax[0].plot(freq, 20*np.log10(np.maximum(abs(h), 1e-5)), '.-', color='blue')
-        ax[0].set_title("Frequency Response")
-        ax[0].set_ylabel('Amplitude (dB)')
+        ax[0].set_title('Frequency Response')
+        ax[0].set_ylabel('Amplitude [dB]')
         ax[0].grid(True)
         ax[1].plot(freq, np.unwrap(np.angle(h, deg=True)), '.-', color='green')
-        ax[1].set_ylabel('Angle (degrees)')
-        ax[1].set_xlabel('Frequency (Hz)')
+        ax[1].set_ylabel('Angle [degrees]')
+        ax[1].set_xlabel('Frequency [Hz]')
         ax[1].grid(True)
         plt.show()
 
@@ -131,7 +134,7 @@ def calculate_contrast(data):
 
 ####################################################################################################
 # kicks
-
+# --------------------------------------------------------------------------------------------------
 def kick_data_path(gain, run_choice):
     """ Returns the data path """
     root = KICKS_DATA_PATH_ROOT + '20231124_KickTest+45DegreeGain'
