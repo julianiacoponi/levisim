@@ -6,7 +6,7 @@ sibling). Those notebooks reported 988 failing method pairs out of 1200 on the c
 while still running to completion, because `Test` collects exceptions instead of raising.
 
 Those failures are an artefact of the comparison threshold, not a disagreement between the
-methods. `test_pairs_of_arrays_for_relative_difference` defaults to difficulty_level='very
+methods. `assert_arrays_agree_within_threshold` defaults to difficulty_level='very
 hard', which is a relative-difference threshold of 1e-12 - below what a double-precision
 linear solve can deliver - and it divides by |array_A|, which is ill-conditioned wherever a
 noise-vector component passes through zero. Measured against LAM over a 2×2 system, every
@@ -24,8 +24,7 @@ from levisim.core.units import kHz
 from levisim.multiphysics.enums.noise_vector import NoiseVectorType
 from levisim.multiphysics.enums.quantum_linear_theory_method import QuantumLinearTheoryMethod
 from levisim.multiphysics.utils.comparison import (
-    # aliased so pytest does not collect this helper as a test case
-    test_pairs_of_arrays_for_relative_difference as assert_arrays_agree,
+    assert_arrays_agree_within_threshold as assert_arrays_agree,
 )
 
 LAM = QuantumLinearTheoryMethod.LINEAR_AMPLIFIER_MODEL

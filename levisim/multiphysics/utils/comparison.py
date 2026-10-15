@@ -41,8 +41,8 @@ __all__ = [
     'verify_equivalence_of_spectral_functions',
 
     # test functions (raise exceptions)
-    'test_pairs_of_images_for_errant_pixels',
-    'test_pairs_of_arrays_for_relative_difference',
+    'assert_images_agree_within_errant_pixels',
+    'assert_arrays_agree_within_threshold',
 
     # visualisation functions (show plots)
     'visualise_two_spectrum_calculation_methods',
@@ -86,7 +86,7 @@ def _require_cv2():
         )
 
 
-def test_thresholds(difficulty_level):
+def thresholds_for_difficulty_level(difficulty_level):
     """
     Returns tuple of
         (
@@ -231,12 +231,12 @@ def verify_equivalence_of_spectrum_calculation_methods(mtrap, spectrum_types, me
         for image_dict in all_image_dicts.values():
             msg = f'🔦 Checking for errant pixels in the image diffs of all plots of {spectrum_type=}'
             print(msg), logger.info(msg)
-            test_pairs_of_images_for_errant_pixels(image_dict, **kwargs)
+            assert_images_agree_within_errant_pixels(image_dict, **kwargs)
 
         for spectrum_type, array_dict in all_values_dict.items():
             msg = f'🔦 Checking the relative difference is sufficiently small in all pairs of arrays of {spectrum_type=}'
             print(msg), logger.info(msg)
-            test_pairs_of_arrays_for_relative_difference(mtrap, array_dict, **kwargs)
+            assert_arrays_agree_within_threshold(mtrap, array_dict, **kwargs)
 
         msg = f'🎉🎉🎉🎉🎉 All spectral calculation methods are equivalent for {mtrap} ☺️ 🎉🎉🎉🎉🎉'
         print(msg), logger.info(msg)
@@ -303,8 +303,8 @@ def verify_equivalence_of_spectral_functions(mtrap, func_dict, **kwargs):
         else:
             plt.close(fig)
 
-    test_pairs_of_arrays_for_relative_difference(mtrap, all_values_dict, **kwargs)
-    test_pairs_of_images_for_errant_pixels(image_dict, **kwargs)
+    assert_arrays_agree_within_threshold(mtrap, all_values_dict, **kwargs)
+    assert_images_agree_within_errant_pixels(image_dict, **kwargs)
 
     msg = f'🎉🎉🎉🎉🎉 All functions are equivalent for {mtrap}! ☺️ 🎉🎉🎉🎉🎉'
     print(msg), logger.info(msg)
@@ -313,7 +313,7 @@ def verify_equivalence_of_spectral_functions(mtrap, func_dict, **kwargs):
 # --------------------------------------------------------------------------------------------------
 # TEST FUNCTIONS
 # --------------------------------------------------------------------------------------------------
-def test_pairs_of_images_for_errant_pixels(image_dict, **kwargs):
+def assert_images_agree_within_errant_pixels(image_dict, **kwargs):
     """
     Test the greyscale diff of all pairs of images in `image_dict` for errant pixels
     """
@@ -325,7 +325,7 @@ def test_pairs_of_images_for_errant_pixels(image_dict, **kwargs):
     num_names = len(image_names)
     pass_fail_matrix = np.zeros((num_names, num_names), dtype=bool)
 
-    errant_pixel_allowed_percentage, _, _ = test_thresholds(kwargs.get('difficulty_level', 'very hard'))
+    errant_pixel_allowed_percentage, _, _ = thresholds_for_difficulty_level(kwargs.get('difficulty_level', 'very hard'))
     msg = (
         f'🔬 Testing all pairs of image diffs of {image_names=}'
         f' for errant pixel percentage below {errant_pixel_allowed_percentage:.3f}%'
@@ -411,7 +411,7 @@ def test_pairs_of_images_for_errant_pixels(image_dict, **kwargs):
     print(msg), logger.info(msg)
 
 
-def test_pairs_of_arrays_for_relative_difference(mtrap, array_dict, **kwargs):
+def assert_arrays_agree_within_threshold(mtrap, array_dict, **kwargs):
     """
     Test the relative difference of all pairs of arrays in `array_dict` is below threshold
     """
@@ -423,7 +423,7 @@ def test_pairs_of_arrays_for_relative_difference(mtrap, array_dict, **kwargs):
     pass_fail_matrix = np.zeros((num_names, num_names), dtype=bool)
     mean_abs_relative_diffs_matrix = np.zeros((num_names, num_names), dtype=complex)
 
-    _, relative_diff_threshold, allowed_failed_points_percentage = test_thresholds(kwargs.get('difficulty_level', 'very hard'))
+    _, relative_diff_threshold, allowed_failed_points_percentage = thresholds_for_difficulty_level(kwargs.get('difficulty_level', 'very hard'))
     msg = (
         f'🔬 Testing that all pairs of {array_names=}'
         f' have mean relative absolute difference below {relative_diff_threshold=:.0e}'
@@ -1041,7 +1041,7 @@ def visualise_relative_difference_of_two_arrays(
     Visualise the relative difference of `array_A` vs. `array_B`
     """
     # relative_diff_threshold = kwargs.get('relative_diff_threshold', RELATIVE_DIFF_threshold)
-    _, relative_diff_threshold, _ = test_thresholds(kwargs.get('difficulty_level', 'very hard'))
+    _, relative_diff_threshold, _ = thresholds_for_difficulty_level(kwargs.get('difficulty_level', 'very hard'))
     xlims = mtrap.ω_range.min() / kHz, mtrap.ω_range.max() / kHz
     ylims = 1e-17, 1e9
 
@@ -1227,7 +1227,7 @@ def calculate_temperature_from_position_PSD(mtrap, vals, ii, label):
 
 
 def get_latex_labels(mtrap, hat=False, PSD=False):
-    """
+    r"""
     Returns a list of latex strings of dimension labels
     e.g. $x_1$ or $\hat{x}_1$
     """

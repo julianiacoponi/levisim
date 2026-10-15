@@ -68,7 +68,7 @@ class Test:
 
         if elapsed_seconds < 1:
             time_taken = f'⏱️ Duration: {elapsed_seconds:.6f}s'
-        if elapsed_seconds < 10:
+        elif elapsed_seconds < 10:
             time_taken = f'⏱️ Duration: {elapsed_seconds:.3f}s'
         elif elapsed_seconds < 60:
             time_taken = f'⏱️ Duration: {elapsed_seconds:.2f}s'

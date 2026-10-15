@@ -21,9 +21,7 @@ from levisim.multiphysics.enums.quantum_linear_theory_method import QuantumLinea
 from levisim.multiphysics.enums.spectrum import SpectrumType
 from levisim.multiphysics.utils.comparison import (
     RelativeDifferenceTooHigh,
-    # NOTE: aliased because pytest collects any module-level name starting with `test_` in a
-    # test file, and would otherwise try to run this helper as a test case
-    test_pairs_of_arrays_for_relative_difference as assert_arrays_agree,
+    assert_arrays_agree_within_threshold as assert_arrays_agree,
 )
 from levisim.multiphysics.utils.shelf import OFF_NODE_toy_params_pairs, OFF_NODE_toy_params_equal_spacing_simple
 
