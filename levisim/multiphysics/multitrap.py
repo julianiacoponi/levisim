@@ -229,7 +229,7 @@ class MultiTrap:
                     logger.trace(f'{len(self.deranged_adjugate_by_order[order][ab])} terms in {ab} off-diagonal adjugate of order {order} of {n}')
 
         elif self.generate_power_series:
-            logger.trace(f'Generating power series from scratch')
+            logger.trace('Generating power series from scratch')
             self.deranged_determinant_by_order, self.deranged_adjugate_by_order = generate_determinant_and_adjugate_by_order(
                 n=self.num_dimensions,
                 labels=self.labels,
@@ -1997,7 +1997,7 @@ class MultiTrap:
         Calculate all spectra 'at once' using 'TNT' Linear Amplifier Model (TNT LAM)
         Scc†(ω) = T(ω) @ N @ T(ω)†
         """
-        msg = f'🧮 Calculating the quantum operator spectral density array Scc† via TNT method'
+        msg = '🧮 Calculating the quantum operator spectral density array Scc† via TNT method'
         print(msg), logger.info(msg)
 
         N_ops = self.num_operators
@@ -2013,7 +2013,7 @@ class MultiTrap:
         Calculates an array of the PSDs of all dimensions' zpf-scaled position operators
         """
         # TODO: calculate a similar thing for all CSDs?
-        msg = f'🧮 Calculating array of all (zpf-scaled) position power spectra'
+        msg = '🧮 Calculating array of all (zpf-scaled) position power spectra'
         print(msg), logger.info(msg)
 
         Sxx_array = np.zeros((len(self.ω_range), self.num_dimensions))
