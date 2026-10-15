@@ -407,7 +407,7 @@ def assert_images_agree_within_errant_pixels(image_dict, **kwargs):
         else:
             raise TooManyErrantPixelsInImageDiff(f'{image_diff_results_by_image_pair=}')
 
-    msg = f'✅ Success on all errant pixel checks!'
+    msg = '✅ Success on all errant pixel checks!'
     print(msg), logger.info(msg)
 
 
@@ -528,7 +528,7 @@ def assert_arrays_agree_within_threshold(mtrap, array_dict, **kwargs):
         else:
             raise RelativeDifferenceTooHigh(f'{successes_by_pair=}')
 
-    msg = f'✅ Success on all relative diff checks!'
+    msg = '✅ Success on all relative diff checks!'
     print(msg), logger.info(msg)
 
 
