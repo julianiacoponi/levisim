@@ -40,9 +40,14 @@ class Kick:
         print(self.info_str)
 
     @property
-    def info(self):
+    def info_str(self):
         """
         String describing the Kick instance
+
+        NOTE: this was named `info`, which shadowed the `info` method above - so `Kick.info`
+        returned the string instead of printing it, and `self.info_str` (which the method
+        references) did not exist at all. Renamed to match the info()/info_str convention
+        used by Gas, Bead, Trap, Tweezer, Cavity, FocussingOptics, Dimension and MultiTrap.
         """
         F0 = f'{self.F0 / fN:.1f} fN' if self.F0 is not None else 'n/a'
         Fx = f'{self.Fx / fN:.1f} fN' if self.Fx is not None else 'n/a'
