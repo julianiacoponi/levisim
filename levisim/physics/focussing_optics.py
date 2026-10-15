@@ -567,5 +567,5 @@ class FocussingOptics:
         [W/m²]
         """
         Im_α = 4e-34
-        σ_scattering = k * Im_α / ε0
+        σ_scattering = self.k * Im_α / ε0
         return (σ_scattering / c) * S
