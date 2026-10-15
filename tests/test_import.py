@@ -20,11 +20,30 @@ def test_no_multitrap_fixtures_built_at_import():
 
     These used to be built eagerly - 17 MultiTrap instances - which both made every import
     slow and made it fail outright when the power-series pickles were absent.
-    """
-    import levisim  # noqa: F401
-    from levisim.multiphysics.utils import shelf
 
-    eagerly_built = [name for name in shelf._LAZY_ATTRIBUTES if name in vars(shelf)]
+    NOTE: this runs in a SUBPROCESS deliberately. The fixtures are cached in the module
+    globals on first access, so once any other test in the session has touched one, an
+    in-process check would see it and fail for the wrong reason. The claim being tested is
+    about a fresh interpreter, so it needs a fresh interpreter.
+    """
+    import subprocess
+    import sys
+
+    script = (
+        'import levisim\n'
+        'from levisim.multiphysics.utils import shelf\n'
+        'built = [n for n in shelf._LAZY_ATTRIBUTES if n in vars(shelf)]\n'
+        'print("FIXTURES_BUILT_AT_IMPORT:" + ",".join(built))\n'
+    )
+    result = subprocess.run(
+        [sys.executable, '-c', script],
+        capture_output=True, text=True, timeout=300,
+    )
+    assert result.returncode == 0, f'importing levisim failed:\n{result.stderr[-2000:]}'
+    marker = 'FIXTURES_BUILT_AT_IMPORT:'
+    reported = [l for l in result.stdout.splitlines() if l.startswith(marker)]
+    assert reported, f'subprocess produced no verdict line; stdout tail:\n{result.stdout[-1000:]}'
+    eagerly_built = [n for n in reported[-1][len(marker):].split(',') if n]
     assert eagerly_built == [], f'built at import time: {eagerly_built}'
 
 
