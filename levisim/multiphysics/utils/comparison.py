@@ -14,6 +14,7 @@ from levisim.core.plotting import set_plt_rcParams_to_xmgrace_style, LATEX_FIG_W
 from levisim.core.colours import (
     all_colours_list,
     distinct_16_colours_list,
+    colours_50,
     blue, orange, green, red, purple,
     black, white, grey,
     RGB_red, RGB_green, RGB_yellow, RGB_magenta,
