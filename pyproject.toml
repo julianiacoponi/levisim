@@ -18,5 +18,11 @@ Homepage = "https://github.com/julianiacoponi/levisim"
 Issues = "https://github.com/julianiacoponi/levisim/issues"
 
 [tool.setuptools]
-packages = ["levisim"]  # Explicitly specify the package(s) to include
 include-package-data = true  # If you have a MANIFEST.in for non-code files
+
+# NOTE: `packages = ["levisim"]` used to be set here, which shipped only the
+# top-level directory and none of the subpackages, so an installed `levisim`
+# raised `ModuleNotFoundError: No module named 'levisim.core'` on import.
+# Automatic discovery picks up `levisim` and every `levisim.*` subpackage.
+[tool.setuptools.packages.find]
+include = ["levisim*"]
