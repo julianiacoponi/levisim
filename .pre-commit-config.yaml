@@ -1,0 +1,54 @@
+# Run with:  pip install pre-commit && pre-commit install
+# One-off over everything:  pre-commit run --all-files
+#
+# Deliberately conservative. This repo's convention is mild PEP 8 in service of human
+# readability, not strict rule compliance, so there is no auto-formatter here: no line-length
+# enforcement, no quote normalisation, no import sorting. Those would produce large diffs
+# across physics code whose layout is often deliberate (aligned matrix rows, grouped constants).
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.0
+    hooks:
+      # pyflakes rules only - real errors, not style:
+      #   F821 undefined name, F811 redefinition, F401 unused import,
+      #   F841 unused local, F541 f-string with no placeholders
+      # E and W (pycodestyle) are NOT enabled.
+      # NOTE: a deliberately narrow rule set, and NO --fix.
+      #
+      # Not enabled, with reasons:
+      #   F401 unused import   - core/constants.py and the __init__ files re-export on purpose;
+      #                          auto-fixing would delete the package's physics symbols
+      #   F403/F405 import *   - the wildcard re-exports are the package's chosen structure
+      #                          (each module declares __all__, so the surface is bounded)
+      #   F841 unused local    - almost every instance is unfinished work or self-documenting
+      #                          tuple unpacking, not cruft
+      #   E/W pycodestyle      - no line-length or whitespace enforcement, by convention
+      #
+      # What IS enabled are the rules that catch real bugs: an undefined name, a redefined
+      # function, a comparison written with the wrong operator, a bare except.
+      - id: ruff
+        args:
+          - --select
+          - F821,F811,F541,F632,E711,E712,E714,E722
+
+  - repo: https://github.com/kynan/nbstripout
+    rev: 0.8.1
+    hooks:
+      # Notebook outputs were 1.65 GB across 41 notebooks; stripping them leaves 0.9 MB.
+      # This matters if notebooks are ever tracked again - they are currently gitignored,
+      # and the stale *.ipynb Git LFS filter was removed because of exactly this problem.
+      - id: nbstripout
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+        # the Fortran reference data is fixed-width columns
+        exclude: ^fortran/.*\.dat$
+      - id: end-of-file-fixer
+        exclude: ^fortran/.*\.dat$
+      - id: check-yaml
+      - id: check-merge-conflict
+      # CRLF endings were found in the Fortran headers; this stops them coming back
+      - id: mixed-line-ending
+        args: [--fix=lf]

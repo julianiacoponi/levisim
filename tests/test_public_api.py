@@ -85,3 +85,30 @@ def test_lazy_fixtures_stay_out_of_the_star_surface():
     for name in shelf._LAZY_ATTRIBUTES:
         assert name not in shelf.__all__, name
         assert hasattr(shelf, name), name
+
+
+@pytest.mark.parametrize('module_path, class_name', [
+    ('levisim.physics.kick', 'Kick'),
+    ('levisim.physics.gas', 'Gas'),
+    ('levisim.physics.bead', 'Bead'),
+    ('levisim.physics.trap', 'Trap'),
+    ('levisim.physics.tweezer', 'Tweezer'),
+    ('levisim.physics.cavity', 'Cavity'),
+    ('levisim.physics.focussing_optics', 'FocussingOptics'),
+])
+def test_info_and_info_str_convention(module_path, class_name):
+    """
+    Every physics class pairs an `info` property that prints with an `info_str` that returns
+
+    Both are properties by convention here - `info` is side-effecting, printing `info_str`.
+    Kick had BOTH named `info`, so the second shadowed the first: `Kick.info` returned the
+    string instead of printing it, and the `self.info_str` the first one referenced never
+    existed at all. This pins the convention so the collision cannot come back silently.
+    """
+    import importlib
+    cls = getattr(importlib.import_module(module_path), class_name)
+    for attribute in ('info', 'info_str'):
+        assert hasattr(cls, attribute), f'{class_name} has no {attribute}'
+        assert isinstance(getattr(cls, attribute), property), (
+            f'{class_name}.{attribute} is not a property'
+        )
