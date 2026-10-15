@@ -13,3 +13,9 @@ __pycache__/
 
 # images generated for in-code comparisons
 *.png
+
+# local notebooks - kept out of git because their stored outputs are large
+# (the uploaded set was 1.65 GB, of which 93% was embedded output)
+notebooks/
+# NOTE: the three small power-series pickles the test suite needs are force-added
+# (`git add -f`) and so remain tracked despite the rule above - together they are 270 KB
