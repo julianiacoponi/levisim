@@ -91,3 +91,60 @@ mV = 1e-3  # volts to millivolts
 # current
 Amp = 1
 mA = 1e-3  # amps to milliamps
+
+
+# ------------------------------------------------------------------
+# Public names exported by this module.
+# Unit conversion factors. The capitalised Hz/kHz/MHz/GHz/THz family folds in a factor
+# of 2*pi (radians/second to hertz); the lowercase hertz/kiloHz/... family does not.
+# ------------------------------------------------------------------
+__all__ = [
+    'Amp',
+    'GHz',
+    'Hz',
+    'K',
+    'MHz',
+    'MeV',
+    'Newton',
+    'THz',
+    'Volt',
+    'Watt',
+    'aN',
+    'bar',
+    'cm',
+    'degrees',
+    'e',
+    'eV',
+    'fN',
+    'fg',
+    'gigaHz',
+    'grams',
+    'hertz',
+    'kHz',
+    'keV',
+    'kg',
+    'kiloHz',
+    'mA',
+    'mK',
+    'mV',
+    'mW',
+    'mbar',
+    'megaHz',
+    'megasamples',
+    'metre',
+    'mm',
+    'ms',
+    'ng',
+    'nm',
+    'ns',
+    'pg',
+    'pm',
+    'second',
+    'teraHz',
+    'torr',
+    'yN',
+    'zN',
+    'μm',
+    'μs',
+    'π',
+]
