@@ -1,1 +1,4 @@
-*.ipynb filter=lfs diff=lfs merge=lfs -text
+# NOTE: the previous rule routed *.ipynb through Git LFS. Commit b62274e removed the
+# LFS files and no .ipynb is tracked any more (notebooks are gitignored - their stored
+# outputs were 93% of 1.65 GB), so the rule was stale and only caused confusion for
+# anyone cloning without git-lfs installed.

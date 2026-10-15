@@ -64,7 +64,7 @@ class Test:
         if self.exceptions:
             self.end_message += f'\n❌ FAILED! 😔 {len(self.exceptions)} exception(s) raised'
         else:
-            self.end_message += f'\n❇️ PASSED! 🥳'
+            self.end_message += '\n❇️ PASSED! 🥳'
 
         if elapsed_seconds < 1:
             time_taken = f'⏱️ Duration: {elapsed_seconds:.6f}s'
