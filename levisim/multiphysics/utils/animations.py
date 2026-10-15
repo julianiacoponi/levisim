@@ -6,7 +6,6 @@ import matplotlib.colors as mcolors
 
 from matplotlib.animation import ArtistAnimation
 from itertools import cycle
-from IPython.display import HTML
 from copy import copy
 from tqdm import tqdm
 

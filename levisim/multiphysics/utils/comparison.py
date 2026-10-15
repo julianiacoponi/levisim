@@ -1,5 +1,11 @@
 import os
-import cv2
+
+# NOTE: OpenCV is only needed by the image-comparison helpers below, so it is optional.
+# Each function that needs it calls _require_cv2() first.
+try:
+    import cv2
+except ImportError:
+    cv2 = None
 import itertools
 import matplotlib
 import scipy
@@ -66,6 +72,20 @@ __all__ = [
 ]
 
 
+def _require_cv2():
+    """
+    Raises a helpful error if OpenCV is not installed
+
+    OpenCV is only used for the pixel-level image comparison helpers, so it is an optional
+    dependency rather than a hard requirement of importing `levisim`.
+    """
+    if cv2 is None:
+        raise ImportError(
+            'This function needs OpenCV, which is an optional dependency of levisim.'
+            " Install it with `pip install 'levisim[video]'` or `pip install opencv-python`."
+        )
+
+
 def test_thresholds(difficulty_level):
     """
     Returns tuple of
@@ -115,6 +135,7 @@ def verify_equivalence_of_spectrum_calculation_methods(mtrap, spectrum_types, me
         - checking for sufficently few errant pixels in a greyscale image diff
         - checking the relative absolute difference is sufficiently low
     """
+    _require_cv2()
     set_plt_rcParams_to_xmgrace_style()
 
     msg = f'⚖️ Using {mtrap} ({mtrap.tweezer_phase_sign_convention_str}), verifying calculation of {spectrum_types=} using {methods=} via image diff'
@@ -238,6 +259,7 @@ def verify_equivalence_of_spectral_functions(mtrap, func_dict, **kwargs):
         - checking for sufficently few errant pixels in a greyscale image diff of their plots
         - checking the relative absolute difference is sufficiently low
     """
+    _require_cv2()
     set_plt_rcParams_to_xmgrace_style()
 
     msg = f'⚖️ Using {mtrap} ({mtrap.tweezer_phase_sign_convention_str}), verifying spectral {func_dict=} via image diff'
@@ -295,6 +317,7 @@ def test_pairs_of_images_for_errant_pixels(image_dict, **kwargs):
     """
     Test the greyscale diff of all pairs of images in `image_dict` for errant pixels
     """
+    _require_cv2()
     set_plt_rcParams_to_xmgrace_style()
 
     image_diff_results_by_image_pair = {}
@@ -1159,6 +1182,7 @@ def greyscale_diff(image_A, image_B):
     """
     Convert the diff of two images into greyscale
     """
+    _require_cv2()
     return cv2.cvtColor(cv2.subtract(image_A, image_B), cv2.COLOR_BGR2GRAY)
 
 
