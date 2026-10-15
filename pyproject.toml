@@ -13,6 +13,29 @@ readme = "README.md"
 requires-python = ">=3.9"
 license = { file = "LICENSE" }
 
+# NOTE: these are unpinned deliberately - the versions this code has actually been developed
+# and run against are not recorded anywhere, so a lower bound would be a guess. Add floors
+# once a known-good set is established.
+dependencies = [
+  "numpy",
+  "scipy",
+  "matplotlib",
+  "sympy",
+  "loguru",
+  "tqdm",
+]
+
+# optional conveniences - none of these are needed to import levisim or run the physics
+[project.optional-dependencies]
+# ship logs to a local Elasticsearch/Kibana stack, see docker-compose.yaml
+elk = ["elasticsearch"]
+# desktop notifications when a long test run starts and finishes, see levisim/core/testing.py
+notify = ["plyer"]
+# pixel-level image comparison in levisim/multiphysics/utils/comparison.py
+video = ["opencv-python"]
+# running the test suite and the linter
+dev = ["pytest", "ruff"]
+
 [project.urls]
 Homepage = "https://github.com/julianiacoponi/levisim"
 Issues = "https://github.com/julianiacoponi/levisim/issues"
