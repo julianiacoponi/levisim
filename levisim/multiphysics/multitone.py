@@ -25,9 +25,18 @@ tweezer intensity, so the trap stiffness is modulated at every difference freque
 
     Ω_j² → Ω_j²·(1 + ε(t)),   ε(t) = beat_visibility · 2 Σ_k<l Re(c̃_k c̃_l* exp(-i(Δ_k - Δ_l)t)) / Σ_k |c_k|²
 
-beat_visibility = 1 is the co-polarised case and 0 a perfectly suppressed beat (e.g. orthogonal
-polarisations, ignoring the small cross-polarised focal fields). This term has no analogue in
-the microwave and membrane experiments the two-tone schemes come from.
+beat_visibility = 1 is the co-polarised case and 0 a perfectly suppressed beat. This term has
+no analogue in the microwave and membrane experiments the two-tone schemes come from.
+
+MORE GENERAL GEOMETRIES. Two extensions cover tones that differ in more than amplitude and phase:
+  - Tone.couplings gives a tone its own coupling G_jk to each dimension, replacing Dimension.G
+    (dimensions not listed are not coupled to that tone), e.g. a second tweezer that only
+    reaches its own particle, or a tone whose polarisation projects differently on the cavity
+    mode;
+  - QuadraticPotential terms add H/ħ ⊃ Σ Re(W_ij·exp(-iω_m t))·X_i X_j for any pairs of
+    dimensions, e.g. the x-y coupling that orthogonally polarised tones beat at, or the static
+    and beating potentials of the coherent intracavity field off a node
+    (levisim.multiphysics.two_tone_traps builds both from the focal-field geometry).
 
 The drift matrix is then periodic, A(t + T) = A(t), and the asymptotic state is periodic too. It
 is found exactly from one period of evolution (the monodromy, i.e. a Floquet treatment of the
@@ -43,7 +52,7 @@ import itertools
 
 import numpy as np
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from fractions import Fraction
 
 from scipy.integrate import solve_ivp
@@ -52,6 +61,7 @@ from scipy.linalg import solve_discrete_lyapunov
 from levisim.core.units import kHz, μs
 from levisim.multiphysics.covariance import (
     complex_to_quadrature_transform,
+    mode_index,
     quadrature_drift_matrix,
     quadrature_diffusion_matrix,
 )
@@ -59,6 +69,7 @@ from levisim.multiphysics.covariance import (
 
 __all__ = [
     'Tone',
+    'QuadraticPotential',
     'MultiToneDrive',
     'PeriodicSteadyState',
     'common_period',
@@ -72,15 +83,37 @@ class Tone:
         - Δ: detuning from the cavity resonance, ω_tone - ω_c [2π·Hz] (red detuned is Δ < 0)
         - amplitude: field amplitude relative to the tone that defines Dimension.G [·]
         - phase: optical phase relative to that tone [rad]
+        - couplings: optional {label: G_jk}, this tone's own full-amplitude coupling to each
+          dimension, used instead of Dimension.G; unlisted dimensions are not coupled [2π·Hz]
     """
     Δ: float
     amplitude: float = 1.0
     phase: float = 0.0
     label: str = ''
+    couplings: dict = field(default=None, compare=False)
 
     @property
     def complex_amplitude(self):
         return self.amplitude * np.exp(1j * self.phase)
+
+    def coupling(self, dimension):
+        """Full-amplitude coupling of this tone to a Dimension [2π·Hz]"""
+        if self.couplings is None:
+            return dimension.G
+        return complex(self.couplings.get(dimension.label, 0.0))
+
+
+@dataclass(frozen=True)
+class QuadraticPotential:
+    """
+    A quadratic mechanical term H/ħ = Σ_(i,j) Re(W_ij·exp(-iω·t))·X_i X_j
+        - frequency: ω, 0 for a static term [2π·Hz]
+        - coefficients: {(label_i, label_j): W_ij}; each entry is one product X_i X_j, so
+          (x1, y1) and (y1, x1) would be counted twice [2π·Hz]
+    """
+    frequency: float
+    coefficients: dict = field(compare=False)
+    label: str = ''
 
 
 def common_period(frequencies, max_denominator=1000, tolerance=1e-9):
@@ -109,7 +142,7 @@ class MultiToneDrive:
     """
     The Linear Amplifier Model of a MultiTrap driven by several coherently scattering tones
     """
-    def __init__(self, mtrap, tones, beat_visibility=0.0, period=None, frame_offset=0.0):
+    def __init__(self, mtrap, tones, beat_visibility=0.0, period=None, frame_offset=0.0, potentials=None):
         """
             - tones: the Tones; their Δ are always measured from the cavity resonance [2π·Hz]
             - beat_visibility: fraction of the tones' intensity beat that modulates the trap [·]
@@ -118,6 +151,7 @@ class MultiToneDrive:
               This is only a choice of frame (it rotates the cavity quadratures and leaves every
               mechanical moment unchanged), but it can make the drive periodic with a much shorter
               period, e.g. for tones at ω_c ∓ ν + s use frame_offset = s [2π·Hz]
+            - potentials: QuadraticPotential terms added to the mechanical Hamiltonian
         """
         self.mtrap = mtrap
         self.tones = list(tones)
@@ -130,9 +164,11 @@ class MultiToneDrive:
 
         # pairs of tones beat in the trap intensity at their difference frequency
         self.beat_pairs = list(itertools.combinations(range(len(self.tones)), 2))
+        self.potentials = list(potentials or [])
         frequencies = list(self.Δs - self.frame_offset)
         if self.beat_visibility:
             frequencies += [self.Δs[k] - self.Δs[l] for k, l in self.beat_pairs]
+        frequencies += [potential.frequency for potential in self.potentials if potential.frequency]
         self.period = float(period) if period is not None else common_period(frequencies)
 
         self.setup_matrices()
@@ -163,6 +199,8 @@ class MultiToneDrive:
             f'\n    Σ amplitude² = {self.total_power_fraction:.5f}'
             f'\n    beat_visibility = {self.beat_visibility:.5f}'
             f'\n    frame_offset/2π = {self.frame_offset / kHz:.3f} kHz'
+            f'\n    tones with their own couplings = {sum(tone.couplings is not None for tone in self.tones)}'
+            f'\n    quadratic potential terms = {len(self.potentials)}'
             f'\n    period = {self.period / μs:.5f} μs'
             f'\n)'
         )
@@ -172,16 +210,16 @@ class MultiToneDrive:
     # ------------------------------------------------------------------------------------------
     def setup_matrices(self):
         """
-        Splits the complex drift matrix as A(t) = A_static + f(t)·K + conj(f(t))·K̄ + ε(t)·B
+        Splits the drift matrix as A(t) = A_static + 2Re(Σ_k c̃_k·exp(-iΔ_k t)·K_k) + ε(t)·B + P(t)
 
-        f(t) = Σ_k c̃_k exp(-iΔ_k t) multiplies every coupling G_j; the static part is levisim's
-        drift matrix with the light-mech couplings removed and the cavity at zero detuning.
+        K_k carries tone k's couplings G_jk (Dimension.G unless the tone has its own), so that
+        Σ_k c̃_k·exp(-iΔ_k t)·G_jk multiplies every coupling; the static part is levisim's drift
+        matrix with the light-mech couplings removed and the cavity at zero detuning. P(t) holds
+        the QuadraticPotential terms.
         """
         mtrap = self.mtrap
         n = mtrap.num_operators
         A_static = np.array(mtrap.drift_matrix, dtype=np.complex128)
-        K = np.zeros((n, n), dtype=np.complex128)
-        K_bar = np.zeros((n, n), dtype=np.complex128)
         B = np.zeros((n, n), dtype=np.complex128)
 
         # in the cavity frame the cavity no longer rotates at the (single) detuning; in the frame
@@ -191,9 +229,34 @@ class MultiToneDrive:
         A_static[0, 2:] = A_static[1, 2:] = 0
         A_static[2:, 0] = A_static[2:, 1] = 0
 
+        for ii in range(2, n, 2):
+            dimension = mtrap.dimensions[mtrap.noise_index_to_label[ii]]
+            # trap modulation (Ω_j ε/4)·X_j² gives db_j/dt += -i(Ω_j ε/2)(b_j + b_j†)
+            B[ii, ii] = B[ii, ii + 1] = -0.5j * dimension.Ω
+            B[ii + 1, ii] = B[ii + 1, ii + 1] = 0.5j * dimension.Ω
+
+        T = complex_to_quadrature_transform(n)
+        T_inverse = np.linalg.inv(T)
+        self.A_static = quadrature_drift_matrix(A_static)
+        self.Ks = [self._coupling_matrix(tone, T, T_inverse) for tone in self.tones]
+        # tones sharing Dimension.G share one coupling matrix, as in the original formulation
+        self.K = self.Ks[0]
+        self.B = quadrature_drift_matrix(B)
+        self.D = quadrature_diffusion_matrix(mtrap)
+        self.potential_matrices = self._potential_matrices()
+
+    def _coupling_matrix(self, tone, T, T_inverse):
+        """
+        Quadrature-basis matrix K_k of tone k, with A ⊃ 2Re(c̃_k·exp(-iΔ_k t)·K_k)
+        """
+        mtrap = self.mtrap
+        n = mtrap.num_operators
+        K = np.zeros((n, n), dtype=np.complex128)
+        K_bar = np.zeros((n, n), dtype=np.complex128)
         for ii in range(2, n):
             dimension = mtrap.dimensions[mtrap.noise_index_to_label[ii]]
-            G, G_star = dimension.G, np.conjugate(dimension.G)
+            G = tone.coupling(dimension)
+            G_star = np.conjugate(G)
             # the same pattern as setup_linear_amplifier_model_matrices, with G → G·f(t)
             K[0, ii] = 1j * G
             K_bar[1, ii] = -1j * G_star
@@ -201,26 +264,37 @@ class MultiToneDrive:
                 # annihilation operator b_j
                 K_bar[ii, 0] = 1j * G_star
                 K[ii, 1] = 1j * G
-                # trap modulation (Ω_j ε/4)·X_j² gives db_j/dt += -i(Ω_j ε/2)(b_j + b_j†)
-                B[ii, ii] = B[ii, ii + 1] = -0.5j * dimension.Ω
             else:
                 # creation operator b_j†
                 K_bar[ii, 0] = -1j * G_star
                 K[ii, 1] = -1j * G
-                B[ii, ii - 1] = B[ii, ii] = 0.5j * dimension.Ω
+        K, K_bar = T @ K @ T_inverse, T @ K_bar @ T_inverse
+        assert np.allclose(K_bar, np.conjugate(K)), 'coupling split is inconsistent'
+        return K
 
-        T = complex_to_quadrature_transform(n)
-        T_inverse = np.linalg.inv(T)
-        self.A_static = quadrature_drift_matrix(A_static)
-        self.K = T @ K @ T_inverse
-        self.K_bar = T @ K_bar @ T_inverse
-        assert np.allclose(self.K_bar, np.conjugate(self.K)), 'coupling split is inconsistent'
-        self.B = quadrature_drift_matrix(B)
-        self.D = quadrature_diffusion_matrix(mtrap)
+    def _potential_matrices(self):
+        """
+        {ω: M_ω} such that the QuadraticPotential terms add Re(M_ω·exp(-iωt)) to the drift matrix
+
+        H/ħ = h·X_i X_j gives dP_i/dt = -2h·X_j and dP_j/dt = -2h·X_i (i ≠ j), or dP_i/dt = -4h·X_i.
+        """
+        n = self.mtrap.num_operators
+        matrices = {}
+        for potential in self.potentials:
+            M = matrices.setdefault(float(potential.frequency), np.zeros((n, n), dtype=np.complex128))
+            for (label_i, label_j), W in potential.coefficients.items():
+                i, j = 2 * mode_index(self.mtrap, label_i), 2 * mode_index(self.mtrap, label_j)
+                if i == j:
+                    M[i + 1, i] += -4 * W
+                else:
+                    M[i + 1, j] += -2 * W
+                    M[j + 1, i] += -2 * W
+        return matrices
 
     def f(self, t):
         """
         Common time dependence of every coupling, Σ_k c̃_k exp(-i(Δ_k - frame_offset)t) [·]
+        (only meaningful when no tone has its own couplings)
         """
         return np.sum(self.complex_amplitudes * np.exp(-1j * (self.Δs - self.frame_offset) * t))
 
@@ -241,10 +315,13 @@ class MultiToneDrive:
         """
         Real quadrature-basis drift matrix A(t) in the cavity frame [2π·Hz]
         """
-        A = self.A_static + 2 * np.real(self.f(t) * self.K)
+        phases = self.complex_amplitudes * np.exp(-1j * (self.Δs - self.frame_offset) * t)
+        A = self.A_static + 2 * np.real(sum(phase * K for phase, K in zip(phases, self.Ks)))
         ε = self.trap_modulation(t)
         if ε:
             A = A + ε * self.B
+        for ω, M in self.potential_matrices.items():
+            A = A + np.real(M * np.exp(-1j * ω * t))
         return A
 
     # ------------------------------------------------------------------------------------------
@@ -298,11 +375,11 @@ class MultiToneDrive:
         Φ, W = self.monodromy()
         multipliers = np.linalg.eigvals(Φ)
         if np.max(np.abs(multipliers)) >= 1:
-            return PeriodicSteadyState(False, multipliers)
+            return PeriodicSteadyState(False, multipliers, monodromy=Φ)
         V0 = solve_discrete_lyapunov(Φ, W)
         times = np.linspace(0, self.period, num_samples, endpoint=False)
         covariances = [V0] if num_samples == 1 else self.evolve(V0, times)
-        return PeriodicSteadyState(True, multipliers, times, covariances)
+        return PeriodicSteadyState(True, multipliers, times, covariances, monodromy=Φ)
 
 
 @dataclass
@@ -314,6 +391,7 @@ class PeriodicSteadyState:
     floquet_multipliers: np.ndarray
     times: np.ndarray = None
     covariances: list = None
+    monodromy: np.ndarray = field(default=None, repr=False)     # Φ, whose eigenvalues are the multipliers
 
     @property
     def largest_multiplier(self):
