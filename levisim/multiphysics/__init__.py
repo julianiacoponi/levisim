@@ -9,6 +9,7 @@ A module to handle all the physics involved in multitrap cavity levitation
 # import *` and dir() agree. NOTE: the lazily-built shelf fixtures are deliberately
 # absent - see the __getattr__ forwarder at the bottom of this file.
 __all__ = [
+    'CavityGeometry',
     'DEFAULT_cavity_kwargs',
     'DEFAULT_gas_kwargs',
     'DEFAULT_Ω_model_pairs',
@@ -29,11 +30,15 @@ __all__ = [
     'Parameter',
     'ParameterType',
     'PeriodicSteadyState',
+    'QuadraticPotential',
     'QuantumLinearTheoryMethod',
     'RelativeDifferenceTooHigh',
     'SpectrumType',
     'Tone',
     'TooManyErrantPixelsInImageDiff',
+    'TrapModel',
+    'TweezerOptics',
+    'TweezerTone',
     'TwoToneSteadyState',
     'air_pressure',
     'all_parameters',
@@ -54,6 +59,7 @@ __all__ = [
     'complex_to_quadrature_transform',
     'delete_local_png_files',
     'deplano2025_multitrap',
+    'deplano2025_tweezer',
     'dimension_covariance',
     'evaluation_order',
     'find_resonances',
@@ -68,6 +74,7 @@ __all__ = [
     'latex_ω_units',
     'light_mech_coupling',
     'mode_index',
+    'multitone_drive',
     'noise_vector_latex',
     'noise_vector_string',
     'optical_damping',
@@ -75,6 +82,7 @@ __all__ = [
     'phase_per_tweezer_string',
     'plot_mean_abs_relative_diffs_matrix',
     'plot_pass_fail_matrix',
+    'principal_axes_log_negativity',
     'quadrature_diffusion_matrix',
     'quadrature_drift_matrix',
     'quantum_cooperativity',
@@ -84,15 +92,18 @@ __all__ = [
     'spectrum_type_to_latex',
     'spectrum_type_to_units',
     'steady_state_covariance',
+    'subsystem_log_negativity',
     'symmetric_group_with_min_fixed_points',
     'term_latex',
     'term_string',
     'title_string_for_one_frame',
     'to_rotating_frame',
     'truncate_power_series',
+    'tweezer_trap',
     'two_tone_drive',
     'two_tone_rwa_steady_state',
     'two_tone_steady_state',
+    'two_tone_tones',
     'verify_equivalence_of_spectral_functions',
     'verify_equivalence_of_spectrum_calculation_methods',
     'visualise_relative_difference_of_two_arrays',
@@ -109,6 +120,7 @@ from levisim.multiphysics.utils import *
 from levisim.multiphysics.covariance import *
 from levisim.multiphysics.multitone import *
 from levisim.multiphysics.two_tone import *
+from levisim.multiphysics.two_tone_traps import *
 
 
 def __getattr__(name):
