@@ -135,6 +135,8 @@ In membrane and microwave experiments, the tones drive the cavity. In CS the ton
 
 Orthogonally polarised tones remove the interference term in the paraxial approximation. Two things are not computed here. First, how much residual beat the cross-polarised and longitudinal focal fields of a high-NA tweezer leave; it is plausibly at the percent level, which is exactly where it starts to matter. Second, how an orthogonally polarised second tone changes the trap anisotropy ($`\delta`$) and its own scattering into the cavity mode. This step is the main open engineering question for the scheme.
 
+**Follow-up:** [`polarisation_and_two_particles.md`](polarisation_and_two_particles.md) works both out from the focal field. Orthogonal tones leave no intensity beat at any NA. What is left is a *polarisation* beat, which in the rotating frame is a resonant two-mode squeezing term. Despite a 40% smaller splitting, that term entangles more than the beat-free drive assumed here: $`E_N`$ = 0.40 at Γ/3 and a threshold of heating ÷1.5, at θ = 45° with a 1 kHz stability margin.
+
 ### Step 9 — Building up the entanglement
 
 Starting from the red-only cooled state and switching the blue tone on (panel f of the constraints figure), $`E_N`$ becomes positive after 16 μs (heating Γ/10) or 41 μs (Γ/3), and reaches 90% of its steady value after about 100 μs or 70 μs respectively. These are a few inverse Bogoliubov cooling times. The single-mode occupation *rises* while this happens, from 0.09 to 1.0 phonons at Γ/10, because each half of a two-mode squeezed state is locally thermal. An entangled two-tone state therefore looks *hotter* to a single-mode thermometry measurement than the ground-state-cooled one it came from.
@@ -206,7 +208,7 @@ Couplings are balanced unless stated; full Floquet model; best $`G_+/G_-`$ in ea
 
 - **Linearised Gaussian dynamics of two modes.** The $`z`$ motion, which the experiment also sees, and the particle's rotation are left out. So are nonlinear trap terms, and the dependence of $`G_j`$ and of $`\Omega_j`$ on each tone's polarisation.
 - **Heating as fitted totals.** "Γ/3" does not say how to get there. If photon recoil dominates, then both $`G^2`$ and the recoil rate scale with tweezer power, so neither more power nor lower pressure raises $`C`$. The gain would have to come from the cavity (smaller mode volume) or from a larger splitting (Step 5).
-- **The residual beat for orthogonally polarised tones** at high NA is not computed (Step 8). The main results assume $`v = 0`$.
+- **The residual beat for orthogonally polarised tones** at high NA is not computed here (Step 8); the main results assume $`v = 0`$. [`polarisation_and_two_particles.md`](polarisation_and_two_particles.md) computes it, along with mech-mech coupling, the node position and a second particle.
 - **Laser phase noise and tone phase noise** are not modelled beyond what the fitted $`\Gamma_j`$ already contain. Relative phase jitter between the tones acts like the phase averaging in §3.
 - **Detection** is idealised: the covariance matrix is assumed known. Conditional (filtered) states, which can do better, are not considered here.
 - **Uncertainties.** The thresholds scale as $`C \propto g^2/\Gamma`$. With the published uncertainties (±1.6% on $`g`$, ±5% on $`\Gamma`$), they are uncertain at roughly the ±6–10% level.
@@ -221,6 +223,7 @@ Couplings are balanced unless stated; full Floquet model; best $`G_+/G_-`$ in ea
 | The two-tone scheme: Deplano 2025 parameters, Floquet and RWA steady states, Bogoliubov modes, cooperativity, analytic estimate | `levisim/multiphysics/two_tone.py` |
 | Tests (closed-form limits, published data, every claim above that has a test name) | `tests/test_gaussian_states.py`, `tests/test_two_tone.py` |
 | This study | `docs/two_tone_entanglement/make_figures.py [--plot-only]` |
+| Tones' polarisations, cavity geometry and node position; a second tweezer (follow-up study) | `levisim/physics/focal_expansion.py`, `levisim/multiphysics/two_tone_traps.py`, `docs/two_tone_entanglement/polarisation_and_two_particles.py` |
 
 ```python
 from levisim.multiphysics.two_tone import deplano2025_multitrap, two_tone_steady_state

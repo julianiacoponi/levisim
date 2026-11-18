@@ -636,6 +636,15 @@ Four modules add covariance-matrix (time-domain) dynamics to `MultiTrap`:
 
 [`docs/two_tone_entanglement/README.md`](docs/two_tone_entanglement/README.md) uses them to work out whether a second, blue-detuned tweezer tone can entangle a particle's $`x`$ and $`y`$ motions at the parameters of Deplano et al., Nat. Commun. **16**, 4215 (2025). In short: not at the published heating rates. It needs them roughly halved (÷2.1 with balanced couplings), and a trap that does not see the tones' intensity beat.
 
+Two more modules build such traps from the actual tweezer geometry:
+- `levisim.physics.focal_expansion`: the second-order expansion of the Richards–Wolf focal field, including the interference of two tones of any polarisations.
+- `levisim.multiphysics.two_tone_traps`: multi-tone traps built from each tone's polarisation, the cavity axis and the node position, for one or several tweezers in one cavity.
+
+[`docs/two_tone_entanglement/polarisation_and_two_particles.md`](docs/two_tone_entanglement/polarisation_and_two_particles.md) uses them to answer four follow-up questions: orthogonally polarised tones, mech-mech coupling, the node position, and a second particle. In short:
+- Orthogonal tones remove the intensity beat. What is left is a polarisation beat that squeezes $`x`$ and $`y`$ coherently, which lowers the required heating reduction to ÷1.5.
+- A static mech-mech coupling does not help, and neither does leaving the node.
+- A second particle in the same cavity needs its sidebands kept apart. It is more useful as the other half of an inter-particle pair, with one tone per tweezer.
+
 # Planned refactor: mixins for `multitrap`
 
 `MultiTrap` currently branches on `method` inside each calculation function, which is why `multitrap.py` is over 2,000 lines. Mapping the branches out while documenting the above, the split falls fairly cleanly into three mixins plus the parts that are genuinely shared:
@@ -669,5 +678,13 @@ For the record, the things it found that I had not:
 It also could not fix, and I should: the `kappa_nano (Hz) 1.216e-86` that `NParticle.f90` prints, and the two `NOT SURE: CHECK!!!` susceptibilities in `3DEQRom.f90`.
 
 In a later session I asked it for a study of whether a two-tone drive can entangle the transverse motions. The four modules listed under *Steady-state entanglement of the transverse motions* above, their tests (`tests/test_gaussian_states.py`, `tests/test_two_tone.py`) and `docs/two_tone_entanglement/` are its work too, and the pull request that adds them says so.
+
+A third session followed that up, on the tones' polarisation, mech-mech coupling, the node position and a second particle. Its work includes:
+- `levisim.physics.focal_expansion` and `levisim.multiphysics.two_tone_traps`.
+- The per-tone couplings, `QuadraticPotential` terms and stored monodromy in `multitone`.
+- Their tests (`tests/test_focal_expansion.py`, `tests/test_two_tone_traps.py`).
+- `docs/two_tone_entanglement/polarisation_and_two_particles.*`.
+
+Its pull request says so too.
 
 License chosen through [choosealicense.com](https://choosealicense.com)
