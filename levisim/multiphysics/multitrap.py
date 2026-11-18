@@ -45,12 +45,175 @@ from levisim.multiphysics.hybridisation import (
 
 __all__ = [
     'MultiTrap',
+    'ΩModel',
 ]
 
 
 TIMER = True
 PROFILER = False
 PROGRESS_BAR = True
+
+
+class ΩModel:
+    """
+    Model for the x and y mechanical frequencies of a toy-parameter MultiTrap
+
+    Kinds and their parameters (defaults in KINDS), filling the x, y labels in order:
+      'pairs'                  Ω_first, Ω_intrapair_gap, Ω_interpair_gap - x,y of each bead
+                               split by the intrapair gap, beads split by the interpair gap,
+                               descending (copies Tania's ParametersNpair.f90)
+      'equal spacing: simple'  Ω_start, Ω_gap - descending in steps of Ω_gap
+      'equal spacing'          Ω_mid, Ω_span - ascending, evenly filling Ω_mid ± Ω_span/2
+                               (after the 'Mechanical Mode Comb' paper)
+      'degenerate'             Ω0 - every frequency equal
+      'multiband'              Ω_centers, Ω_spans - the labels are shared out over the bands in
+                               order (any remainder to the first bands) and each band is filled
+                               evenly across center ± span/2, or sits at its center if it holds one
+      'custom'                 toy_Ωjn_dict - {label: Ω} given directly (z labels too if 3 axes)
+
+    z frequencies (3 axes) are not part of the model: MultiTrap sets Ωz = Ωx / Ωz_to_Ωx_multiplier
+    for every kind except 'custom'. A model can be passed to MultiTrap as toy_params['Ω_model'],
+    or given the legacy way as the kind string plus its parameters in the same toy_params dict.
+    [2π·Hz]
+    """
+    KINDS = {
+        'pairs': dict(Ω_first=300*kHz, Ω_intrapair_gap=1.5*kHz, Ω_interpair_gap=15*kHz),
+        'equal spacing: simple': dict(Ω_start=300*kHz, Ω_gap=5*kHz),
+        'equal spacing': dict(Ω_mid=300*kHz, Ω_span=100*kHz),
+        'degenerate': dict(Ω0=300*kHz),
+        'multiband': dict(Ω_centers=None, Ω_spans=None),
+        'custom': dict(toy_Ωjn_dict=None),
+    }
+
+    def __init__(self, kind='pairs', **params):
+        """
+        Initialises an ΩModel of the given `kind`, with defaults for parameters not given
+        """
+        if kind not in self.KINDS:
+            raise ValueError(f'Unknown Ω_model {kind!r}; expected one of {list(self.KINDS)}')
+        unknown = set(params) - set(self.KINDS[kind])
+        if unknown:
+            raise ValueError(f'Ω_model {kind!r} does not take {sorted(unknown)}; it takes {list(self.KINDS[kind])}')
+        self.kind = kind
+        self.params = {**self.KINDS[kind], **params}
+
+        if kind == 'multiband':
+            if self.params['Ω_centers'] is None or self.params['Ω_spans'] is None:
+                raise ValueError("Ω_model 'multiband' needs both Ω_centers and Ω_spans")
+            self.params['Ω_centers'] = np.atleast_1d(np.asarray(self.params['Ω_centers'], dtype=float))
+            self.params['Ω_spans'] = np.atleast_1d(np.asarray(self.params['Ω_spans'], dtype=float))
+            if self.params['Ω_centers'].shape != self.params['Ω_spans'].shape:
+                raise ValueError('Ω_centers and Ω_spans must have the same length')
+        if kind == 'custom' and self.params['toy_Ωjn_dict'] is None:
+            raise ValueError("Ω_model 'custom' needs toy_Ωjn_dict")
+
+    def __repr__(self):
+        """
+        String to represent an ΩModel instance
+        """
+        return f'ΩModel({self.kind!r})'
+
+    @classmethod
+    def from_toy_params(cls, toy_params):
+        """
+        Builds the model from a toy_params dict: toy_params['Ω_model'] is either an ΩModel, or a
+        kind string whose parameters are read from the same dict (other keys are ignored)
+        """
+        model = toy_params.get('Ω_model', 'pairs')
+        if isinstance(model, cls):
+            return model
+        if model not in cls.KINDS:
+            raise ValueError(f'Unknown Ω_model {model!r}; expected one of {list(cls.KINDS)}')
+        return cls(model, **{name: toy_params[name] for name in cls.KINDS[model] if name in toy_params})
+
+    def as_toy_params(self):
+        """
+        The legacy toy_params form, dict(Ω_model=kind, **parameters), for splatting into toy_params
+        """
+        return dict(Ω_model=self.kind, **self.params)
+
+    def frequencies(self, labels):
+        """
+        {label: Ω} for every x and y label in `labels` (z labels are skipped, except for 'custom',
+        which returns a copy of toy_Ωjn_dict as given)
+        [2π·Hz]
+        """
+        p = self.params
+        non_z_labels = [label for label in labels if label[0] != 'z']
+        Ωjn_dict = {}
+
+        if self.kind == 'pairs':
+            Ω_value = p['Ω_first']
+            for count, label in enumerate(non_z_labels):
+                Ωjn_dict[label] = Ω_value
+                if not count % 2:
+                    # even index is the first in a pair: add the intrapair gap for the next value
+                    Ω_value += p['Ω_intrapair_gap']
+                else:
+                    # odd index is the second in a pair: step down to the next pair
+                    Ω_value -= (p['Ω_interpair_gap'] + p['Ω_intrapair_gap'])
+
+        elif self.kind == 'equal spacing: simple':
+            Ω_value = p['Ω_start']
+            for label in non_z_labels:
+                Ωjn_dict[label] = Ω_value
+                Ω_value -= p['Ω_gap']
+
+        elif self.kind == 'equal spacing':
+            Ω_low = p['Ω_mid'] - p['Ω_span'] / 2
+            # divide by one fewer than the number of things to fill the span
+            Ω_gap = 0 if len(non_z_labels) == 1 else p['Ω_span'] / (len(non_z_labels) - 1)
+            Ω_value = Ω_low
+            for label in non_z_labels:
+                Ωjn_dict[label] = Ω_value
+                Ω_value += Ω_gap
+
+        elif self.kind == 'degenerate':
+            Ωjn_dict = {label: p['Ω0'] for label in non_z_labels}
+
+        elif self.kind == 'multiband':
+            num_bands = len(p['Ω_centers'])
+            base, remainder = divmod(len(non_z_labels), num_bands)
+            band_sizes = [base + (1 if band < remainder else 0) for band in range(num_bands)]
+            remaining_labels = iter(non_z_labels)
+            for center, span, size in zip(p['Ω_centers'], p['Ω_spans'], band_sizes):
+                for ii in range(size):
+                    label = next(remaining_labels)
+                    Ωjn_dict[label] = center if size == 1 else center - span / 2 + ii * span / (size - 1)
+
+        elif self.kind == 'custom':
+            Ωjn_dict = dict(p['toy_Ωjn_dict'])
+
+        return Ωjn_dict
+
+    @property
+    def description(self):
+        """
+        The model's parameters, one indented line each, as printed in MultiTrap.toy_params_info_str
+        """
+        p = self.params
+        if self.kind == 'multiband':
+            return (
+                f'\n    Ω_centers = {np.array2string(p["Ω_centers"] / kHz, precision=1, separator=", ")} kHz'
+                f'\n    Ω_spans = {np.array2string(p["Ω_spans"] / kHz, precision=1, separator=", ")} kHz'
+            )
+        if self.kind == 'custom':
+            return ''
+        return ''.join(f'\n    {name} = {value / kHz:.1f} kHz' for name, value in p.items())
+
+    @property
+    def info_str(self):
+        """
+        String describing the ΩModel instance
+        """
+        return f'ΩModel(\n    kind = {self.kind}{self.description}\n)'
+
+    @property
+    def info(self):
+        """
+        Prints information on the ΩModel instance
+        """
+        print(self.info_str)
 
 
 class MultiTrap:
@@ -69,17 +232,30 @@ class MultiTrap:
         # ------------------------------------------------------------------------------------------
         self.num_traps = kwargs.get('num_traps', 2)
         self.Cartesian_axes_per_trap = kwargs.get('Cartesian_axes_per_trap', 2)
-        self.ω_range = kwargs.get('ω_range', np.arange(-400, 400, 0.5) * kHz)
-        self.ω_step = self.ω_range[1] - self.ω_range[0]
+        # ω_range is either one array of angular frequencies, or a list/tuple of arrays that are
+        # stitched into one sorted array without duplicates - e.g. a fine grid around each
+        # resonance plus a coarse background grid - kept per segment in self.ω_ranges
+        ω_range = kwargs.get('ω_range', np.arange(-400, 400, 0.5) * kHz)
+        if isinstance(ω_range, (list, tuple)):
+            self.ω_ranges = [np.asarray(segment, dtype=float) for segment in ω_range]
+            self.ω_range = np.unique(np.concatenate(self.ω_ranges))
+        else:
+            self.ω_ranges = [ω_range]
+            self.ω_range = ω_range
+        # NOTE: for a stitched range this is the step of the first segment only; it is used for
+        # logging and plot labels, never in a calculation
+        self.ω_step = self.ω_ranges[0][1] - self.ω_ranges[0][0] if len(self.ω_ranges[0]) > 1 else 0.0
 
         logger.info(f'Initialising {self}: ({self.num_traps=}, {self.Cartesian_axes_per_trap=})')
-        # TODO: add a feature where multiple ranges can be stitched together and documented here
-        logger.info(
-            f'Spectra will be calculated over'
-            f' ω_range=[{self.ω_range.min() / kHz:.1f}, {self.ω_range.max() / kHz:.1f}] kHz'
-            f' over {len(self.ω_range)} steps'
-            f' with resolution Δω = {self.ω_step / kHz:.3f} kHz'
-        )
+        for segment in self.ω_ranges:
+            logger.info(
+                f'Spectra will be calculated over'
+                f' ω_range=[{segment.min() / kHz:.1f}, {segment.max() / kHz:.1f}] kHz'
+                f' over {len(segment)} steps'
+                f' with resolution Δω = {(segment[1] - segment[0] if len(segment) > 1 else 0.0) / kHz:.3f} kHz'
+            )
+        if len(self.ω_ranges) > 1:
+            logger.info(f'{len(self.ω_ranges)} ω ranges stitched into {len(self.ω_range)} unique points')
 
         self.num_dimensions = self.num_traps * self.Cartesian_axes_per_trap
         # we assume there is one light degree of freedom, with just 2 in the noise vector: a_in, a_in^dagger
@@ -334,6 +510,16 @@ class MultiTrap:
             Γ_str = (
                 f'\n    Γ = {self.toy_Γ / kHz:.5e} kHz'
             )
+        if getattr(self, 'custom_gjn_dict', False):
+            g_str = '\n    gx, gy, gz = N/A: custom gjn_dict, per dimension:' + ''.join(
+                f'\n        g{label} = {g / kHz:.5f} kHz' for label, g in self.gjn_dict.items()
+            )
+        else:
+            g_str = (
+                f'\n    gx = {self.toy_gx / kHz:.5f} kHz'
+                f'\n    gy = {self.toy_gy / kHz:.5f} kHz'
+                f'\n    gz = {self.toy_gz / kHz:.5f} kHz'
+            )
         return (
             'toy_params = {'
             f'\n    Ω_model = {self.Ω_model}'
@@ -350,9 +536,7 @@ class MultiTrap:
             f'\n'
             f'{Γ_str}'
             f'\n'
-            f'\n    gx = {self.toy_gx / kHz:.5f} kHz'
-            f'\n    gy = {self.toy_gy / kHz:.5f} kHz'
-            f'\n    gz = {self.toy_gz / kHz:.5f} kHz'
+            f'{g_str}'
             f'\n'
             f'\n    gxy = {self.toy_gxy / kHz:.5f} kHz'
             f'\n    gxz = {self.toy_gxz / kHz:.5f} kHz'
@@ -527,109 +711,15 @@ class MultiTrap:
         # MECHANICAL FREQUENCIES
 
         # the type of model determines how the x or x,y frequencies are set
-        # TODO: make this its own class..
-        # see plot_vertical_stack_varying_1_parameter.ipynb for more
-        self.Ω_model = params.get('Ω_model', 'pairs')
+        # see ΩModel above, and plot_vertical_stack_varying_1_parameter.ipynb for more
+        self.Ω_model_object = ΩModel.from_toy_params(params)
+        self.Ω_model = self.Ω_model_object.kind
         logger.info(f'Setting up toy model {self.Ω_model=}')
-
-        # NOTE: this is copying Tania's 'ParametersNpair.f90'
-        if self.Ω_model == 'pairs':
-            self.Ω_first = params.get('Ω_first', 300*kHz)
-            self.Ω_intrapair_gap = params.get('Ω_intrapair_gap', 1.5*kHz)
-            self.Ω_interpair_gap = params.get('Ω_interpair_gap', 15*kHz)
-
-            Ω_value = self.Ω_first
-            count = 0
-            self.Ωjn_dict = {}
-            for label in self.labels:
-                if label[0] != 'z':
-                    if not count % 2:
-                        # even index is the first in a pair
-                        # start with the first value, add intrapair gap for next value
-                        self.Ωjn_dict[label] = Ω_value
-                        Ω_value += self.Ω_intrapair_gap
-                    else:
-                        # odd index the first in a pair
-                        # minus the intrapair gap
-                        self.Ωjn_dict[label] = Ω_value
-                        Ω_value -= (self.Ω_interpair_gap + self.Ω_intrapair_gap)
-                    count += 1
-
-            self.Ω_model_description = (
-                f'\n    Ω_first = {self.Ω_first / kHz:.1f} kHz'
-                f'\n    Ω_intrapair_gap = {self.Ω_intrapair_gap / kHz:.1f} kHz'
-                f'\n    Ω_interpair_gap = {self.Ω_interpair_gap / kHz:.1f} kHz'
-            )
-
-        elif self.Ω_model == 'equal spacing: simple':
-            self.Ω_start = params.get('Ω_start', 300*kHz)
-            self.Ω_gap = params.get('Ω_gap', 5*kHz)
-
-            Ω_value = self.Ω_start
-            self.Ωjn_dict = {}
-            for label in self.labels:
-                if label[0] != 'z':
-                    self.Ωjn_dict[label] = Ω_value
-                    Ω_value -= self.Ω_gap
-
-            self.Ω_model_description = (
-                f'\n    Ω_start = {self.Ω_start / kHz:.1f} kHz'
-                f'\n    Ω_gap = {self.Ω_gap / kHz:.1f} kHz'
-            )
-
-        # NOTE: this is attempting to copy the 'Mechanical Mode Comb' paper
-        # define x, y frequencies across a certain span around a midpoint
-        elif self.Ω_model == 'equal spacing':
-            self.Ω_mid = params.get('Ω_mid', 300*kHz)
-            self.Ω_span = params.get('Ω_span', 100*kHz)
-
-            Ω_low = self.Ω_mid - self.Ω_span / 2
-            Ω_high = self.Ω_mid + self.Ω_span / 2
-
-            num_non_z_dims = len([_ for _ in self.labels if _[0] != 'z'])
-            if num_non_z_dims == 1:
-                Ω_gap = 0
-            else:
-                # divide by one fewer than the number of things to fill the span
-                Ω_gap = self.Ω_span / (num_non_z_dims - 1)
-
-            Ω_value = Ω_low
-            self.Ωjn_dict = {}
-            for label in self.labels:
-                if label[0] != 'z':
-                    self.Ωjn_dict[label] = Ω_value
-                    Ω_value += Ω_gap
-
-            self.Ω_model_description = (
-                f'\n    Ω_mid = {self.Ω_mid / kHz:.1f} kHz'
-                f'\n    Ω_span = {self.Ω_span / kHz:.1f} kHz'
-            )
-
-        elif self.Ω_model == 'degenerate':
-            self.Ω0 = params.get('Ω0', 300*kHz)
-            self.Ωjn_dict = {label: self.Ω0 for label in self.labels if label[0] != 'z'}
-            self.Ω_model_description = (
-                f'\n    Ω0 = {self.Ω0 / kHz:.1f} kHz'
-            )
-
-        elif self.Ω_model == 'multiband':
-            if self.Cartesian_axes_per_trap == 3:
-                raise Exception(f'{self.Ω_model=} only supports x,y frequencies')
-
-            self.Ω_model_description = (
-                f'\n    Ω_centers = {self.Ω_centers / kHz:.1f} kHz'
-                f'\n    Ω_spans = {self.Ω_spans / kHz:.1f} kHz'
-            )
-            for center, span in zip(self.Ω_centers, self.Ω_spans):
-                Ω_low = center - span / 2
-                Ω_high = center + span / 2
-
-            # TODO: finish this?
-            # self.Ωjn_dict =
-
-        elif self.Ω_model == 'custom':
-            self.Ωjn_dict = params.get('toy_Ωjn_dict')
-            self.Ω_model_description = ''
+        # the model's parameters stay available as attributes, e.g. self.Ω_first for 'pairs'
+        for name, value in self.Ω_model_object.params.items():
+            setattr(self, name, value)
+        self.Ωjn_dict = self.Ω_model_object.frequencies(self.labels)
+        self.Ω_model_description = self.Ω_model_object.description
 
         if self.Cartesian_axes_per_trap == 3:
             # allow for custom z frequencies, but if not provided, then always do a factor of x freqs
@@ -639,7 +729,7 @@ class MultiTrap:
                     n = ii + 1
                     xn, zn = f'x{n}', f'z{n}'
                     self.Ωjn_dict[zn] = self.Ωjn_dict[xn] / self.Ωz_to_Ωx_multiplier
-                    self.Ω_model_description += f'\n    Ωz_to_Ωx_multiplier = {self.Ωz_to_Ωx_multiplier:.1f}'
+                self.Ω_model_description += f'\n    Ωz_to_Ωx_multiplier = {self.Ωz_to_Ωx_multiplier:.1f}'
 
         for label, Ω in self.Ωjn_dict.items():
             logger.trace(f'{label} frequency = {Ω / kHz:.1f} kHz')
@@ -690,8 +780,9 @@ class MultiTrap:
 
         # __________________________________________________________________________________________
         # LINEAR COUPLINGS
-        # TODO: fix fact that info_str prints zeros for these even if custom gjn_dict is given
-        # should print 'N/A: custom per dimension' or something
+        # NOTE: if a custom gjn_dict is given, toy_gx/gy/gz are not used and toy_params_info_str
+        # prints the per-dimension couplings instead of these
+        self.custom_gjn_dict = 'gjn_dict' in params
         self.toy_gx = params.get('toy_gx', 0*kHz)
         self.toy_gy = params.get('toy_gy', 0*kHz)
         self.toy_gz = params.get('toy_gz', 0*kHz)
@@ -1004,158 +1095,192 @@ class MultiTrap:
         """
         The value of the deranged determinant at a given frequency
         """
-        value = 0
         if ω == 300*kHz:
-            print(f'{self.evaluation_order=}')
+            logger.trace(f'{self.evaluation_order=}')
+        R_values = self.hybridisation_function_values(ω)
+        value = 0
         for term in self.deranged_determinant_by_order[self.evaluation_order]:
-            value += self.hybridisation_term_value(term, ω)
+            value += self.hybridisation_term_value(term, ω, R_values=R_values)
         return value
 
     def deranged_adjugate_matrix_entry(self, ij, ω):
         """
         The value of given adjugate entry of the derangement matrix at a given frequency
         """
-        value = 0
         if ω == 300*kHz:
             # NOTE: this dumps the entire adjugate dictionary - 104 kB of stdout for a 2x2
             # system - so it is behind logger.trace rather than an unconditional print
             logger.trace(f'{self.deranged_adjugate_by_order[self.evaluation_order]=}')
+        R_values = self.hybridisation_function_values(ω)
+        value = 0
         for term in self.deranged_adjugate_by_order[self.evaluation_order][ij]:
-            value += self.hybridisation_term_value(term, ω)
+            value += self.hybridisation_term_value(term, ω, R_values=R_values)
         return value
 
     # calculation step functions - these are calculated for a given frequency
-    # TODO: make this a partial() function? i.e. precalculate all N² - N of them
-    def hybridisation_term_value(self, term, ω):
+    def hybridisation_function_values(self, ω):
         """
-        The value of a hybridisation term at a given frequency
+        All N² - N hybridisation functions at a given frequency, as {(label_jn, label_km): Rjk}
+
+        NOTE: the power series evaluate the same N² - N functions in every one of their terms
+        (n!·n factors for the determinant of order n), so they are computed once per frequency
+        here and looked up by hybridisation_term_value. Each value comes from the same
+        hybridisation_function_value call as before, so the sums are bit-identical.
+        [complex ·]
+        """
+        return {
+            (label_jn, label_km): self.hybridisation_function_value(label_jn, label_km, ω)
+            for label_jn in self.labels
+            for label_km in self.labels
+            if label_jn != label_km
+        }
+
+    def hybridisation_term_value(self, term, ω, R_values=None):
+        """
+        The value of a hybridisation term (a signed product of hybridisation functions) at a
+        given frequency
+
+        `R_values` is an optional table from hybridisation_function_values(ω); without it each
+        hybridisation function is evaluated directly.
+        [complex ·]
         """
         value = complex(1)
         for pair in term.pairs:
-            label_jn, label_km = pair
-
-            dim_jn = self.dimensions[label_jn]
-            dim_km = self.dimensions[label_km]
-
-            j, n = label_jn[0], label_jn[1:]
-            k, m = label_km[0], label_km[1:]
-
-            Gjn = dim_jn.G
-            Gkm_star = np.conjugate(dim_km.G)
-
-            μj = dim_jn.μm(ω)
-            Mj = dim_jn.M(ω)
-
-            ηC_m = self.cavity.ηm(ω)
-            ηC_p = self.cavity.ηp(ω)
-
-            jk = j + k
-
-            if self.compare_Rjk_calculations:
-                gjn = dim_jn.g
-                gkm = dim_km.g
-
-            # on-bead, intra-particle hybridisation
-            if m == n:
-                if jk in ['xy', 'yx']:
-                    gxy = dim_jn.gxy
-                    gxy_copy = dim_km.gxy
-                    assert gxy == gxy_copy
-                    gjk = gxy
-
-                if jk in ['xz', 'zx']:
-                    gxz = dim_jn.gxz
-                    gxz_copy = dim_km.gxz
-                    assert gxz == gxz_copy
-                    gjk = gxz
-
-                if jk in ['yz', 'zy']:
-                    gyz = dim_jn.gyz
-                    gyz_copy = dim_km.gyz
-                    assert gyz == gyz_copy
-                    gjk = gyz
-
-                if self.compare_Rjk_calculations:
-                    if jk in ['xy', 'yx']:
-                        Rjk_A = (1j * μj / Mj) * (1j * ηC_m * gjn * gkm + gjk)
-
-                    elif jk in ['xz', 'yz']:
-                        Rjk_A = (1j * μj / Mj) * (-ηC_p * gjn * gkm + gjk)
-
-                    elif jk in ['zx', 'zy']:
-                        Rjk_A = (1j * μj / Mj) * (ηC_p * gjn * gkm + gjk)
-
-            # off-bead, inter-particle hybridisation
+            if R_values is None:
+                Rjk = self.hybridisation_function_value(pair[0], pair[1], ω)
             else:
-                # no mech-mech coupling if not in the same tweezer trap
-                gjk = 0
-
-                if self.compare_Rjk_calculations:
-                    φnm = dim_jn.φ - dim_km.φ
-
-                    # amplitude-amplitude coupling or phase-phase coupling
-                    if jk in ['xy', 'yx', 'xx', 'yy'] or jk in ['zz']:
-                        Rjk_B1 = (1j * μj / Mj) * (1j * ηC_m * np.cos(φnm) + ηC_p * np.sin(φnm)) * gjn * gkm
-                        ηC_φ_P = self.cavity.ηφ_P(φnm, ω)
-                        Rjk_B2 = (1j * μj / Mj) * (-ηC_φ_P) * gjn * gkm
-
-                        # NOTE: Tania's form is related to the phase form
-                        # ηC_φ_T = iηC_φ_P
-                        # iηC_φ_T = -ηC_φ_P
-                        # ηC_φ_T = self.cavity.ηφ_T(φnm, ω)
-                        # Rjk_B2 = (1j * μj / Mj) * (1j * ηC_φ_T) * gjn * gkm
-
-                    # amplitude-phase coupling
-                    elif jk in ['xz', 'yz']:
-                        Rjk_B1 = (1j * μj / Mj) * (1j * ηC_m * np.sin(φnm) - ηC_p * np.cos(φnm)) * gjn * gkm
-                        ηC_φ_A = self.cavity.ηφ_A(φnm, ω)
-                        Rjk_B2 = (1j * μj / Mj) * (-ηC_φ_A) * gjn * gkm
-
-                    # phase-amplitude coupling
-                    elif jk in ['zx', 'zy']:
-                        Rjk_B1 = (1j * μj / Mj) * (-1j * ηC_m * np.sin(φnm) + ηC_p * np.cos(φnm)) * gjn * gkm
-                        ηC_φ_A = self.cavity.ηφ_A(φnm, ω)
-                        Rjk_B2 = (1j * μj / Mj) * (ηC_φ_A) * gjn * gkm
-
-            # NOTE: This expression works regardless of on-bead/off-bead
-            # so long as the gjk = 0 if off-bead
-            Rjk = (1j * μj / Mj) * (1j * ηC_m * np.real(Gjn * Gkm_star) + ηC_p * np.imag(Gjn * Gkm_star) + gjk)
-
-            if self.compare_Rjk_calculations:
-                # 1e-16 fails the float comparision trivially
-                rtol = 1e-15
-                atol = 1e-15
-                debug_str = (
-                    f'\n{ω / kHz} kHz'
-                    f'\n{label_jn=}, {label_km=}'
-                    f'\ng{label_jn} = {dim_jn.g / kHz} kHz'
-                    f'\ng{label_km} = {dim_km.g / kHz} kHz'
-                    f'\nφ{label_jn[1:]} = {dim_jn.φ / degrees}°'
-                    f'\nφ{label_km[1:]} = {dim_km.φ / degrees}°'
-                    f'\nG{label_jn} = {Gjn / kHz} kHz'
-                    f'\nG{label_km}* = {Gkm_star / kHz} kHz'
-                )
-                if m == n:
-                    debug_str += f'\n{Rjk_A=}, {Rjk=}'
-                    assert np.isclose(Rjk_A, Rjk, rtol=rtol, atol=atol), debug_str
-                else:
-                    debug_str_1 = debug_str + f'\n{Rjk_B1=}, {Rjk=}'
-                    debug_str_2 = debug_str + f'\n{Rjk_B2=}, {Rjk=}'
-                    debug_str_12 = debug_str + f'\n{Rjk_B1=}, {Rjk_B2=}'
-                    try:
-                        # assert np.isclose(Rjk_B1, Rjk_B2, rtol=rtol, atol=atol), debug_str_12
-                        # assert np.isclose(Rjk_B1, Rjk, rtol=rtol, atol=atol), debug_str_1
-                        # assert np.isclose(Rjk_B2, Rjk, rtol=rtol, atol=atol), debug_str_2
-                        assert np.isclose(Rjk_B1, Rjk, rtol=rtol, atol=atol)
-                        assert np.isclose(Rjk_B2, Rjk, rtol=rtol, atol=atol)
-                        assert np.isclose(Rjk_B1, Rjk_B2, rtol=rtol, atol=atol)
-                    except AssertionError as error:
-                        logger.critical(debug_str + f'\n{Rjk=}, {Rjk_B1=}, {Rjk_B2=}')
-                        raise error()
-
+                Rjk = R_values[pair]
             value *= Rjk
 
         return term.sign * value
+
+    def hybridisation_function_value(self, label_jn, label_km, ω):
+        """
+        The hybridisation function Rjn,km(ω): the response of dimension jn to dimension km, via
+        the cavity (on- and off-bead) and the mech-mech coupling gjk (on-bead only)
+        [complex ·]
+        """
+
+        dim_jn = self.dimensions[label_jn]
+        dim_km = self.dimensions[label_km]
+
+        j, n = label_jn[0], label_jn[1:]
+        k, m = label_km[0], label_km[1:]
+
+        Gjn = dim_jn.G
+        Gkm_star = np.conjugate(dim_km.G)
+
+        μj = dim_jn.μm(ω)
+        Mj = dim_jn.M(ω)
+
+        ηC_m = self.cavity.ηm(ω)
+        ηC_p = self.cavity.ηp(ω)
+
+        jk = j + k
+
+        if self.compare_Rjk_calculations:
+            gjn = dim_jn.g
+            gkm = dim_km.g
+
+        # on-bead, intra-particle hybridisation
+        if m == n:
+            if jk in ['xy', 'yx']:
+                gxy = dim_jn.gxy
+                gxy_copy = dim_km.gxy
+                assert gxy == gxy_copy
+                gjk = gxy
+
+            if jk in ['xz', 'zx']:
+                gxz = dim_jn.gxz
+                gxz_copy = dim_km.gxz
+                assert gxz == gxz_copy
+                gjk = gxz
+
+            if jk in ['yz', 'zy']:
+                gyz = dim_jn.gyz
+                gyz_copy = dim_km.gyz
+                assert gyz == gyz_copy
+                gjk = gyz
+
+            if self.compare_Rjk_calculations:
+                if jk in ['xy', 'yx']:
+                    Rjk_A = (1j * μj / Mj) * (1j * ηC_m * gjn * gkm + gjk)
+
+                elif jk in ['xz', 'yz']:
+                    Rjk_A = (1j * μj / Mj) * (-ηC_p * gjn * gkm + gjk)
+
+                elif jk in ['zx', 'zy']:
+                    Rjk_A = (1j * μj / Mj) * (ηC_p * gjn * gkm + gjk)
+
+        # off-bead, inter-particle hybridisation
+        else:
+            # no mech-mech coupling if not in the same tweezer trap
+            gjk = 0
+
+            if self.compare_Rjk_calculations:
+                φnm = dim_jn.φ - dim_km.φ
+
+                # amplitude-amplitude coupling or phase-phase coupling
+                if jk in ['xy', 'yx', 'xx', 'yy'] or jk in ['zz']:
+                    Rjk_B1 = (1j * μj / Mj) * (1j * ηC_m * np.cos(φnm) + ηC_p * np.sin(φnm)) * gjn * gkm
+                    ηC_φ_P = self.cavity.ηφ_P(φnm, ω)
+                    Rjk_B2 = (1j * μj / Mj) * (-ηC_φ_P) * gjn * gkm
+
+                    # NOTE: Tania's form is related to the phase form
+                    # ηC_φ_T = iηC_φ_P
+                    # iηC_φ_T = -ηC_φ_P
+                    # ηC_φ_T = self.cavity.ηφ_T(φnm, ω)
+                    # Rjk_B2 = (1j * μj / Mj) * (1j * ηC_φ_T) * gjn * gkm
+
+                # amplitude-phase coupling
+                elif jk in ['xz', 'yz']:
+                    Rjk_B1 = (1j * μj / Mj) * (1j * ηC_m * np.sin(φnm) - ηC_p * np.cos(φnm)) * gjn * gkm
+                    ηC_φ_A = self.cavity.ηφ_A(φnm, ω)
+                    Rjk_B2 = (1j * μj / Mj) * (-ηC_φ_A) * gjn * gkm
+
+                # phase-amplitude coupling
+                elif jk in ['zx', 'zy']:
+                    Rjk_B1 = (1j * μj / Mj) * (-1j * ηC_m * np.sin(φnm) + ηC_p * np.cos(φnm)) * gjn * gkm
+                    ηC_φ_A = self.cavity.ηφ_A(φnm, ω)
+                    Rjk_B2 = (1j * μj / Mj) * (ηC_φ_A) * gjn * gkm
+
+        # NOTE: This expression works regardless of on-bead/off-bead
+        # so long as the gjk = 0 if off-bead
+        Rjk = (1j * μj / Mj) * (1j * ηC_m * np.real(Gjn * Gkm_star) + ηC_p * np.imag(Gjn * Gkm_star) + gjk)
+
+        if self.compare_Rjk_calculations:
+            # 1e-16 fails the float comparision trivially
+            rtol = 1e-15
+            atol = 1e-15
+            debug_str = (
+                f'\n{ω / kHz} kHz'
+                f'\n{label_jn=}, {label_km=}'
+                f'\ng{label_jn} = {dim_jn.g / kHz} kHz'
+                f'\ng{label_km} = {dim_km.g / kHz} kHz'
+                f'\nφ{label_jn[1:]} = {dim_jn.φ / degrees}°'
+                f'\nφ{label_km[1:]} = {dim_km.φ / degrees}°'
+                f'\nG{label_jn} = {Gjn / kHz} kHz'
+                f'\nG{label_km}* = {Gkm_star / kHz} kHz'
+            )
+            if m == n:
+                debug_str += f'\n{Rjk_A=}, {Rjk=}'
+                assert np.isclose(Rjk_A, Rjk, rtol=rtol, atol=atol), debug_str
+            else:
+                debug_str_1 = debug_str + f'\n{Rjk_B1=}, {Rjk=}'
+                debug_str_2 = debug_str + f'\n{Rjk_B2=}, {Rjk=}'
+                debug_str_12 = debug_str + f'\n{Rjk_B1=}, {Rjk_B2=}'
+                try:
+                    # assert np.isclose(Rjk_B1, Rjk_B2, rtol=rtol, atol=atol), debug_str_12
+                    # assert np.isclose(Rjk_B1, Rjk, rtol=rtol, atol=atol), debug_str_1
+                    # assert np.isclose(Rjk_B2, Rjk, rtol=rtol, atol=atol), debug_str_2
+                    assert np.isclose(Rjk_B1, Rjk, rtol=rtol, atol=atol)
+                    assert np.isclose(Rjk_B2, Rjk, rtol=rtol, atol=atol)
+                    assert np.isclose(Rjk_B1, Rjk_B2, rtol=rtol, atol=atol)
+                except AssertionError:
+                    logger.critical(debug_str + f'\n{Rjk=}, {Rjk_B1=}, {Rjk_B2=}')
+                    raise
+
+        return Rjk
 
     # ----------------------------------------------------------------------------------------------
     # for analytic methods
@@ -2011,8 +2136,8 @@ class MultiTrap:
     def position_power_spectra_array(self):
         """
         Calculates an array of the PSDs of all dimensions' zpf-scaled position operators
+        (see position_cross_spectra_array for all the cross spectra)
         """
-        # TODO: calculate a similar thing for all CSDs?
         msg = '🧮 Calculating array of all (zpf-scaled) position power spectra'
         print(msg), logger.info(msg)
 
@@ -2033,3 +2158,31 @@ class MultiTrap:
                 + Scc_array[:, ci, ai]
             )
         return Sxx_array
+
+    @cached_property
+    def position_cross_spectra_array(self):
+        """
+        Calculates an array of the cross spectra of all pairs of dimensions' zpf-scaled position
+        operators, from the same TNT LAM array as position_power_spectra_array
+
+        S_qjqk(ω)[ii, jj, kk] = Σ Scc†(ω) over the 2 × 2 annihilation/creation index pairs of
+        dimensions jj and kk, since qjn = bjn + bjn†. The diagonal is position_power_spectra_array
+        (real), and S_qkqj = S_qjqk*. Same convention as position_cross_spectrum(label_A, label_B),
+        i.e. 〈qA(ω)·qB(ω)†〉.
+        [complex ·], shape (len(ω_range), num_dimensions, num_dimensions)
+        """
+        msg = '🧮 Calculating array of all (zpf-scaled) position cross spectra'
+        print(msg), logger.info(msg)
+
+        Scc_array = self.quantum_operator_spectral_density_array
+        indices = [(self.label_to_noise_index[label], self.label_to_noise_index[label] + 1) for label in self.labels]
+        Sqq_array = np.zeros((len(self.ω_range), self.num_dimensions, self.num_dimensions), dtype=np.complex128)
+        for jj, (aj, cj) in enumerate(indices):
+            for kk, (ak, ck) in enumerate(indices):
+                Sqq_array[:, jj, kk] = (
+                    Scc_array[:, aj, ak]
+                    + Scc_array[:, aj, ck]
+                    + Scc_array[:, cj, ak]
+                    + Scc_array[:, cj, ck]
+                )
+        return Sqq_array

@@ -11,7 +11,7 @@ from levisim.core.units import (
     mbar,
     K,
 )
-from levisim.multiphysics.multitrap import MultiTrap
+from levisim.multiphysics.multitrap import MultiTrap, ΩModel
 
 
 __all__ = [
@@ -69,43 +69,45 @@ DEFAULT_cavity_kwargs = dict(
 
 
 # mimics fortran code
-# TODO: make a class for Ω_model
-FORTRAN_Ω_model_pairs = dict(
-    Ω_model='pairs',
+# NOTE: the Ω_model dicts below are built from levisim.multiphysics.multitrap.ΩModel (the one
+# implementation of the frequency models); .as_toy_params() gives the dict form that is splatted
+# into the toy_params dicts, so these names keep their previous values
+FORTRAN_Ω_model_pairs = ΩModel(
+    'pairs',
     Ω_first=312*kHz,
     Ω_intrapair_gap=1.5*kHz,
     Ω_interpair_gap=15*kHz,
-)
+).as_toy_params()
 FORTRAN_toy_params = dict(
     **FORTRAN_Ω_model_pairs,
     toy_gx=-40*kHz,
     toy_gy=-40*kHz,
 )
 
-FORTRAN_Ω_model_equal_spacing_simple = dict(
-    Ω_model='equal spacing: simple',
+FORTRAN_Ω_model_equal_spacing_simple = ΩModel(
+    'equal spacing: simple',
     Ω_start=312*kHz,
     Ω_gap=7*kHz,
-)
+).as_toy_params()
 
 
 # for mimicking trapping away from the node
-DEFAULT_Ω_model_pairs = dict(
-    Ω_model='pairs',
+DEFAULT_Ω_model_pairs = ΩModel(
+    'pairs',
     Ω_first=305*kHz,
     Ω_intrapair_gap=2.5*kHz,
     Ω_interpair_gap=7*kHz,
-)
-DEFAULT_Ω_model_equal_spacing = dict(
-    Ω_model='equal spacing',
+).as_toy_params()
+DEFAULT_Ω_model_equal_spacing = ΩModel(
+    'equal spacing',
     Ω_mid=275*kHz,
     Ω_span=50*kHz,
-)
-DEFAULT_Ω_model_equal_spacing_simple = dict(
-    Ω_model='equal spacing: simple',
+).as_toy_params()
+DEFAULT_Ω_model_equal_spacing_simple = ΩModel(
+    'equal spacing: simple',
     Ω_start=305*kHz,
     Ω_gap=7*kHz,
-)
+).as_toy_params()
 
 
 OFF_NODE_coupling_and_phase_params = dict(

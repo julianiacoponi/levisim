@@ -1,5 +1,4 @@
 import numpy as np
-from functools import cached_property
 
 from levisim.core.constants import π, ħ, c, ε0
 from levisim.core.units import (
@@ -52,7 +51,12 @@ class Cavity:
         # ------------------------------------------------------------------------------------------
         # Tweezer angular frequency
         # [2π·Hz]
-        # TODO: for now, can only handle one tweezer frequency, even if many fill the cavity
+        # NOTE: one tweezer frequency is enough here. ωtw only sets the frame and the cavity's own
+        # optical frequency ω = ωtw - Δ (and so k, λ, xR, E0). Further tones are handled by
+        # levisim.multiphysics.multitone, which works in the frame of the cavity resonance and gives
+        # each tone its own detuning Δ_k; using a different tone's frequency here would change ω
+        # (hence k and E0) by |Δ_k - Δ|/ωtw ~ 1.6 × 10⁻⁹ for Δ/2π = 450 kHz at 1064 nm, which is
+        # negligible against every other parameter uncertainty.
         self.ωtw = float(kwargs.get('ωtw', Tweezer().ω))
 
         ############################################################################################
@@ -138,7 +142,7 @@ class Cavity:
     ################################################################################################
     # DERIVED PROPERTIES
     # ----------------------------------------------------------------------------------------------
-    @cached_property
+    @property
     def κ(self):
         """
         Cavity energy decay rate
@@ -148,7 +152,7 @@ class Cavity:
             return float(self.override_κ)
         return π * c / (self.Finesse * self.L)
 
-    @cached_property
+    @property
     def V(self):
         """
         Cavity mode volume
@@ -156,9 +160,16 @@ class Cavity:
         """
         return self.L * π * self.waist**2 / 4
 
-    # TODO: figure out whether it is important to use property vs. cached_property
-    # if deciding to dynamically change a variable that affects a given property...
-    @cached_property
+    # NOTE: these derived properties are plain @property, not cached_property. A cached_property
+    # is computed once and then frozen, so changing an input afterwards silently left it stale:
+    # e.g. after `cavity.info_str` (which MultiTrap logs on construction) set `cavity.Finesse =
+    # 20_000` and κ stayed at the old 390.35 kHz instead of 780.73 kHz, and χC(ω) - which reads
+    # self.κ - used the stale value; likewise `cavity.Δ = ...` left ω, k, λ, xR and E0 at the old
+    # detuning. Each property is a few float operations, so recomputing on access costs nothing
+    # measurable and gives bit-identical values. NOTE: a MultiTrap still copies the couplings it
+    # derives from the cavity at construction, so changing a cavity input after building a
+    # MultiTrap does not update that MultiTrap - build a new one.
+    @property
     def ω(self):
         """
         Angular frequency of the cavity mode
@@ -166,7 +177,7 @@ class Cavity:
         """
         return self.ωtw - self.Δ
 
-    @cached_property
+    @property
     def k(self):
         """
         Angular wavenumber of the cavity mode
@@ -174,7 +185,7 @@ class Cavity:
         """
         return self.ω / c
 
-    @cached_property
+    @property
     def λ(self):
         """
         Wavelength of the cavity mode
@@ -182,7 +193,7 @@ class Cavity:
         """
         return 2*π / self.k
 
-    @cached_property
+    @property
     def xR(self):
         """
         Rayleigh range for the cavity mode, in its cavity axis (x-axis)
@@ -191,7 +202,7 @@ class Cavity:
         """
         return π * self.waist**2 / self.λ
 
-    @cached_property
+    @property
     def E0(self):
         """
         Magnitude of the cavity's electric field at the origin
