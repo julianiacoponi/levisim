@@ -8,10 +8,13 @@ needs OpenCV and writes image files). These tests compare the spectrum arrays di
 mtrap.homodyne_spectrum / heterodyne_spectrum / all_position_power_spectra, using the project's
 own relative-difference comparator so the thresholds stay the project's convention.
 
-The analytic methods are known to disagree with the others - the notebook section comparing them
-is headed "BROKEN!" and multitrap.py carries "TODO: fix analytic methods for z motion". That
-disagreement is recorded here as an xfail rather than hidden, so it stays visible and any change
-in its status is reported by the suite.
+The analytic methods used to disagree with the others off the node (the notebook section
+comparing them is headed "BROKEN!"): their closed form left out the direct mechanical coupling
+between the dimensions of one bead (gxy, gxz, gyz), and evaluated P and the thermal brackets
+in a form that cancelled catastrophically on exact resonances. Both are fixed (Nov 2026), so
+the analytic methods are now held to the same 'very hard' (mean relative difference < 1e-12)
+threshold as the rest, on every off-node system below. Tighter per-point checks are in
+tests/test_analytic_phase.py and tests/test_analytic_intra_bead.py.
 """
 import numpy as np
 import pytest
@@ -20,7 +23,6 @@ from levisim.core.units import kHz
 from levisim.multiphysics.enums.quantum_linear_theory_method import QuantumLinearTheoryMethod
 from levisim.multiphysics.enums.spectrum import SpectrumType
 from levisim.multiphysics.utils.comparison import (
-    RelativeDifferenceTooHigh,
     assert_arrays_agree_within_threshold as assert_arrays_agree,
 )
 from levisim.multiphysics.utils.shelf import OFF_NODE_toy_params_pairs, OFF_NODE_toy_params_equal_spacing_simple
@@ -101,20 +103,23 @@ def test_optical_spectra_agree_across_non_analytic_methods(make_mtrap, system, s
     )
 
 
-@pytest.mark.parametrize('system', SYSTEMS)
-@pytest.mark.xfail(
-    raises=RelativeDifferenceTooHigh,
-    reason=(
-        'the analytic methods disagree with LAM and Numerical H - known issue, flagged in '
-        'test_all_systems.ipynb under the heading "BROKEN!" and by the "TODO: fix analytic '
-        'methods for z motion" note in multitrap.py'
-    ),
-    strict=False,
-)
-def test_analytic_methods_agree_with_the_rest(make_mtrap, system):
-    """Documents the known analytic-vs-rest disagreement rather than leaving it unrecorded"""
-    mtrap = build(make_mtrap, system)
+# 1 axis per trap uses OFF_NODE_toy_params_equal_spacing_simple, otherwise OFF_NODE_toy_params_pairs
+# (both with z coupling, intra-bead couplings and 0/45 degree tweezer phases)
+ANALYTIC_SYSTEMS = ['1×1', '2×1', '1×2', '2×2', '1×3', '3×2']
+
+
+@pytest.mark.parametrize('spectrum_type', [SpectrumType.HOMODYNE, SpectrumType.HETERODYNE])
+@pytest.mark.parametrize('system', ANALYTIC_SYSTEMS)
+def test_analytic_optical_spectra_agree_with_the_rest(make_mtrap, system, spectrum_type):
+    """Analytic inside/output, LAM and Numerical H agree on the optical spectra off the node"""
+    mtrap = build(make_mtrap, system, load_in_power_series=False)
     methods = [ANALYTIC_INSIDE, ANALYTIC_OUTPUT, LAM, NUMERICAL_H]
-    assert_arrays_agree(
-        mtrap, optical_spectrum_arrays(mtrap, methods, SpectrumType.HOMODYNE)
-    )
+    assert_arrays_agree(mtrap, optical_spectrum_arrays(mtrap, methods, spectrum_type))
+
+
+@pytest.mark.parametrize('system', ANALYTIC_SYSTEMS)
+def test_analytic_position_psds_agree_with_the_rest(make_mtrap, system):
+    """Analytic inside/output, LAM and Numerical H agree on every position PSD off the node"""
+    mtrap = build(make_mtrap, system, load_in_power_series=False)
+    methods = [ANALYTIC_INSIDE, ANALYTIC_OUTPUT, LAM, NUMERICAL_H]
+    assert_arrays_agree(mtrap, position_psd_arrays(mtrap, methods))
