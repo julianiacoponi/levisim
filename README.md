@@ -76,6 +76,10 @@ The above indicates that the mathematical expression $`maths`$ is calculated in 
 
 - I will assume from now that all operator, noise, and matrix quantites are spectral (with functional dependence on $`\omega`$) unless otherwise stated
 
+- $`\mathbb{M}_{\text{TOT}}`$ is `M_norm` in the code, and the overlined transduction functions $`\overline{\mathbb{F}}_{a}, \overline{\mathbb{F}}_{\mathrm{Q}}`$... are the `FFa`, `FFQ`... functions (the doubled `F` standing in for the overline). $`\mathbb{F}`$ without an overline transduces an input noise into $`\mathrm{\hat{Q}}_\phi`$, and $`\overline{\mathbb{F}}`$ into $`\mathrm{\hat{Q}}^\dagger_\phi`$
+
+- $`\chi_{j_n}(\omega)`$ is the mechanical susceptibility of the $`j_n`$ dimension (`dim.χ`), and $`\mu_{j_n}(\omega) \equiv \chi_{j_n}(\omega) - \chi^*_{j_n}(-\omega)`$ their difference (`dim.μm`), which is what multiplies the light quadrature in a hybridised position
+
 ---
 
 ## (1) `QuantumLinearTheoryMethod.LINEAR_AMPLIFIER_MODEL`
@@ -353,9 +357,8 @@ $`\Uparrow`$
 
 ---
 
-# TODO: finish the below
-
 ## (6) `QuantumLinearTheoryMethod.ANALYTIC_INSIDE_CAVITY`
+Both analytic methods replace matrix inversion with the closed-form solution for the two phase-dependent collective modes $`\mathrm{\hat{Q}}_\phi, \mathrm{\hat{Q}}^\dagger_\phi`$, so the cost is independent of $`N`$ and, like Power Series H, a single position can be had without solving for any other. This one solves for the intracavity field first and reaches the output field through the input-output relations.
 
 > ### `homodyne_spectrum` & `heterodyne_spectrum`
 - `noise_vector_to_power_spectrum`
@@ -371,7 +374,7 @@ $`\Uparrow`$
 
 $`\Uparrow`$
 
-- `light_noise_vectors` $`\leftarrow`$ $`\bar{g}`$ $`\overline{g}`$
+- `light_noise_vectors` $`\leftarrow`$ $`\hat{a}, \hat{a}^\dagger`$ in terms of the collective modes, where $`\bar{g}`$ is the total collective coupling rate (`gbar`)
 ```math
 \hat{a} = \chi_{\text{c}}(\omega)
 \begin{bmatrix}
@@ -407,12 +410,38 @@ $`\Uparrow`$
 ```
 
 > ### `all_position_power_spectra`
+- `noise_vector_to_power_spectrum`
+
+$`\Uparrow`$
+
+- `hybridised_positions` $`\leftarrow`$ each row filled in turn by `hybridised_position_noise_vector`
+    - unlike every hybridisation method, there is no matrix to invert, so the rows are independent of one another
+
+$`\Uparrow`$
+
+- `hybridised_position_noise_vector` $`\leftarrow`$ $`\hat{q}_{j_n} = ig_{j_n} \mu_{j_n} \hat{C}(\phi_n) + \sqrt{\Gamma_{j_n}} \tilde{\mathrm{Q}}_{\text{THERM}, j_n}`$
+    - $`\hat{C}(\phi_n) \equiv \hat{a}^\dagger e^{i\phi_n} + \hat{a}e^{-i\phi_n}`$ is the quadrature of cavity light this dimension couples to
+
+$`\Uparrow`$
+
+- `light_noise_vectors` $`\leftarrow`$ $`\hat{a}, \hat{a}^\dagger`$ as above
 
 > ### `position_power_spectrum` / `position_cross_spectrum`
+- `noise_vector_to_power_spectrum` / `noise_vectors_to_cross_spectrum`
+
+$`\Uparrow`$
+
+- `hybridised_position_noise_vector` $`\leftarrow`$ one $`\hat{q}_{j_n}`$ for PSD, two for CSD
+    - as for Power Series H, no other dimension's solution is needed - but here because the collective-mode solution is closed-form rather than because a single adjugate row can be picked out
+
+$`\Uparrow`$
+
+- `light_noise_vectors` $`\leftarrow`$ $`\hat{a}, \hat{a}^\dagger`$ as above
 
 ---
 
-## (6) `QuantumLinearTheoryMethod.ANALYTIC_CAVITY_OUTPUT`
+## (7) `QuantumLinearTheoryMethod.ANALYTIC_CAVITY_OUTPUT`
+The same closed-form collective-mode solution as (6), but arranged the other way round: the *output* field is written directly in terms of the input noises, and `light_noise_vectors` recovers the intracavity field by reversing the input-output relations. The two should agree everywhere, and are compared against each other in `tests/test_noise_vector_equivalence.py`.
 
 > ### `homodyne_spectrum` & `heterodyne_spectrum`
 - `noise_vector_to_power_spectrum`
@@ -424,12 +453,62 @@ $`\Uparrow`$
 
 $`\Uparrow`$
 
-# TODO: Correct this
-- `output_light_noise_vectors` $`\leftarrow`$
+- `output_light_noise_vectors` $`\leftarrow`$ each component of $`\hat{a}_{\text{out}}`$ written straight onto the $`2N + 2`$ input noises
+
+```math
+\begin{aligned}
+\hat{a}_{\text{out}}[\tilde{a}_{\text{in}}]
+    &= 1 - \kappa\chi_{\text{c}}
+       - i\bar{g}\sqrt{\kappa}\,\chi_{\text{c}}\,\mathbb{M}_{\text{TOT}}^{-1}\mathbb{F}_{a}
+\\
+\hat{a}_{\text{out}}[\tilde{a}^{\dagger}_{\text{in}}]
+    &= - i\bar{g}\sqrt{\kappa}\,\chi_{\text{c}}\,\mathbb{M}_{\text{TOT}}^{-1}\mathbb{F}_{a^{\dagger}}
+\\
+\hat{a}_{\text{out}}[\tilde{b}_{j_n,\text{in}}]
+    &= -i\sqrt{\kappa}\,\chi_{\text{c}}\,\mathbb{M}_{\text{TOT}}^{-1}
+       \left(\mathbb{F}_{\mathrm{Q}}e^{i\phi_n} + \mathbb{F}_{\mathrm{Q}^{\dagger}}e^{-i\phi_n}\right)
+       \sqrt{\Gamma_{j_n}}\,g_{j_n}\,\chi_{j_n}(\omega)
+\\
+\hat{a}_{\text{out}}[\tilde{b}^{\dagger}_{j_n,\text{in}}]
+    &= -i\sqrt{\kappa}\,\chi_{\text{c}}\,\mathbb{M}_{\text{TOT}}^{-1}
+       \left(\mathbb{F}_{\mathrm{Q}}e^{i\phi_n} + \mathbb{F}_{\mathrm{Q}^{\dagger}}e^{-i\phi_n}\right)
+       \sqrt{\Gamma_{j_n}}\,g_{j_n}\,\chi^{*}_{j_n}(-\omega)
+\end{aligned}
+```
+
+```math
+\begin{aligned}
+\hat{a}^{\dagger}_{\text{out}}[\tilde{a}_{\text{in}}]
+    &= + i\bar{g}\sqrt{\kappa}\,\chi^{*}_{\text{c}}(-\omega)\,\mathbb{M}_{\text{TOT}}^{-1}\overline{\mathbb{F}}_{a}
+\\
+\hat{a}^{\dagger}_{\text{out}}[\tilde{a}^{\dagger}_{\text{in}}]
+    &= 1 - \kappa\chi^{*}_{\text{c}}(-\omega)
+       + i\bar{g}\sqrt{\kappa}\,\chi^{*}_{\text{c}}(-\omega)\,\mathbb{M}_{\text{TOT}}^{-1}\overline{\mathbb{F}}_{a^{\dagger}}
+\\
+\hat{a}^{\dagger}_{\text{out}}[\tilde{b}_{j_n,\text{in}}]
+    &= +i\sqrt{\kappa}\,\chi^{*}_{\text{c}}(-\omega)\,\mathbb{M}_{\text{TOT}}^{-1}
+       \left(\overline{\mathbb{F}}_{\mathrm{Q}}e^{i\phi_n} + \overline{\mathbb{F}}_{\mathrm{Q}^{\dagger}}e^{-i\phi_n}\right)
+       \sqrt{\Gamma_{j_n}}\,g_{j_n}\,\chi_{j_n}(\omega)
+\\
+\hat{a}^{\dagger}_{\text{out}}[\tilde{b}^{\dagger}_{j_n,\text{in}}]
+    &= +i\sqrt{\kappa}\,\chi^{*}_{\text{c}}(-\omega)\,\mathbb{M}_{\text{TOT}}^{-1}
+       \left(\overline{\mathbb{F}}_{\mathrm{Q}}e^{i\phi_n} + \overline{\mathbb{F}}_{\mathrm{Q}^{\dagger}}e^{-i\phi_n}\right)
+       \sqrt{\Gamma_{j_n}}\,g_{j_n}\,\chi^{*}_{j_n}(-\omega)
+\end{aligned}
+```
+
+The $`1 - \kappa\chi_{\text{c}}`$ terms are what is left of $`\hat{a}_{\text{out}} = -\sqrt{\kappa}\hat{a} + \tilde{a}_{\text{in}}`$ once $`\hat{a}[\tilde{a}_{\text{in}}] = \sqrt{\kappa}\chi_{\text{c}}`$ is substituted in - the input noise that reflects straight off the cavity rather than entering it. The $`e^{\pm i\phi_n}`$ signs follow `tweezer_phase_sign_convention`; the expressions above are written for the $`+`$ convention.
 
 > ### `all_position_power_spectra`
+- identical to (6) above - the positions do not depend on which side of the input-output relations was solved first, so this method reaches them through the same `hybridised_positions` $`\rightarrow`$ `hybridised_position_noise_vector` $`\rightarrow`$ `light_noise_vectors` chain
+
+$`\Uparrow`$
+
+- `light_noise_vectors` $`\leftarrow`$ $`\hat{a}, \hat{a}^\dagger`$ recovered by *reversing* the relations above, i.e. $`\hat{a} = (\tilde{a}_{\text{in}} - \hat{a}_{\text{out}})/\sqrt{\kappa}`$
+    - pointlessly convoluted, as noted in the noise-vector section below, but it does mean the two analytic methods exercise different code and so can be checked against each other
 
 > ### `position_power_spectrum` / `position_cross_spectrum`
+- identical to (6) above
 
 ---
 ---
@@ -535,13 +614,48 @@ $`F \equiv`$ number of $`\omega`$ values in `ω_range` property
     - $`\mathbf{N} = \mathrm{diag}(\kappa(n_{\text{c}} + 1), \ \kappa n_{\text{c}}, \ \ldots, \Gamma_{j_n}(n_{j_n} + 1), \Gamma_{j_n} n_{j_n}, \ldots)`$ is the "noise" matrix
     - $`n_{\text{c}} \equiv`$ number of noise photons ($`n_{\text{c}} = 0`$ for shot noise)
     - $`n_{j_n} \equiv`$ number of phonons for $`j_n`$ dimension via Bose-Einstein statistics
+- **ALL OTHER METHODS**: _(LAM, Hybrid LAM, both hybridisation, and both analytic)_
+    - Loops over `ω_range` and, at each $`\omega`$, builds the whole $`(N, 2N + 2)`$ `hybridised_positions` array, then reduces each dimension's row to one PSD value with `noise_vector_to_power_spectrum`
+    - i.e. $`S_{q_{j_n}q_{j_n}}(\omega) = \sum_{\text{noises}} \eta_{\text{noise}} \ \big|\hat{q}_{j_n}[\text{noise}]\big|^2`$
+        - $`\eta_{\text{noise}} \equiv`$ `quantum_factor_per_noise_operator`, the occupation factors $`(n_{\text{c}} + 1, \ n_{\text{c}}, \ \ldots, n_{j_n} + 1, \ n_{j_n}, \ldots)`$
+        - the rates $`\kappa`$ and $`\Gamma_{j_n}`$ do **not** appear here: they are already inside the noise vectors, via the $`\sqrt{\kappa}\tilde{a}_\text{in}`$ and $`\sqrt{\Gamma_{j_n}}\tilde{\mathrm{Q}}_{\text{THERM}}`$ prefactors. This is the one place the TNT route differs in form, since it carries them explicitly in $`\mathbf{N}`$
+    - This is why TNT is the only method that can fill `psd_array` without ever constructing a noise vector, and equally why it is the only method that _cannot_ give a single position on its own
+- **Note on `zpf_scaled`**
+    - $`\hat{q}_{j_n}`$ is dimensionless throughout (in units of the zero-point fluctuation), so `zpf_scaled=True` returns the PSD as calculated
+    - `zpf_scaled=False` multiplies each dimension's PSD by $`x_{\text{zpf}, j_n}^2`$ to put it back into $`\text{m}^2/(2\pi\cdot\text{Hz})`$
 
-# TODO: finish (6) for all the other methods
+---
 
-# TODO: refactor `multitrap` so there are mixins for each of LAM, Hybridisation and Analytic methods
+# Planned refactor: mixins for `multitrap`
+
+`MultiTrap` currently branches on `method` inside each calculation function, which is why `multitrap.py` is over 2,000 lines. Mapping the branches out while documenting the above, the split falls fairly cleanly into three mixins plus the parts that are genuinely shared:
+
+- **`LinearAmplifierMixin`** - `(1)`, `(2)`, `(3)`. Owns `drift_matrix`, `T_matrix`, `c_noise_vector`, and the TNT-only `quantum_operator_spectral_density_array` / `position_power_spectra_array`. Takes positions and light operators by slicing $`\hat{\mathbf{c}}`$.
+- **`HybridisationMixin`** - `(4)`, `(5)`. Owns `derangement_matrix`, `hybridisation_matrix`, `deranged_determinant`, `deranged_adjugate_matrix` and `x1D_noise_vector`. Numerical and Power Series differ only in _how_ $`\mathbf{D}^{-1}`$ is obtained, so they are two methods on one mixin rather than two mixins.
+- **`AnalyticMixin`** - `(6)`, `(7)`. Owns `gbar`, `M_norm`, the $`\mathbb{F}`$ / $`\overline{\mathbb{F}}`$ transduction functions and `Q_phi`. Inside-cavity and cavity-output differ only in which end of the input-output relations is solved first.
+- **Shared on the base class** - `dimensions`, `cavity`, `ω_range`, `quantum_factor_per_noise_operator`, `noise_vector_to_power_spectrum`, `noise_vectors_to_cross_spectrum`, and the spectrum entry points that dispatch to a mixin.
+
+The one real obstacle is that `hybridised_position_noise_vector` and `light_noise_vectors` are mutually recursive across mixins for the analytic methods - a position needs the light operators, which for Analytic Cavity Output come from the output operators, which need the collective modes. So the dispatch has to live on the base class rather than inside any one mixin.
 
 # Disclaimer regarding use of LLMs
 
-While in early 2025 I dabbled with using ChatGPT and DeepSeek to give me starting points for certain more generic parts of this code (help with wrappers etc.) the only thing that remains of legitimate value that I gained from using those tools is the first attempt at the `docker-compose.yaml`, which I otherwise would have likely laboured a bit harder to do. Otherwise this code is proudly written without any LLM generated code :-)
+While in early 2025 I dabbled with using ChatGPT and DeepSeek to give me starting points for certain more generic parts of this code (help with wrappers etc.) the only thing that remains of legitimate value that I gained from using those tools is the first attempt at the `docker-compose.yaml`, which I otherwise would have likely laboured a bit harder to do. Otherwise this code was proudly written without any LLM generated code :-)
+
+### October 2026 update
+
+That remains true of every commit on `main`. In one session I pointed Claude (Anthropic) at this repository, the untracked `notebooks/` folder and the `fortran/` folder, and asked it to propose fixes as pull requests. It opened a stack of them, and **this paragraph and the two sections above it are themselves part of that work** - so the claim above no longer covers the whole repository if any of those branches are merged. Each pull request description carries the same note.
+
+For the record, the things it found that I had not:
+
+- `pyproject.toml` shipped no subpackages, so `pip install levisim` produced a package that raised `ModuleNotFoundError: No module named 'levisim.core'` on import. Working from the repo root hid it completely.
+- `import levisim` could not succeed on a fresh clone at all: `shelf.py` built 17 `MultiTrap` instances at import time, several of which read power-series pickles from the untracked `notebooks/`.
+- Three latent `NameError`s - `Megasamples` for `megasamples`, a missing `colours_50` import, and a bare `k` where `self.k` was meant - each making its enclosing function raise on any call. None was reachable from anywhere in the repo, which is why they had survived.
+- `core/logger.py` added only an Elasticsearch sink and then logged at import, so with no ELK stack running every `import levisim` printed a traceback and **no `logger` call has ever reached the console**. That is why there are 83 `print()` calls in here.
+- Nine `cmplx()` calls in the Fortran had no `kind` argument, so every complex susceptibility $`\chi`$ was computed in **single precision** and widened back to double - a median relative error of 2e-7 in the reference data.
+- Three of the four build lines in the old `fortran/README.txt` did not compile, because the `num_traps` rename only reached three of the files.
+- `physics/kick.py` defined `info` twice, so `Kick.info` returned the string instead of printing it.
+- The comparison helpers default to `difficulty_level='very hard'`, a relative-difference threshold of 1e-12 that double-precision linear algebra cannot reach. This is why the test notebooks reported hundreds of failing method pairs that were not real disagreements - though the analytic-vs-rest disagreement on the **spectra** (mean 28-147%) is real, and is the thing the "BROKEN!" heading in `test_all_systems.ipynb` was correctly pointing at.
+
+It also could not fix, and I should: the `kappa_nano (Hz) 1.216e-86` that `NParticle.f90` prints, and the two `NOT SURE: CHECK!!!` susceptibilities in `3DEQRom.f90`.
 
 License chosen through [choosealicense.com](https://choosealicense.com)
