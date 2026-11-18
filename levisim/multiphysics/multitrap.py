@@ -1332,6 +1332,26 @@ class MultiTrap:
             for trap_index in sorted(set(trap_indices))
         ]
 
+    @cached_property
+    def intra_bead_coupling_matrix(self):
+        """
+        Symmetric matrix of the direct mechanical couplings between dimensions of the same bead
+
+        Entry (j, k) is gxy, gxz or gyz when dimensions j and k belong to the same bead, and zero
+        otherwise (levisim has no direct mechanical coupling between different beads), matching the
+        mech-mech terms of the drift matrix. Ordered as `self.labels` on both axes.
+        [2π·Hz]
+        """
+        couplings = np.zeros((self.num_dimensions, self.num_dimensions))
+        dims = list(self.dimensions.values())
+        for jj, dim_j in enumerate(dims):
+            for kk, dim_k in enumerate(dims):
+                if jj == kk or dim_j.trap_index != dim_k.trap_index:
+                    continue
+                axes = ''.join(sorted(dim_j.axis + dim_k.axis))
+                couplings[jj, kk] = getattr(dim_j, f'g{axes}')
+        return couplings
+
     def analytic_kernel(self, ω):
         """
         Frequency-dependent building blocks shared by every analytic-method function at ω
@@ -1342,8 +1362,12 @@ class MultiTrap:
             qjn(ω) = μjn(ω)·[i(Gjn*·a + Gjn·a†) + ...] + √Γjn·Q_THERMjn(ω)
         leaves, for the positions q (ordered as `self.labels`),
             (W⁻¹ - iC)·q = sources,   C = iχC·G*Gᵀ - iχC*·GG†  (rank 2: the two light channels)
-        where W is the mechanical response matrix, block diagonal per bead (W = diag(μjn),
-        μjn = χjn(ω) - χjn*(-ω), when the dimensions of a bead are not coupled to each other).
+        where W = (diag(1/μ) - i·g_intra)⁻¹ is the mechanical response matrix, μjn = χjn(ω) - χjn*(-ω),
+        and g_intra holds the direct mechanical couplings gxy, gxz, gyz between the dimensions of the
+        same bead (`intra_bead_coupling_matrix`). W is block diagonal per bead (W = diag(μ) when a
+        bead's dimensions are uncoupled), symmetric, and only needs one (axes × axes) inverse per
+        bead - the closed form never inverts an N×N matrix. Each thermal drive enters through
+        B⁻¹ = W·diag(1/μ).
         Because C has rank 2, the cavity field only ever sees three collective response sums
             D(0) = Gᵀ·W·G*,   D(2) = Gᵀ·W·G,   D(-2) = G*ᵀ·W·G*
         and the determinant of the remaining 2×2 light-only problem is the normalisation
@@ -1359,8 +1383,9 @@ class MultiTrap:
         involves no such subtraction, since I is exactly zero between dimensions coupling to the
         same quadrature. The same identity gives the brackets multiplying each dimension's
         thermal noise in a and a† without cancellation:
-            F_Q·Gjn + F_Q†·Gjn*     = [G  - 2i·χC*(-ω)·Iᵀ·h ]jn
-            FF_Q·Gjn + FF_Q†·Gjn*   = [G* - 2i·χC(ω)·Iᵀ·h̃]jn
+            F_Q·G + F_Q†·G*     → B⁻ᵀ·[G  - 2i·χC*(-ω)·Iᵀ·h ]
+            FF_Q·G + FF_Q†·G*   → B⁻ᵀ·[G* - 2i·χC(ω)·Iᵀ·h̃]
+        (with g_intra = 0, B⁻¹ = 1 and these are exactly the brackets of PRR 8).
 
         The result for the last ω requested is cached, since the analytic noise vectors call
         D, P and M_norm several times per frequency.
@@ -1376,9 +1401,22 @@ class MultiTrap:
         μ = np.array([dim.μm(ω) for dim in self.dimensions.values()])
         I = self.coupling_quadrature_overlap_matrix
 
-        # W⁻¹ per bead, and its inverse W (diagonal: no coupling between the dimensions of a bead)
-        W_inv_blocks = [np.diag(1 / μ[indices]) for indices in self.trap_dimension_indices]
+        # W⁻¹ = diag(1/μ) - i·g_intra per bead, and its inverse W. W is built by inverting W⁻¹
+        # rather than as (I - i·diag(μ)·g_intra)⁻¹·diag(μ): on a resonance the latter matrix has a
+        # condition number ~5e6 (3×2 OFF_NODE toy system), which cost ~4e-10 in W. Beads without
+        # intra-bead coupling keep W = diag(μ) exactly.
+        g_intra = self.intra_bead_coupling_matrix
         W = np.diag(μ)
+        # B⁻¹ = W·diag(1/μ) maps each dimension's thermal drive to the bead's uncoupled response
+        B_inv = np.eye(self.num_dimensions, dtype=np.complex128)
+        W_inv_blocks = []
+        for indices in self.trap_dimension_indices:
+            block = np.ix_(indices, indices)
+            W_inv_n = np.diag(1 / μ[indices]) - 1j * g_intra[block]
+            W_inv_blocks.append(W_inv_n)
+            if np.any(g_intra[block]):
+                W[block] = np.linalg.inv(W_inv_n)
+                B_inv[block] = W[block] / μ[np.newaxis, indices]
 
         h, h_tilde = W @ G, W @ G_star
         D0 = G @ h_tilde
@@ -1395,9 +1433,10 @@ class MultiTrap:
             D={0: D0, 2: D2, -2: Dm2},
             P=P,
             M_norm=1 + self.cavity.ηm(ω) * D0 - self.cavity.ξC(ω) * P,
-            # brackets multiplying each dimension's thermal noise in a and in a†
-            thermal_a=G - 2j * χC_star * (I.T @ h),
-            thermal_a_dag=G_star - 2j * χC * (I.T @ h_tilde),
+            # brackets multiplying each dimension's thermal noise in a and in a† (B⁻ᵀ is the identity
+            # for beads without intra-bead coupling)
+            thermal_a=B_inv.T @ (G - 2j * χC_star * (I.T @ h)),
+            thermal_a_dag=B_inv.T @ (G_star - 2j * χC * (I.T @ h_tilde)),
         )
         self._analytic_kernel_cache = (ω, kernel)
         return kernel
@@ -1406,8 +1445,9 @@ class MultiTrap:
         """
         Phase-dependent collective coupling and mechanical susceptibility rate
 
-        D(0) = Σ |Gjn|²·μjn,   D(±2) = Σ Gjn^(±2)·μjn = Σ gjn²·μjn·exp(±2iθjn)
-        (see `analytic_kernel`; only n = 0, ±2 appear in the closed form)
+        D(0) = Gᵀ·W·G*,   D(2) = Gᵀ·W·G,   D(-2) = G*ᵀ·W·G*   (see `analytic_kernel`)
+        which without intra-bead coupling (W = diag(μ)) are D(0) = Σ gjn²·μjn and
+        D(±2) = Σ gjn²·μjn·exp(±2iθjn). Only n = 0, ±2 appear in the closed form.
         [complex 2π·Hz]
         """
         if n not in (0, 2, -2):
@@ -1419,7 +1459,10 @@ class MultiTrap:
         Phase-dependent function that equals zero when all phases are equal
 
         P = D(0)² - D(2)·D(-2), evaluated in the cancellation-free form 2i·hᵀ·I·h̃ (see
-        `analytic_kernel`) which equals 4·Σ_(j<k) gj²·μj·gk²·μk·sin²(θj - θk) here.
+        `analytic_kernel`). Without intra-bead coupling this equals
+        4·Σ_(j<k) gj²·μj·gk²·μk·sin²(θj - θk), i.e. `P_via_Pjk` and `P_via_Pj`; those
+        alternative forms (and M_norm_2 ... M_norm_N_2, and the K/H/U/N functions of `Dimension`)
+        do NOT include intra-bead coupling.
         [complex (2π·Hz)²]
         """
         return self.analytic_kernel(ω)['P']
@@ -1984,45 +2027,32 @@ class MultiTrap:
         heterodyne = a_out_hat
         return homodyne, heterodyne
 
-    def analytic_hybridised_positions(self, method, ω):
+    def analytic_response_matrix(self, ω):
         """
-        All hybridised position noise vectors from the analytic closed form
+        Closed-form mechanical response matrix H ≡ (W⁻¹ - iC)⁻¹ of all dimensions, including the cavity
 
-        With H ≡ (W⁻¹ - iC)⁻¹ (see `analytic_kernel`), each dimension's thermal noise reaches the
-        positions through H·diag(1/μ), and the cavity input noise through the light force
-        i(Gjn*·a + Gjn·a†). The off-bead blocks of H follow from the Woodbury identity
+        (see `analytic_kernel` for W and C). The off-bead blocks follow from the Woodbury identity
             H = W + W·Φ·W / M_norm,   Φ = iC - 4ξC·I·W·I
         but on a bead's own block that sum cancels almost completely when one of its dimensions
-        is driven on resonance (|W| ~ |μ| is then ~1e7 times larger than the result). The
+        is driven on resonance (|W| ~ |μ| is then up to ~1e7 times larger than the result). The
         on-bead blocks are therefore taken from the Schur complement instead,
             H_nn = (W_n⁻¹ - Φ_nn^(¬n) / M_norm^(¬n))⁻¹
-        where ^(¬n) means the same quantity built from all the OTHER beads only (with
-        Φ_nn^(¬n) = iC_nn - 4ξC·I_n,¬n·W_¬n·I_¬n,n). This is a small (axes × axes) inverse per
-        bead, so the closed form still never inverts an N×N matrix. For a single dimension
-        it reduces to H_jj = μj·M_norm^(¬j)/M_norm: the thermal response of a dimension is its
-        susceptibility, renormalised by the cavity with and without it.
-
-        The positions are the same for both analytic methods (ANALYTIC_INSIDE_CAVITY and
-        ANALYTIC_CAVITY_OUTPUT share this closed form). Rows are ordered as `self.labels`.
-        [complex 1/√(2π·Hz)]
+        where ^(¬n) means the same quantity built from all the OTHER beads only, with
+        Φ_nn^(¬n) = iC_nn - 4ξC·I_n,¬n·W_¬n·I_¬n,n. This is one small (axes × axes) inverse per
+        bead, so the closed form never inverts an N×N matrix. For a single uncoupled dimension it
+        reduces to H_jj = μj·M_norm^(¬j)/M_norm: the dimension's susceptibility, renormalised by
+        the cavity with and without it.
+        Ordered as `self.labels` on both axes.
+        [complex (2π·Hz)⁻¹]
         """
         kernel = self.analytic_kernel(ω)
-        κ = self.cavity.κ
         χC, χC_star = self.cavity.χC(ω), np.conjugate(self.cavity.χC(-ω))
         ηm, ξC = self.cavity.ηm(ω), self.cavity.ξC(ω)
         G, G_star = self.G_array, np.conjugate(self.G_array)
         I = self.coupling_quadrature_overlap_matrix
-        μ, W, M_norm = kernel['μ'], kernel['W'], kernel['M_norm']
+        W, M_norm = kernel['W'], kernel['M_norm']
         h, h_tilde = kernel['h'], kernel['h_tilde']
 
-        positions = np.zeros((self.num_dimensions, self.num_operators), dtype=np.complex128)
-
-        # cavity input noise: light force i(G*·a + G·a†) per unit a_in and a_in†, simplified so that
-        # the resonant terms of D(0) and D(±2) do not have to cancel numerically
-        positions[:, 0] = W @ (1j * χC * np.sqrt(κ) / M_norm * (G_star + 2j * χC_star * (I.T @ h_tilde)))
-        positions[:, 1] = W @ (1j * χC_star * np.sqrt(κ) / M_norm * (G + 2j * χC * (I.T @ h)))
-
-        # thermal noise: H = (W⁻¹ - iC)⁻¹
         C = 1j * χC * np.outer(G_star, G) - 1j * χC_star * np.outer(G, G_star)
         Φ = 1j * C - 4 * ξC * (I @ W @ I)
         H = W + W @ Φ @ W / M_norm
@@ -2031,8 +2061,8 @@ class MultiTrap:
         D0_per_trap = np.array([G[n] @ h_tilde[n] for n in traps])
         P_per_trap_pair = np.array([[2j * h[n] @ I[np.ix_(n, m)] @ h_tilde[m] for m in traps] for n in traps])
         for ii, n in enumerate(traps):
-            others = np.concatenate([np.zeros(0, dtype=int)] + [m for jj, m in enumerate(traps) if jj != ii])
             other_traps = [jj for jj in range(len(traps)) if jj != ii]
+            others = np.concatenate([np.zeros(0, dtype=int)] + [traps[jj] for jj in other_traps])
             M_norm_without_n = (
                 1
                 + ηm * np.sum(D0_per_trap[other_traps])
@@ -2043,8 +2073,46 @@ class MultiTrap:
                 - 4 * ξC * I[np.ix_(n, others)] @ W[np.ix_(others, others)] @ I[np.ix_(others, n)]
             )
             H[np.ix_(n, n)] = np.linalg.inv(kernel['W_inv_blocks'][ii] - Φ_nn_without_n / M_norm_without_n)
+        return H
 
-        thermal_response = H / μ[np.newaxis, :]
+    def analytic_hybridisation_matrix(self, ω):
+        """
+        The hybridisation matrix D⁻¹ (inverse of `derangement_matrix`) from the closed form
+
+        The derangement matrix is D = diag(μjn/Mjn)·(W⁻¹ - iC), so D⁻¹ = H·diag(Mjn/μjn) with H from
+        `analytic_response_matrix`; it equals np.linalg.inv(self.derangement_matrix(ω)) without
+        inverting an N×N matrix.
+        Ordered as `self.labels` on both axes.
+        [complex]
+        """
+        M_per_dimension = np.array([dim.M(ω) for dim in self.dimensions.values()])
+        return self.analytic_response_matrix(ω) * (M_per_dimension / self.analytic_kernel(ω)['μ'])[np.newaxis, :]
+
+    def analytic_hybridised_positions(self, method, ω):
+        """
+        All hybridised position noise vectors from the analytic closed form
+
+        Each dimension's thermal noise reaches the positions through H·diag(1/μ) (H from
+        `analytic_response_matrix`), and the cavity input noise through the light force
+            q = W·i(G*·a + G·a†)   per unit a_in, a_in†
+        written so that the resonant terms of D(0) and D(±2) do not have to cancel numerically.
+        The positions are the same for both analytic methods (ANALYTIC_INSIDE_CAVITY and
+        ANALYTIC_CAVITY_OUTPUT share this closed form). Rows are ordered as `self.labels`.
+        [complex 1/√(2π·Hz)]
+        """
+        kernel = self.analytic_kernel(ω)
+        κ = self.cavity.κ
+        χC, χC_star = self.cavity.χC(ω), np.conjugate(self.cavity.χC(-ω))
+        G, G_star = self.G_array, np.conjugate(self.G_array)
+        I = self.coupling_quadrature_overlap_matrix
+        μ, W, M_norm = kernel['μ'], kernel['W'], kernel['M_norm']
+
+        positions = np.zeros((self.num_dimensions, self.num_operators), dtype=np.complex128)
+        # cavity input noise
+        positions[:, 0] = W @ (1j * χC * np.sqrt(κ) / M_norm * (G_star + 2j * χC_star * (I.T @ kernel['h_tilde'])))
+        positions[:, 1] = W @ (1j * χC_star * np.sqrt(κ) / M_norm * (G + 2j * χC * (I.T @ kernel['h'])))
+        # thermal noise
+        thermal_response = self.analytic_response_matrix(ω) / μ[np.newaxis, :]
         for kk, dim in enumerate(self.dimensions.values()):
             index = dim.noise_index
             positions[:, index] = thermal_response[:, kk] * np.sqrt(dim.Γ) * dim.χ(ω)
