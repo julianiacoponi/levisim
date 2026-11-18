@@ -5,7 +5,6 @@ Quantum linear theory of several levitated particles coherently scattering into 
 
 import os
 import time
-import random
 import sympy
 import numpy as np
 import itertools
@@ -45,6 +44,7 @@ from levisim.multiphysics.hybridisation import (
     generate_subscripts_and_labels,
     generate_all_hybridisation_functions,
     generate_determinant_and_adjugate_by_order,
+    _log_power_series_term_counts,
 )
 
 
@@ -252,16 +252,15 @@ class MultiTrap:
         # logging and plot labels, never in a calculation
         self.ω_step = self.ω_ranges[0][1] - self.ω_ranges[0][0] if len(self.ω_ranges[0]) > 1 else 0.0
 
-        logger.info(f'Initialising {self}: ({self.num_traps=}, {self.Cartesian_axes_per_trap=})')
-        for segment in self.ω_ranges:
-            logger.info(
-                f'Spectra will be calculated over'
-                f' ω_range=[{segment.min() / kHz:.1f}, {segment.max() / kHz:.1f}] kHz'
-                f' over {len(segment)} steps'
-                f' with resolution Δω = {(segment[1] - segment[0] if len(segment) > 1 else 0.0) / kHz:.3f} kHz'
-            )
+        # the one-line INFO summary of the system is logged at the end of __init__
         if len(self.ω_ranges) > 1:
-            logger.info(f'{len(self.ω_ranges)} ω ranges stitched into {len(self.ω_range)} unique points')
+            for segment in self.ω_ranges:
+                logger.debug(
+                    'ω_range segment [{:.1f}, {:.1f}] kHz with {} points (Δω = {:.3f} kHz)',
+                    segment.min() / kHz, segment.max() / kHz, len(segment),
+                    (segment[1] - segment[0] if len(segment) > 1 else 0.0) / kHz,
+                )
+            logger.debug('{} ω_range segments stitched into {} unique points', len(self.ω_ranges), len(self.ω_range))
 
         self.num_dimensions = self.num_traps * self.Cartesian_axes_per_trap
         # we assume there is one light degree of freedom, with just 2 in the noise vector: a_in, a_in^dagger
@@ -367,7 +366,6 @@ class MultiTrap:
         # ------------------------------------------------------------------------------------------
         # this is the quickest, because it is the direct numerical inversion of the smallest matrix
         # self.QLT_method = kwargs.get('QLT_method', QuantumLinearTheoryMethod.NUMERICAL_HYBRIDISATION)
-        # logger.info(f'Setting {self}.QLT_method={self.QLT_method}')
 
         self.setup_linear_amplifier_model_matrices()
 
@@ -398,20 +396,15 @@ class MultiTrap:
                 / 'pickle'
                 / f'{filename}'
             )
-            logger.trace(f'Loading in power series from {power_series_file_path=}')
+            logger.info('Loading the {}D power series up to order {} from {}', n, max_order, filename)
             power_series_data = load_variable_from_pickle(power_series_file_path)
             self.deranged_determinant_by_order, self.deranged_adjugate_by_order = power_series_data
-
-            if self.num_dimensions > 1:
-                a, b = random.sample(self.labels, 2)
-                aa, ab = f'{a}{a}', f'{a}{b}'
-                for order in range(1, max_order + 1):
-                    logger.trace(f'{len(self.deranged_determinant_by_order[order])} terms in determinant of order {order} of {n}')
-                    logger.trace(f'{len(self.deranged_adjugate_by_order[order][aa])} terms in {a} diagonal adjugate of order {order} of {n}')
-                    logger.trace(f'{len(self.deranged_adjugate_by_order[order][ab])} terms in {ab} off-diagonal adjugate of order {order} of {n}')
+            _log_power_series_term_counts(
+                self.deranged_determinant_by_order, self.deranged_adjugate_by_order, self.labels,
+            )
 
         elif self.generate_power_series:
-            logger.trace('Generating power series from scratch')
+            # generate_determinant_and_adjugate_by_order logs its own start and finish at INFO
             self.deranged_determinant_by_order, self.deranged_adjugate_by_order = generate_determinant_and_adjugate_by_order(
                 n=self.num_dimensions,
                 labels=self.labels,
@@ -421,21 +414,76 @@ class MultiTrap:
         self.compare_Rjk_calculations = kwargs.get('compare_Rjk_calculations', False)
 
         # ------------------------------------------------------------------------------------------
-        # INFO PRINTING
+        # LOGGING
         # ------------------------------------------------------------------------------------------
-        logger.info(self.info_str)
-        logger.info(self.cavity.info_str)
-        logger.info(self.gas.info_str)
-        if self.toy_params:
-            logger.info(self.toy_params_info_str)
-        for dimension in self.dimensions.values():
-            logger.info(dimension.info_str)
+        self._log_construction()
 
     def __repr__(self):
         """
         String to represent an instance of MultiTrap
         """
         return f'MultiTrap({self.num_traps}×{self.Cartesian_axes_per_trap})'
+
+    def _log_construction(self):
+        """
+        Logs a one-line summary of the built system at INFO, and every parameter dump at DEBUG
+
+        The parameter dumps are built lazily, so they cost nothing when no sink takes DEBUG.
+        """
+        if self.toy_params:
+            parameters = f'toy parameters (Ω_model {self.Ω_model!r})'
+        else:
+            parameters = 'physical parameters (tweezers, beads, gas)'
+        if self.load_in_power_series:
+            power_series = f'; power series loaded up to order {self.max_order}'
+        elif self.generate_power_series:
+            power_series = f'; power series generated up to order {self.max_order}'
+        else:
+            power_series = ''
+        logger.info(
+            'Built {}: {} dimensions ({}) from {}; cavity Δ = {:.1f} kHz, κ = {:.1f} kHz;'
+            ' ω_range = [{:.1f}, {:.1f}] kHz over {} points{}',
+            self, self.num_dimensions, ', '.join(self.labels), parameters,
+            self.cavity.Δ / kHz, self.cavity.κ / kHz,
+            self.ω_range.min() / kHz, self.ω_range.max() / kHz, len(self.ω_range), power_series,
+        )
+
+        def parameter_dumps():
+            dumps = [self.info_str, self.cavity.info_str, self.gas.info_str]
+            if self.toy_params:
+                dumps.append(self.toy_params_info_str)
+            dumps.extend(dimension.info_str for dimension in self.dimensions.values())
+            return '\n'.join(dumps)
+
+        logger.opt(lazy=True).debug('Parameters of {}:\n{}', lambda: self, parameter_dumps)
+
+    def _check_linear_stability(self):
+        """
+        Logs a WARNING if the drift matrix A has an eigenvalue with a positive real part
+
+        Every QLT method returns the stationary spectra of the linearised Langevin equations, e.g.
+        (-iω·I - A)⁻¹ for the LAM. Those describe a physical steady state only if all eigenvalues
+        of A have negative real parts; otherwise a mode grows as exp(Re λ·t) and there is no
+        steady state, although the formulas still return finite numbers. One eigvals call on the
+        small (2N + 2)-square drift matrix per build, so the check is cheap, and it changes no
+        result. The tolerance (1e-8 of the largest |A| entry) ignores round-off in the decay
+        rates of dark modes, which can be as small as the gas damping.
+        """
+        eigenvalues = np.linalg.eigvals(self.drift_matrix)
+        growth_rates = eigenvalues.real
+        tolerance = 1e-8 * np.abs(self.drift_matrix).max()
+        worst = eigenvalues[np.argmax(growth_rates)]
+        logger.debug('{}: largest drift-matrix eigenvalue real part Re λ = {:+.4e} /s', self, worst.real)
+        num_unstable = int(np.sum(growth_rates > tolerance))
+        if num_unstable:
+            logger.warning(
+                '{}: {} of the {} drift-matrix eigenvalues have a positive real part (largest'
+                ' Re λ = {:+.4g} /s, an e-folding time of {:.3g} ms, on the mode at |Im λ| = {:.2f} kHz),'
+                ' so the linearised dynamics are unstable and have no steady state: the stationary'
+                ' spectra are formally finite but do not describe a physical steady state.'
+                ' Check the detuning Δ, the couplings and the tweezer phases φn.',
+                self, num_unstable, len(eigenvalues), worst.real, 1e3 / worst.real, abs(worst.imag) / kHz,
+            )
 
     ################################################################################################
     # INFORMATION PRINTING FUNCTIONS
@@ -739,7 +787,7 @@ class MultiTrap:
         # see ΩModel above, and plot_vertical_stack_varying_1_parameter.ipynb for more
         self.Ω_model_object = ΩModel.from_toy_params(params)
         self.Ω_model = self.Ω_model_object.kind
-        logger.info(f'Setting up toy model {self.Ω_model=}')
+        logger.debug('Setting up toy parameters with {!r}', self.Ω_model_object)
         # the model's parameters stay available as attributes, e.g. self.Ω_first for 'pairs'
         for name, value in self.Ω_model_object.params.items():
             setattr(self, name, value)
@@ -755,9 +803,6 @@ class MultiTrap:
                     xn, zn = f'x{n}', f'z{n}'
                     self.Ωjn_dict[zn] = self.Ωjn_dict[xn] / self.Ωz_to_Ωx_multiplier
                 self.Ω_model_description += f'\n    Ωz_to_Ωx_multiplier = {self.Ωz_to_Ωx_multiplier:.1f}'
-
-        for label, Ω in self.Ωjn_dict.items():
-            logger.trace(f'{label} frequency = {Ω / kHz:.1f} kHz')
 
         if self.Cartesian_axes_per_trap >= 1:
             Ωxs = np.array([self.Ωjn_dict[label] for label in self.labels if label[0] == 'x'])
@@ -1051,6 +1096,8 @@ class MultiTrap:
         # njn ≡ phonons due to jn degree of freedom ~ kB·T/ħ·Ωjn (Bose-Einstein distribution)
         self.noise_matrix = np.diag(self.γ * self.quantum_factor_per_noise_operator)
 
+        self._check_linear_stability()
+
     ################################################################################################
     # FUNCTIONS OF ONLY FREQUENCY
     # ----------------------------------------------------------------------------------------------
@@ -1134,8 +1181,6 @@ class MultiTrap:
         """
         The value of the deranged determinant at a given frequency
         """
-        if ω == 300*kHz:
-            logger.trace(f'{self.evaluation_order=}')
         R_values = self.hybridisation_function_values(ω)
         value = 0
         for term in self.deranged_determinant_by_order[self.evaluation_order]:
@@ -1146,10 +1191,6 @@ class MultiTrap:
         """
         The value of given adjugate entry of the derangement matrix at a given frequency
         """
-        if ω == 300*kHz:
-            # NOTE: this dumps the entire adjugate dictionary - 104 kB of stdout for a 2x2
-            # system - so it is behind logger.trace rather than an unconditional print
-            logger.trace(f'{self.deranged_adjugate_by_order[self.evaluation_order]=}')
         R_values = self.hybridisation_function_values(ω)
         value = 0
         for term in self.deranged_adjugate_by_order[self.evaluation_order][ij]:
@@ -1316,7 +1357,7 @@ class MultiTrap:
                     assert np.isclose(Rjk_B2, Rjk, rtol=rtol, atol=atol)
                     assert np.isclose(Rjk_B1, Rjk_B2, rtol=rtol, atol=atol)
                 except AssertionError:
-                    logger.critical(debug_str + f'\n{Rjk=}, {Rjk_B1=}, {Rjk_B2=}')
+                    logger.error('Hybridisation function comparison failed:{}', debug_str + f'\n{Rjk=}, {Rjk_B1=}, {Rjk_B2=}')
                     raise
 
         return Rjk
@@ -2221,6 +2262,66 @@ class MultiTrap:
     ################################################################################################
     # SPECTRA
     # ----------------------------------------------------------------------------------------------
+    def _method_branch_description(self, method):
+        """
+        One line saying how `method` computes the noise vectors of this system, for the DEBUG log
+        """
+        n_ops, n_dims = self.num_operators, self.num_dimensions
+        light = 'light from a(ω) = χC(ω)[i∑Gjn·qjn(ω) + √κ·a_in(ω)]'
+        if method == QuantumLinearTheoryMethod.LINEAR_AMPLIFIER_MODEL:
+            return f'inverting the {n_ops}×{n_ops} matrix (-iω·I - A) at each ω, c(ω) = T(ω)·c_in(ω)'
+        if method == QuantumLinearTheoryMethod.HYBRID_LINEAR_AMPLIFIER_MODEL:
+            return f'positions from inverting the {n_ops}×{n_ops} matrix (-iω·I - A) at each ω; {light}'
+        if method == QuantumLinearTheoryMethod.TNT_LINEAR_AMPLIFIER_MODEL:
+            return f'Scc†(ω) = T(ω)·N·T(ω)† for all {n_ops} operators at once (position spectra only)'
+        if method == QuantumLinearTheoryMethod.NUMERICAL_HYBRIDISATION:
+            return f'inverting the {n_dims}×{n_dims} derangement matrix D = I - R numerically at each ω; {light}'
+        if method == QuantumLinearTheoryMethod.POWER_SERIES_HYBRIDISATION:
+            order = self.evaluation_order
+            truncation = f', truncated below the full order {n_dims}, so approximate' if order < n_dims else ''
+            return (
+                f'D⁻¹ = adj(D)/det(D) from the power series at evaluation order {order}'
+                f' ({len(self.deranged_determinant_by_order.get(order, ()))} determinant terms{truncation}); {light}'
+            )
+        if method == QuantumLinearTheoryMethod.ANALYTIC_INSIDE_CAVITY:
+            return 'closed form (no N×N inversion), with the intracavity light from the analytic transduction functions'
+        if method == QuantumLinearTheoryMethod.ANALYTIC_CAVITY_OUTPUT:
+            return 'closed form (no N×N inversion), with the output light from the analytic a_out expressions'
+        return 'unknown method'
+
+    def _log_spectrum_call(self, quantity, method, allow_TNT=False, **options):
+        """
+        Logs the spectrum about to be calculated (INFO) and the branch `method` takes (DEBUG)
+
+        Raises ValueError for the TNT LAM outside `all_position_power_spectra`, and AttributeError
+        for the power-series method on a system built without a power series - both with a message
+        that says why, instead of the TypeError or AttributeError deep inside the ω loop.
+        """
+        if method == QuantumLinearTheoryMethod.TNT_LINEAR_AMPLIFIER_MODEL and not allow_TNT:
+            msg = f'{method!r} only gives position power spectra: use all_position_power_spectra, or another method for the {quantity}'
+            logger.error(msg)
+            raise ValueError(msg)
+        if method == QuantumLinearTheoryMethod.POWER_SERIES_HYBRIDISATION and not hasattr(self, 'deranged_determinant_by_order'):
+            msg = f'{method!r} needs a power series: build the MultiTrap with load_in_power_series=True or generate_power_series=True'
+            logger.error(msg)
+            raise AttributeError(msg)
+        options_str = ''.join(f', {name}={value}' for name, value in options.items())
+        logger.info('🧮 Calculating {} via {!r} over {} ω points{}', quantity, method, len(self.ω_range), options_str)
+        logger.opt(lazy=True).debug(
+            '{} for {}: {}', lambda: repr(method), lambda: self, lambda: self._method_branch_description(method),
+        )
+
+    def _warn_if_not_finite(self, quantity, method, values):
+        """
+        Logs a WARNING if a calculated spectrum has NaN or infinite values (e.g. ω exactly on a pole)
+        """
+        num_not_finite = values.size - np.count_nonzero(np.isfinite(values))
+        if num_not_finite:
+            logger.warning(
+                '{} {} via {!r} has {} non-finite value(s) out of {}',
+                self, quantity, method, num_not_finite, values.size,
+            )
+
     @timer(TIMER)
     @profiler(PROFILER)
     @progress_bar('self.ω_range', PROGRESS_BAR)
@@ -2234,13 +2335,14 @@ class MultiTrap:
 
         θ = homodyne angle (see `homodyne_quadrature`)
         """
-        msg = f'🧮 Calculating homodyne spectrum with {method=}'
-        print(msg), logger.info(msg)
+        self._log_spectrum_call('homodyne spectrum', method)
 
         homodyne_spectrum = []
         for ii, ω in enumerate(self.ω_range):
             homodyne_spectrum.append(self.noise_vector_to_power_spectrum(self.homodyne_noise_vector(method, ω)))
-        return np.array(homodyne_spectrum)
+        homodyne_spectrum = np.array(homodyne_spectrum)
+        self._warn_if_not_finite('homodyne spectrum', method, homodyne_spectrum)
+        return homodyne_spectrum
 
     @timer(TIMER)
     @profiler(PROFILER)
@@ -2251,8 +2353,7 @@ class MultiTrap:
 
         ``S_het(ω) = S_aout,aout(ω) = 〈|a_out(ω)|²〉`` (see `heterodyne_noise_vector`)
         """
-        msg = f'🧮 Calculating heterodyne spectrum with {method=}'
-        print(msg), logger.info(msg)
+        self._log_spectrum_call('heterodyne spectrum', method)
 
         heterodyne_spectrum = []
         for ii, ω in enumerate(self.ω_range):
@@ -2261,7 +2362,9 @@ class MultiTrap:
             # if method != QuantumLinearTheoryMethod.POWER_SERIES_HYBRIDISATION and self.evaluation_order != self.num_dimensions:
             #     assert heterodyne_value >= 1, f'{heterodyne_value=} < 1 - this should never happen since 1 is the shot noise limit!'
             heterodyne_spectrum.append(heterodyne_value)
-        return np.array(heterodyne_spectrum)
+        heterodyne_spectrum = np.array(heterodyne_spectrum)
+        self._warn_if_not_finite('heterodyne spectrum', method, heterodyne_spectrum)
+        return heterodyne_spectrum
 
     @timer(TIMER)
     @profiler(PROFILER)
@@ -2273,8 +2376,7 @@ class MultiTrap:
         ``S_hom(ω) = 〈|h(ω)|²〉,  S_het(ω) = 〈|a_out(ω)|²〉``
         (see `homodyne_noise_vector` and `heterodyne_noise_vector`)
         """
-        msg = f'🧮 Calculating both homodyne and heterodyne spectra with {method=}'
-        print(msg), logger.info(msg)
+        self._log_spectrum_call('homodyne and heterodyne spectra', method)
 
         homodyne_spectrum = []
         heterodyne_spectrum = []
@@ -2291,7 +2393,10 @@ class MultiTrap:
             homodyne_spectrum.append(homodyne_value)
             heterodyne_spectrum.append(heterodyne_value)
 
-        return np.array(homodyne_spectrum), np.array(heterodyne_spectrum)
+        homodyne_spectrum, heterodyne_spectrum = np.array(homodyne_spectrum), np.array(heterodyne_spectrum)
+        self._warn_if_not_finite('homodyne spectrum', method, homodyne_spectrum)
+        self._warn_if_not_finite('heterodyne spectrum', method, heterodyne_spectrum)
+        return homodyne_spectrum, heterodyne_spectrum
 
 
     @timer(TIMER)
@@ -2307,8 +2412,7 @@ class MultiTrap:
             H ≡ D⁻¹
             x = H @ x1D
         """
-        msg = f'🧮 Calculating all position PSDs with {method=} ({zpf_scaled=})'
-        print(msg), logger.info(msg)
+        self._log_spectrum_call('all position PSDs', method, allow_TNT=True, zpf_scaled=zpf_scaled)
 
         if method == QuantumLinearTheoryMethod.TNT_LINEAR_AMPLIFIER_MODEL:
             # NOTE: this is the only valid place for the TNT method
@@ -2332,6 +2436,7 @@ class MultiTrap:
                 psd_array[:, dd] *= dimension.zpf**2
             psd_dict[dimension.label] = psd_array[:, dd]
 
+        self._warn_if_not_finite('position PSDs', method, psd_array)
         return psd_array, psd_dict
 
 
@@ -2342,8 +2447,7 @@ class MultiTrap:
         """
         Calculates the power spectrum of a given dimension
         """
-        msg = f'🧮 Calculating {label} position PSD via {method=} ({zpf_scaled=})'
-        print(msg), logger.info(msg)
+        self._log_spectrum_call(f'{label} position PSD', method, zpf_scaled=zpf_scaled)
 
         j, n = label[0], int(label[1:])
         zpf = 1 if zpf_scaled else self.dimensions[label].zpf
@@ -2351,7 +2455,9 @@ class MultiTrap:
         for ω in self.ω_range:
             value = self.noise_vector_to_power_spectrum(self.hybridised_position_noise_vector(label, method, ω))
             psd.append(value)
-        return np.array(psd) * zpf**2
+        psd = np.array(psd) * zpf**2
+        self._warn_if_not_finite(f'{label} position PSD', method, psd)
+        return psd
 
 
     @timer(TIMER)
@@ -2361,8 +2467,7 @@ class MultiTrap:
         """
         Calculates the cross correlation spectrum of the given dimensions
         """
-        msg = f'🧮 Calculating {label_A},{label_B} position CSD via {method=} ({zpf_scaled=})'
-        print(msg), logger.info(msg)
+        self._log_spectrum_call(f'{label_A},{label_B} position CSD', method, zpf_scaled=zpf_scaled)
 
         j, n = label_A[0], int(label_A[1:])
         zpf_A = 1 if zpf_scaled else self.dimensions[label_A].zpf
@@ -2381,7 +2486,9 @@ class MultiTrap:
                 position_B = hybrid_positions[self.label_to_index[label_B]]
             value = self.noise_vectors_to_cross_spectrum(position_A, position_B)
             csd.append(value)
-        return np.array(csd) * zpf_A * zpf_B
+        csd = np.array(csd) * zpf_A * zpf_B
+        self._warn_if_not_finite(f'{label_A},{label_B} position CSD', method, csd)
+        return csd
 
 
     @cached_property
@@ -2396,8 +2503,7 @@ class MultiTrap:
 
             Scc†(ω) = T(ω) @ N @ T(ω)†
         """
-        msg = '🧮 Calculating the quantum operator spectral density array Scc† via TNT method'
-        print(msg), logger.info(msg)
+        logger.debug('🧮 Calculating Scc†(ω) = T(ω)·N·T(ω)† via the TNT method over {} ω points', len(self.ω_range))
 
         N_ops = self.num_operators
         Scc_array = np.zeros((len(self.ω_range), N_ops, N_ops), dtype=np.complex128)
@@ -2412,8 +2518,7 @@ class MultiTrap:
         Calculates an array of the PSDs of all dimensions' zpf-scaled position operators
         (see position_cross_spectra_array for all the cross spectra)
         """
-        msg = '🧮 Calculating array of all (zpf-scaled) position power spectra'
-        print(msg), logger.info(msg)
+        logger.debug('Extracting the zpf-scaled position power spectra from Scc†(ω)')
 
         Sxx_array = np.zeros((len(self.ω_range), self.num_dimensions))
         Scc_array = self.quantum_operator_spectral_density_array
@@ -2445,8 +2550,7 @@ class MultiTrap:
         i.e. 〈qA(ω)·qB(ω)†〉.
         [complex ·], shape (len(ω_range), num_dimensions, num_dimensions)
         """
-        msg = '🧮 Calculating array of all (zpf-scaled) position cross spectra'
-        print(msg), logger.info(msg)
+        logger.debug('Extracting the zpf-scaled position cross spectra from Scc†(ω)')
 
         Scc_array = self.quantum_operator_spectral_density_array
         indices = [(self.label_to_noise_index[label], self.label_to_noise_index[label] + 1) for label in self.labels]

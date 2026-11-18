@@ -102,21 +102,17 @@ def thresholds_for_difficulty_level(difficulty_level):
     """
     match difficulty_level:
         case 'very easy':
-            msg = f'👶 Setting {difficulty_level=}'
-            print(msg), logger.info(msg)
+            logger.debug('👶 Setting difficulty_level={!r}', difficulty_level)
             # 1e-3 relative absolute diff is equivalent to 0.1% error
             return (0.1, 1e-3, 0.5)
         case 'easy':
-            msg = f'🙂 Setting {difficulty_level=}'
-            print(msg), logger.info(msg)
+            logger.debug('🙂 Setting difficulty_level={!r}', difficulty_level)
             return (0.05, 1e-6, 0.5)
         case 'hard':
-            msg = f'😰 Setting {difficulty_level=}'
-            print(msg), logger.info(msg)
+            logger.debug('😰 Setting difficulty_level={!r}', difficulty_level)
             return (0.01, 1e-10, 0.25)
         case 'very hard':
-            msg = f'🤬 Setting {difficulty_level=}'
-            print(msg), logger.info(msg)
+            logger.debug('🤬 Setting difficulty_level={!r}', difficulty_level)
             return (0.005, 1e-12, 0.1)
 
 
@@ -151,8 +147,10 @@ def verify_equivalence_of_spectrum_calculation_methods(mtrap, spectrum_types, me
     _require_cv2()
     set_plt_rcParams_to_xmgrace_style()
 
-    msg = f'⚖️ Using {mtrap} ({mtrap.tweezer_phase_sign_convention_str}), verifying calculation of {spectrum_types=} using {methods=} via image diff'
-    print(msg), logger.info(msg)
+    logger.info(
+        '⚖️ Using {} ({}), verifying the calculation of {} via {} with image diffs',
+        mtrap, mtrap.tweezer_phase_sign_convention_str, spectrum_types, methods,
+    )
 
     xlims = mtrap.ω_range.min() / kHz, mtrap.ω_range.max() / kHz
     yscale = kwargs.get('yscale', 'log')
@@ -168,8 +166,7 @@ def verify_equivalence_of_spectrum_calculation_methods(mtrap, spectrum_types, me
             if spectrum_type.is_optical and method == QuantumLinearTheoryMethod.TNT_LINEAR_AMPLIFIER_MODEL:
                 continue
 
-            msg = f'🎨 Plotting {spectrum_type=} using {method=}'
-            print(msg), logger.info(msg)
+            logger.debug('🎨 Plotting {!r} via {!r}', spectrum_type, method)
 
             match spectrum_type:
                 case SpectrumType.HOMODYNE:
@@ -242,17 +239,12 @@ def verify_equivalence_of_spectrum_calculation_methods(mtrap, spectrum_types, me
 
     if len(methods) > 1:
         for image_dict in all_image_dicts.values():
-            msg = f'🔦 Checking for errant pixels in the image diffs of all plots of {spectrum_type=}'
-            print(msg), logger.info(msg)
             assert_images_agree_within_errant_pixels(image_dict, **kwargs)
 
         for spectrum_type, array_dict in all_values_dict.items():
-            msg = f'🔦 Checking the relative difference is sufficiently small in all pairs of arrays of {spectrum_type=}'
-            print(msg), logger.info(msg)
             assert_arrays_agree_within_threshold(mtrap, array_dict, **kwargs)
 
-        msg = f'🎉🎉🎉🎉🎉 All spectral calculation methods are equivalent for {mtrap} ☺️ 🎉🎉🎉🎉🎉'
-        print(msg), logger.info(msg)
+        logger.success('🎉 All spectrum calculation methods are equivalent for {}', mtrap)
 
     else:
         # otherwise this is only called inside the test functions
@@ -277,15 +269,16 @@ def verify_equivalence_of_spectral_functions(mtrap, func_dict, **kwargs):
     _require_cv2()
     set_plt_rcParams_to_xmgrace_style()
 
-    msg = f'⚖️ Using {mtrap} ({mtrap.tweezer_phase_sign_convention_str}), verifying spectral {func_dict=} via image diff'
-    print(msg), logger.info(msg)
+    logger.info(
+        '⚖️ Using {} ({}), verifying the spectral functions {} with image diffs',
+        mtrap, mtrap.tweezer_phase_sign_convention_str, list(func_dict),
+    )
 
     ω_range = mtrap.ω_range
     image_dict = {}
     all_values_dict = {}
     for func_key, func in func_dict.items():
-        msg = f'🎨 Plotting {func_key=}'
-        print(msg), logger.info(msg)
+        logger.debug('🎨 Plotting {!r}', func_key)
         vals = np.array([func(ω) for ω in ω_range])
 
         all_values_dict[func_key] = vals
@@ -321,8 +314,7 @@ def verify_equivalence_of_spectral_functions(mtrap, func_dict, **kwargs):
     assert_arrays_agree_within_threshold(mtrap, all_values_dict, **kwargs)
     assert_images_agree_within_errant_pixels(image_dict, **kwargs)
 
-    msg = f'🎉🎉🎉🎉🎉 All functions are equivalent for {mtrap}! ☺️ 🎉🎉🎉🎉🎉'
-    print(msg), logger.info(msg)
+    logger.success('🎉 All spectral functions are equivalent for {}', mtrap)
 
 
 # --------------------------------------------------------------------------------------------------
@@ -341,11 +333,10 @@ def assert_images_agree_within_errant_pixels(image_dict, **kwargs):
     pass_fail_matrix = np.zeros((num_names, num_names), dtype=bool)
 
     errant_pixel_allowed_percentage, _, _ = thresholds_for_difficulty_level(kwargs.get('difficulty_level', 'very hard'))
-    msg = (
-        f'🔬 Testing all pairs of image diffs of {image_names=}'
-        f' for errant pixel percentage below {errant_pixel_allowed_percentage:.3f}%'
+    logger.info(
+        '🔬 Testing all pairs of image diffs of {} for an errant pixel percentage below {:.3f}%',
+        image_names, errant_pixel_allowed_percentage,
     )
-    print(msg), logger.info(msg)
 
     all_results_msg = '🗂️ ALL IMAGE DIFF RESULTS (🟩 = success, 🟥 = failure):'
     for pair in itertools.combinations(image_names, 2):
@@ -361,15 +352,14 @@ def assert_images_agree_within_errant_pixels(image_dict, **kwargs):
 
         if not success:
             msg = (
-                f'⚠️⚠️⚠️⚠️⚠️ WARNING! ⚠️⚠️⚠️⚠️⚠️'
-                f'\n{pair=} image diff has {errant_pixels=}'
+                f'{pair=} image diff has {errant_pixels=}'
                 f'\n📊 IMAGE DIFF STATISTICS:'
                 f'\n    {image_A.shape=}'
                 f'\n    image_A has {total_pixels=}'
                 f'\n    {errant_pixels_percentage=:.3f}% = {errant_pixels}/{total_pixels}'
                 f'\n    {errant_pixel_allowed_percentage=:.1f}%'
             )
-            print(msg), logger.warning(msg)
+            logger.warning(msg)
             success = errant_pixels_percentage < errant_pixel_allowed_percentage
 
             # https://stackoverflow.com/questions/39994831/difference-between-cv2-findnonzero-and-numpy-nonzero#39996246
@@ -402,7 +392,7 @@ def assert_images_agree_within_errant_pixels(image_dict, **kwargs):
         msg = f'🟩 {pair=}' if success else f'🟥 {pair=}'
         all_results_msg += f'\n    {msg}'
 
-    print(all_results_msg), logger.info(all_results_msg)
+    logger.info(all_results_msg)
 
     delete_local_png_files()
     overall_failure = not all(image_diff_results_by_image_pair.values())
@@ -413,8 +403,7 @@ def assert_images_agree_within_errant_pixels(image_dict, **kwargs):
         plot_pass_fail_matrix(pass_fail_matrix, image_names, **kwargs)
 
     if overall_failure:
-        msg = f'🏴‍☠️🏴‍☠️🏴‍☠️🏴‍☠️🏴‍☠️ Failure present! 🏴‍☠️🏴‍☠️🏴‍☠️🏴‍☠️🏴‍☠️\n{image_diff_results_by_image_pair=}'
-        print(msg), logger.error(msg)
+        logger.error('🏴‍☠️ Image diff failure present!\n{}', image_diff_results_by_image_pair)
         # NOTE: do not use this option if calling this test function within a try:except block
         # that relies on catching raised exceptions :-)
         if kwargs.get('fail_quietly', False):
@@ -422,8 +411,7 @@ def assert_images_agree_within_errant_pixels(image_dict, **kwargs):
         else:
             raise TooManyErrantPixelsInImageDiff(f'{image_diff_results_by_image_pair=}')
 
-    msg = '✅ Success on all errant pixel checks!'
-    print(msg), logger.info(msg)
+    logger.success('✅ All errant pixel checks passed')
 
 
 def assert_arrays_agree_within_threshold(mtrap, array_dict, **kwargs):
@@ -445,11 +433,10 @@ def assert_arrays_agree_within_threshold(mtrap, array_dict, **kwargs):
     mean_abs_relative_diffs_matrix = np.zeros((num_names, num_names), dtype=complex)
 
     _, relative_diff_threshold, allowed_failed_points_percentage = thresholds_for_difficulty_level(kwargs.get('difficulty_level', 'very hard'))
-    msg = (
-        f'🔬 Testing that all pairs of {array_names=}'
-        f' have mean relative absolute difference below {relative_diff_threshold=:.0e}'
+    logger.info(
+        '🔬 Testing that all pairs of {} have a mean relative absolute difference below {:.0e}',
+        array_names, relative_diff_threshold,
     )
-    print(msg), logger.info(msg)
 
     all_results_msg = '🗂️ ALL RELATIVE DIFF RESULTS (🟢 = success, 🔴 = failure):'
     for pair in itertools.combinations(array_names, 2):
@@ -504,12 +491,11 @@ def assert_arrays_agree_within_threshold(mtrap, array_dict, **kwargs):
 
             else:
                 msg = f'❓ Expecting either 1 or 2 for length of {abs_relative_diffs.shape=}'
-                print(msg), logger.error(msg)
+                logger.error(msg)
                 failed_ω_str = msg
 
             msg = (
-                f'⚠️⚠️⚠️⚠️⚠️ WARNING! ⚠️⚠️⚠️⚠️⚠️'
-                f'\n{pair=} has {num_failed_points=} greater than {relative_diff_threshold=:.0e}'
+                f'{pair=} has {num_failed_points=} greater than {relative_diff_threshold=:.0e}'
                 f' out of {num_array_points=}'
                 f'\n📊 RELATIVE DIFF STATISTICS:'
                 f'\n    {failed_points_percentage=:.3f}% = {num_failed_points}/{num_array_points}'
@@ -520,7 +506,7 @@ def assert_arrays_agree_within_threshold(mtrap, array_dict, **kwargs):
                 f'\n    {np.mean(abs_relative_diffs)=:.2e}'
                 f'\n    {np.median(abs_relative_diffs)=:.2e}'
             )
-            print(msg), logger.warning(msg)
+            logger.warning(msg)
 
             visualise_relative_difference_of_two_arrays(mtrap, array_A, array_B, pair[0], pair[1], **kwargs)
 
@@ -534,8 +520,10 @@ def assert_arrays_agree_within_threshold(mtrap, array_dict, **kwargs):
                 num_spectra = array_A.shape[1] if len(array_A.shape) == 2 else 1
                 allowed_failed_points = allowed_failed_points_per_resonance * mtrap.num_dimensions * num_spectra
                 success = num_failed_points <= allowed_failed_points
-                msg = f'{num_failed_points=} vs. {allowed_failed_points=} ({allowed_failed_points_per_resonance} per resonance)'
-                print(msg), logger.info(msg)
+                logger.debug(
+                    '{} failed points vs. {} allowed ({} per resonance)',
+                    num_failed_points, allowed_failed_points, allowed_failed_points_per_resonance,
+                )
 
         successes_by_pair[pair] = success
         index_A, index_B = array_names.index(pair[0]), array_names.index(pair[1])
@@ -546,7 +534,7 @@ def assert_arrays_agree_within_threshold(mtrap, array_dict, **kwargs):
         msg = f'🟢 {pair=}' if success else f'🔴 {pair=}'
         all_results_msg += f'\n    {msg}'
 
-    print(all_results_msg), logger.info(all_results_msg)
+    logger.info(all_results_msg)
     overall_failure = not all(successes_by_pair.values())
 
     # show table if there is a failure or on total success if this kwarg is present
@@ -556,8 +544,7 @@ def assert_arrays_agree_within_threshold(mtrap, array_dict, **kwargs):
         plot_mean_abs_relative_diffs_matrix(mean_abs_relative_diffs_matrix, array_names, **kwargs)
 
     if overall_failure:
-        msg = f'🏴‍☠️🏴‍☠️🏴‍☠️🏴‍☠️🏴‍☠️ Failure present! 🏴‍☠️🏴‍☠️🏴‍☠️🏴‍☠️🏴‍☠️\n{successes_by_pair=}'
-        print(msg), logger.error(msg)
+        logger.error('🏴‍☠️ Relative difference failure present!\n{}', successes_by_pair)
         # NOTE: do not use this option if calling this test function within a try:except block
         # that relies on catching raised exceptions :-)
         if kwargs.get('fail_quietly', False):
@@ -565,8 +552,7 @@ def assert_arrays_agree_within_threshold(mtrap, array_dict, **kwargs):
         else:
             raise RelativeDifferenceTooHigh(f'{successes_by_pair=}')
 
-    msg = '✅ Success on all relative diff checks!'
-    print(msg), logger.info(msg)
+    logger.success('✅ All relative difference checks passed')
 
 
 # --------------------------------------------------------------------------------------------------
@@ -582,18 +568,20 @@ def visualise_two_spectrum_calculation_methods(
     """
     set_plt_rcParams_to_xmgrace_style()
 
-    msg = f'🖼️ Using {mtrap} ({mtrap.tweezer_phase_sign_convention_str}) to visualise the calculation of {spectrum_type=} via {method_A=} vs. {method_B=}'
-    print(msg), logger.info(msg)
+    logger.info(
+        '🖼️ Using {} ({}) to visualise the calculation of {!r} via {!r} vs. {!r}',
+        mtrap, mtrap.tweezer_phase_sign_convention_str, spectrum_type, method_A, method_B,
+    )
 
     fig_kwargs = dict(figsize=(LATEX_FIG_WIDTH, 3.5), dpi=400)
     legend_kwargs = dict(loc='upper left', prop=dict(size=8), ncol=2)
     zpf_scaled = kwargs.get('zpf_scaled', True)
 
     ω_range = mtrap.ω_range
-    print('Tweezer phases:')
-    print(phase_per_tweezer_string(mtrap))
-    print('Relative tweezer phases:')
-    print(relative_tweezer_phases_string(mtrap))
+    logger.info(
+        'Tweezer phases:\n{}\nRelative tweezer phases:\n{}',
+        phase_per_tweezer_string(mtrap), relative_tweezer_phases_string(mtrap),
+    )
 
     match spectrum_type:
         case SpectrumType.HOMODYNE:
@@ -728,13 +716,14 @@ def visualise_two_noise_component_calculation_methods(
     name_str = noise_vector_string(mtrap, noise_vector_type, dim_index, noise_index)
     name_latex = noise_vector_latex(mtrap, noise_vector_type, dim_index, noise_index)
 
-    msg = f'🖼️ Using {mtrap} ({mtrap.tweezer_phase_sign_convention_str}) to visualise the calculation of {name_str} via {method_A=} vs. {method_B=}'
-    print(msg), logger.info(msg)
+    logger.info(
+        '🖼️ Using {} ({}) to visualise the calculation of {} via {!r} vs. {!r}',
+        mtrap, mtrap.tweezer_phase_sign_convention_str, name_str, method_A, method_B,
+    )
 
     visualise = kwargs.get('visualise', True)
     return_resonances = kwargs.get('return_resonances', False)
-    msg = f'{visualise=}, {return_resonances=}'
-    print(msg), logger.info(msg)
+    logger.debug('visualise={}, return_resonances={}', visualise, return_resonances)
 
     fig_kwargs = dict(figsize=(LATEX_FIG_WIDTH, 3.5), dpi=400)
     legend_kwargs = dict(loc='lower left', prop=dict(size=8), ncol=3)
@@ -866,8 +855,10 @@ def visualise_two_noise_component_calculation_methods_over_entire_spectrum(
     name_str = noise_vector_string(mtrap, noise_vector_type, dim_index, noise_index)
     name_latex = noise_vector_latex(mtrap, noise_vector_type, dim_index, noise_index)
 
-    msg = f'🖼️ Using {mtrap} ({mtrap.tweezer_phase_sign_convention_str}) to compare the calculation of {name_str} via {method_A=} vs. {method_B=}'
-    print(msg), logger.info(msg)
+    logger.info(
+        '🖼️ Using {} ({}) to compare the calculation of {} via {!r} vs. {!r}',
+        mtrap, mtrap.tweezer_phase_sign_convention_str, name_str, method_A, method_B,
+    )
 
     fig_kwargs = dict(figsize=(LATEX_FIG_WIDTH, 3.5), dpi=400)
     legend_kwargs = dict(loc='lower left', prop=dict(size=8))
@@ -1231,10 +1222,10 @@ def delete_local_png_files():
     for file in files:
         if file.endswith('.png'):
             try:
-                logger.trace(f'Deleting {file=}')
+                logger.trace('Deleting {}', file)
                 os.remove(file)
             except Exception as exception:
-                logger.error(f'Error deleting {file}: {exception}')
+                logger.error('Could not delete {}: {}', file, exception)
 
 
 def calculate_temperature_from_position_PSD(mtrap, vals, ii, label):
@@ -1247,16 +1238,17 @@ def calculate_temperature_from_position_PSD(mtrap, vals, ii, label):
     jn = mtrap.dimensions[label]
     ħΩ = ħ * jn.Ω
 
-    SQQ_area = np.trapz(vals[:, ii], mtrap.ω_range / Hz)
+    SQQ_area = np.trapezoid(vals[:, ii], mtrap.ω_range / Hz)
     njn = 0.5 * (SQQ_area - 1)
-    logger.trace(f'n{label} = {njn:.6f} phonons')
     T_via_phonons = njn * ħΩ / kB
-    logger.trace(f'T{label} via phonons = {T_via_phonons:.6e} K')
 
     eqp_f = jn.m * jn.Ω**2 / kB
     q_variance = SQQ_area * jn.zpf**2
     T_via_variance = eqp_f * q_variance
-    logger.trace(f'T{label} via variance = {T_via_variance:.6e} K')
+    logger.debug(
+        'n{} = {:.6f} phonons; T{} via phonons = {:.6e} K, via variance = {:.6e} K',
+        label, njn, label, T_via_phonons, T_via_variance,
+    )
 
     return {
         'phonons': T_via_phonons,
@@ -1381,6 +1373,5 @@ def find_resonances(ω_range, values):
     resonance_indices = scipy.signal.find_peaks(values)[0]
     ω_peaks = ω_range[resonance_indices]
     peak_values = values[resonance_indices]
-    logger.info(f'find_resonances: {ω_peaks=}')
-    logger.info(f'find_resonances: {peak_values=}')
+    logger.debug('find_resonances: ω_peaks = {} kHz, peak values = {}', ω_peaks / kHz, peak_values)
     return ω_peaks, peak_values

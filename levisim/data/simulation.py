@@ -2,6 +2,7 @@
 Stochastic Runge-Kutta simulation (Simulation) of the motion of a bead in a free-space tweezer trap
 """
 
+import time
 import numpy as np
 
 from os import makedirs
@@ -296,7 +297,11 @@ class Simulation:
         G = self.noise_matrix_RK4(0, X[0])
         # the time array has num_samples + 1 entries; the penultimate step fills the final entry
         time_array = self.time_array[:-1]
-        logger.info(f'Simulating {self.num_samples} time steps ({self.RK_method})...')
+        logger.info(
+            'Simulating {} time steps of Δt = {:.4g} μs ({:.4g} ms) with RK_method={!r}, seed={!r}',
+            self.num_samples, Δt / μs, self.num_samples * Δt / ms, self.RK_method, self.seed,
+        )
+        start_time = time.perf_counter()
 
         if self.RK_method == 'vector_2':
             # NOTE: https://en.wikipedia.org/wiki/Runge–Kutta_method_(SDE)#Variation_of_the_Improved_Euler_is_flexible
@@ -391,12 +396,16 @@ class Simulation:
                     X[n + 1] = X[n] + α1*K1 + α2*K2 + α3*K3 + α4*K4
 
                     if self.rk_loop_debug:
-                        logger.debug(
-                            f'\n LOOP #{n + 1} ######################'
-                            f'\n{dW[k]=}'
-                            f'\n{K1=}\n{K2=}\n{K3=}\n{K4=}'
-                            f'\n{X[n + 1]=}'
+                        logger.trace(
+                            'RK loop #{}: dW={}, K1={}, K2={}, K3={}, K4={}, X={}',
+                            n + 1, dW[k], K1, K2, K3, K4, X[n + 1],
                         )
+
+        elapsed_seconds = time.perf_counter() - start_time
+        logger.debug(
+            'Integrated {} steps in {:.3f} s ({:.2f} μs per step)',
+            self.num_samples, elapsed_seconds, 1e6 * elapsed_seconds / max(self.num_samples, 1),
+        )
 
         self.X = X
         self.position_values = {
@@ -445,7 +454,10 @@ class Simulation:
             )
             self.traces['r'] = self.r
 
-        logger.info('Done!')
+        logger.info(
+            'Simulated {} samples ({:.4g} ms) in {:.2f} s: traces {}',
+            self.num_samples, self.time_length / ms, time.perf_counter() - start_time, list(self.traces),
+        )
 
     def detection_floor_for(self, axis):
         """

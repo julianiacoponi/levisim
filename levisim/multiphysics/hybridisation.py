@@ -2,7 +2,7 @@
 Power-series expansion of the hybridisation matrix H = D⁻¹ in terms of the hybridisation functions
 """
 
-import random
+import time
 
 from collections import namedtuple
 from itertools import permutations
@@ -175,7 +175,7 @@ def generate_subscripts_and_labels(num_traps, Cartesian_axes_per_trap):
             label = str('xyz'[Cartesian_index]) + str(trap_index)
             labels.append(label)
 
-    logger.info(f'Generated {labels=} for {n}D={num_traps}×{Cartesian_axes_per_trap} system')
+    logger.debug('Generated labels {} for the {}D = {}×{} system', labels, n, num_traps, Cartesian_axes_per_trap)
     return subscripts, labels
 
 
@@ -421,21 +421,17 @@ def generate_determinant_and_adjugate_by_order(n, labels, max_order=None):
     if max_order is None:
         max_order = n
 
+    logger.info('Generating the {}D power series of det(D) and adj(D) up to order {}', n, max_order)
+    start_time = time.perf_counter()
+
     # first, generate the power series up to the defined max order
     deranged_determinant_by_order = {}
     deranged_adjugate_by_order = {}
     max_determinant, max_adjugate = generate_determinant_and_adjugate_terms(n, labels, max_order=max_order)
     deranged_determinant_by_order[max_order] = max_determinant
     deranged_adjugate_by_order[max_order] = max_adjugate
-    logger.info(f'{len(max_determinant)} terms in determinant of order {max_order} of {n}')
 
-    if n > 1:
-        a, b = random.sample(labels, 2)
-        aa, ab = f'{a}{a}', f'{a}{b}'
-        logger.info(f'{len(deranged_adjugate_by_order[max_order][aa])} terms in {a} diagonal adjugate of order {max_order} of {n}')
-        logger.info(f'{len(deranged_adjugate_by_order[max_order][ab])} terms in {ab} off-diagonal adjugate of order {max_order} of {n}')
-
-    logger.info('🪚 Truncating power series...')
+    logger.debug('🪚 Truncating the {}D power series from order {} down to order 1', n, max_order)
     # next, truncate the power series down to order 1
     for truncation_order in list(range(1, max_order))[::-1]:
         deranged_determinant_by_order[truncation_order] = truncate_power_series(
@@ -452,9 +448,29 @@ def generate_determinant_and_adjugate_by_order(n, labels, max_order=None):
                     deranged_adjugate_by_order[truncation_order + 1][ij],
                     truncation_order,
                 )
-    logger.info('🪵 Truncation complete!')
 
+    logger.info(
+        'Generated the {}D power series up to order {} in {:.2f} s: {} determinant terms at order {}',
+        n, max_order, time.perf_counter() - start_time, len(max_determinant), max_order,
+    )
+    _log_power_series_term_counts(deranged_determinant_by_order, deranged_adjugate_by_order, labels)
     return deranged_determinant_by_order, deranged_adjugate_by_order
+
+
+def _log_power_series_term_counts(deranged_determinant_by_order, deranged_adjugate_by_order, labels):
+    """
+    Logs, at DEBUG, the number of terms per order in the determinant and in one diagonal and one
+    off-diagonal adjugate entry (those of the first two labels) of a power series
+    """
+    def counts():
+        orders = sorted(deranged_determinant_by_order)
+        lines = [f'det(D): {[len(deranged_determinant_by_order[order]) for order in orders]}']
+        if len(labels) > 1:
+            for ij in (labels[0] * 2, labels[0] + labels[1]):
+                lines.append(f'adj(D)[{ij}]: {[len(deranged_adjugate_by_order[order][ij]) for order in orders]}')
+        return f'orders {orders}; ' + '; '.join(lines)
+
+    logger.opt(lazy=True).debug('Power series terms per order: {}', counts)
 
 
 def truncate_power_series(power_series, truncation_power):
