@@ -84,7 +84,9 @@ class Trap:
         self.theory = SpectralDensityTheory(
             self.bead.m,
             self.Ωx, self.Ωy, self.Ωz,
-            self.Γ_fbx, self.Γ_fby, self.Γ_fbz,
+            # NOTE: the theory spectra need the *total* damping Γj = Γth + Γfb,j (earlier versions
+            # passed Γfb,j alone, which left Szz undamped for the default Γfb,z = 0)
+            self.Γx, self.Γy, self.Γz,
             self.fth, self.β, self.ψ,
         )
 
@@ -720,19 +722,42 @@ class Trap:
     @cached_property
     def A(self):
         """
-        Scaling factor for the theoretical PSD fitting expression
-        [m²Hz²]
-        PSD = A Γ / ((Ω²-ω²)² + Γ²ω²)
+        Scaling factor for the theoretical PSD fitting expression, *without* feedback cooling
+        [m²(2π·Hz)²] = [m²/s²]
+        S(ω) = A Γ / ((Ω²-ω²)² + Γ²ω²)
 
         Derived via
-        Sxx =  |χ(ω)|² Sth
+        Sxx = |χ(ω)|² Sth
         |χ(ω)|² = 1 / (m²((Ω²-ω²)² + Γ²ω²))
         Sth = 2m kBT Γ
 
         Hence
         A = 2 kBT / m
+
+        Conventions: S is the *two-sided* displacement PSD per unit (linear) frequency [m²/Hz],
+        written as a function of angular frequencies ω, Ω, Γ [2π·Hz]; Sth = fth² = 2 m kB T Γth is
+        the two-sided force PSD, 〈F(t)F(t')〉 = Sth δ(t - t'). Check: ∫ S df over all f
+        = A Γ / (2 Γ Ω²) = kB T / (m Ω²), i.e. equipartition.
+        - a one-sided PSD G = 2S has amplitude 2A
+        - with feedback (Γ = Γth + Γfb) and the directed force, the amplitude is 2 kB T_eff / m,
+          with T_eff given by self.T_eff (A itself uses the gas temperature)
+        - for a fit done in Hz (f, Ω/2π, Γ/2π), as in SpectralDensityEstimate.fit_PSD, the amplitude
+          is A / (2π)³, see A_Hz
         """
         return 2 * kB * self.gas.T / self.bead.m
+
+    @cached_property
+    def A_Hz(self):
+        """
+        PSD fit amplitude A for a fit done in linear-frequency variables (f, Ω/2π, Γ/2π)
+        [m²·Hz²]
+        S(f) = A_Hz (Γ/2π) / (((Ω/2π)² - f²)² + (Γ/2π)² f²)
+
+        The Lorentzian Γ/((Ω²-ω²)²+Γ²ω²) has dimensions of time³, so changing every frequency
+        from 2π·Hz to Hz scales it by (2π)³ while the PSD value [m²/Hz] itself does not change:
+        A_Hz = A / (2π)³ (two-sided; double it for a one-sided PSD)
+        """
+        return self.A / Hz**3
 
     @cached_property
     def A_rad(self):
@@ -741,8 +766,27 @@ class Trap:
         [m²(2π·Hz)²]
         A_rad = A / 2π = kBT / π m
         """
-        # TODO: figure out why A/2π and not A/(2π)² ?
+        # NOTE: answer to "why A/2π and not A/(2π)²?": A_rad is the number the old
+        # SpectralDensityEstimate.fit_PSD reported, which converted its Hz-fit amplitude with Hz² instead
+        # of Hz³ (see A_Hz): A_Hz × (2π)² = A / 2π for a two-sided PSD. The physically meaningful
+        # amplitudes are A (angular variables) and A_Hz (linear variables); fit_PSD now reports Afit
+        # in the same units and convention as A (×2 if one-sided). Kept for backwards compatibility.
         return kB * self.gas.T / (π * self.bead.m)
+
+    @cached_property
+    def T_eff(self):
+        """
+        Dict of effective (motional) temperatures of the (x, y, z)-motions, from equipartition
+        [K]
+        The total force PSD on axis j is Sth + Sdir,j = Sth (1 + β² cos²ψ) for x, (1 + β² sin²ψ) for y,
+        (1) for z, and the total damping is Γj = Γth + Γfb,j, so
+        T_eff,j = T Γth (1 + Sdir,j / Sth) / Γj
+        which reduces to the cold-damping result T Γth / (Γth + Γfb,j) when β = 0.
+        """
+        return {
+            axis: self.gas.T * self.Γth * (1 + self.Sdirj[axis] / self.Sth) / self.Γj[axis]
+            for axis in ('x', 'y', 'z')
+        }
 
     @cached_property
     def equipartition_factor(self):
@@ -813,6 +857,24 @@ class Trap:
         ellipse = self.tweezer.ellipse(x, y, z)
         # NOTE: *artificially* include this ½ to account for the averaging of the very fast cos²(θ) of the light fields oscillations
         return 0.5 * (4 * z / wz**2) * self.Utw(x, y, z) * (1 - 2 * ellipse)
+
+    def Ftw(self, x, y, z):
+        """
+        Gradient force due to the tweezer potential, (Ftw,x, Ftw,y, Ftw,z)
+        Identical expressions to Ftwx, Ftwy, Ftwz, but evaluating the potential Utw (and the beam
+        profiles) only once - used in the Simulation loop, where it is ~3x cheaper than three calls.
+        [N]
+        """
+        U = self.Utw(x, y, z)
+        wx = self.tweezer.wx(z)
+        wy = self.tweezer.wy(z)
+        wz = self.tweezer.wz(z)
+        ellipse = self.tweezer.ellipse(x, y, z)
+        return (
+            0.5 * (4 * x / wx**2) * U,
+            0.5 * (4 * y / wy**2) * U,
+            0.5 * (4 * z / wz**2) * U * (1 - 2 * ellipse),
+        )
 
     # TODO: fix photon recoil!
     # @cached_property
