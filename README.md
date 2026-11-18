@@ -2,26 +2,19 @@
 
 `levisim` simulates levitated optomechanics. Its core is the quantum linear theory (QLT) of several optically levitated nanoparticles coupled by coherent scattering to one shared cavity mode: given the tweezers, the beads, the gas and the cavity, `MultiTrap` calculates the homodyne and heterodyne spectra of the cavity output and the power and cross spectral densities of every particle's motion, by any of seven calculation methods that can be checked against each other. Around that core are a stochastic (Runge-Kutta) simulator of a bead in a free-space tweezer, covariance-matrix tools for steady-state entanglement under a two-tone drive, and a Fortran reference implementation that the Python spectra are tested against.
 
-**Documentation:** <https://julianiacoponi.github.io/levisim/> - a user guide, the calculation methods in full, and an API reference generated from the docstrings. The site is built from `docs/` by GitHub Actions and goes live once GitHub Pages is enabled for the repository (*Settings → Pages → Source: GitHub Actions*); until then, build it locally as described [below](#building-the-docs).
+**Documentation:** <https://julianiacoponi.github.io/levisim/> - a user guide, the calculation methods in full, and an API reference generated from the docstrings.
 
 ## Installation
 
 ```sh
 git clone https://github.com/julianiacoponi/levisim.git
 cd levisim
-pip install numpy scipy matplotlib sympy loguru tqdm   # runtime dependencies
-pip install -e .                                       # editable install
+pip install .        # or `pip install -e .` to work on the code in place
 ```
 
-For now, use the **editable** install: `pyproject.toml` names only the top-level package, so a regular `pip install .` ships `levisim/__init__.py` without its subpackages and `import levisim` fails with `ModuleNotFoundError: No module named 'levisim.core'`. The packaging pull requests (#3, then #6) fix that and declare the dependencies, after which `pip install .` does both in one step. Alternatively, skip installing and put the repo root on `PYTHONPATH`.
+This needs Python 3.10 or newer and installs the runtime dependencies (numpy, scipy, matplotlib, sympy, loguru, tqdm). Four optional extras add conveniences that nothing in the physics needs: `elk` (the Elasticsearch client, see [Logging](#logging)), `notify` (desktop notifications when a long test run starts and finishes), `video` (OpenCV, for the image-comparison helpers) and `dev` (pytest and ruff), e.g. `pip install ".[elk,dev]"`.
 
-There are 2 layers of `levisim` directory because:
-- The git repo is called `levisim`
-- The python package inside the git repo is also called `levisim`
-
-### Note on importing from `levisim` into Python environments
-
-Importing `levisim` into a Python session (this could be a Python file, a Jupyter notebook, or the Python [REPL](https://en.wikipedia.org/wiki/Read–eval–print_loop) itself) whose 'current working directory' (`os.cwd()`) has inside it also a directory called `levisim` results in an empty import due to "[name shadowing](https://en.wikipedia.org/wiki/Variable_shadowing)". This provides a good reason to keep notebooks in a local `notebooks/` directory!
+**Name shadowing.** Do not start Python or Jupyter in the directory that *contains* your clone. There the repository folder `levisim/`, which has no `__init__.py`, shadows the package, and `import levisim` silently gives an empty namespace package. The repo root itself, or `notebooks/`, is fine.
 
 
 ## Quickstart
@@ -217,45 +210,10 @@ Two more modules build such traps from the actual tweezer geometry:
 The one real obstacle is that `hybridised_position_noise_vector` and `light_noise_vectors` are mutually recursive across mixins for the analytic methods - a position needs the light operators, which for Analytic Cavity Output come from the output operators, which need the collective modes. So the dispatch has to live on the base class rather than inside any one mixin.
 <!-- MIXINS-END -->
 
-<!-- LLM-DISCLAIMER-START -->
-# Disclaimer regarding use of LLMs
+# Use of LLMs
 
-While in early 2025 I dabbled with using ChatGPT and DeepSeek to give me starting points for certain more generic parts of this code (help with wrappers etc.) the only thing that remains of legitimate value that I gained from using those tools is the first attempt at the `docker-compose.yaml`, which I otherwise would have likely laboured a bit harder to do. Otherwise this code was proudly written without any LLM generated code :-)
+Parts of this repository were written by Claude (Anthropic) at the owner's request; [`DISCLAIMER.md`](DISCLAIMER.md) records which parts, and the owner's own statement.
 
-## October 2026 update
+# License
 
-That remains true of every commit on `main`. In one session I pointed Claude (Anthropic) at this repository, the untracked `notebooks/` folder and the `fortran/` folder, and asked it to propose fixes as pull requests. It opened a stack of them, and **this paragraph and the two sections above it are themselves part of that work** - so the claim above no longer covers the whole repository if any of those branches are merged. Each pull request description carries the same note.
-
-For the record, the things it found that I had not:
-
-- `pyproject.toml` shipped no subpackages, so `pip install levisim` produced a package that raised `ModuleNotFoundError: No module named 'levisim.core'` on import. Working from the repo root hid it completely.
-- `import levisim` could not succeed on a fresh clone at all: `shelf.py` built 17 `MultiTrap` instances at import time, several of which read power-series pickles from the untracked `notebooks/`.
-- Three latent `NameError`s - `Megasamples` for `megasamples`, a missing `colours_50` import, and a bare `k` where `self.k` was meant - each making its enclosing function raise on any call. None was reachable from anywhere in the repo, which is why they had survived.
-- `core/logger.py` added only an Elasticsearch sink and then logged at import, so with no ELK stack running every `import levisim` printed a traceback and **no `logger` call has ever reached the console**. That is why there are 83 `print()` calls in here.
-- Nine `cmplx()` calls in the Fortran had no `kind` argument, so every complex susceptibility $`\chi`$ was computed in **single precision** and widened back to double - a median relative error of 2e-7 in the reference data.
-- Three of the four build lines in the old `fortran/README.txt` did not compile, because the `num_traps` rename only reached three of the files.
-- `physics/kick.py` defined `info` twice, so `Kick.info` returned the string instead of printing it.
-- The comparison helpers default to `difficulty_level='very hard'`, a relative-difference threshold of 1e-12 that double-precision linear algebra cannot reach. This is why the test notebooks reported hundreds of failing method pairs that were not real disagreements - though the analytic-vs-rest disagreement on the **spectra** (mean 28-147%) is real, and is the thing the "BROKEN!" heading in `test_all_systems.ipynb` was correctly pointing at.
-
-It also could not fix, and I should: the `kappa_nano (Hz) 1.216e-86` that `NParticle.f90` prints, and the two `NOT SURE: CHECK!!!` susceptibilities in `3DEQRom.f90`.
-
-In a later session I asked it for a study of whether a two-tone drive can entangle the transverse motions. The four modules listed under *Steady-state entanglement of the transverse motions* above, their tests (`tests/test_gaussian_states.py`, `tests/test_two_tone.py`) and `docs/two_tone_entanglement/` are its work too, and the pull request that adds them says so.
-
-A third session followed that up, on the tones' polarisation, mech-mech coupling, the node position and a second particle. Its work includes:
-- `levisim.physics.focal_expansion` and `levisim.multiphysics.two_tone_traps`.
-- The per-tone couplings, `QuadraticPotential` terms and stored monodromy in `multitone`.
-- Their tests (`tests/test_focal_expansion.py`, `tests/test_two_tone_traps.py`).
-- `docs/two_tone_entanglement/polarisation_and_two_particles.*`.
-
-Its pull request says so too.
-
-A fourth session, in November 2026, polished the repository as a whole. Its work includes:
-- The general sections at the top of this README (overview, installation, quickstart, layout, tests, docs), the move of the calculation-method pathways from here into the documentation, the Sphinx documentation site under `docs/`, and the GitHub Actions workflows under `.github/`.
-- The resolution of the remaining `TODO` comments, either by implementing them or by answering them in place.
-- The generalisation of the analytic methods (6) and (7) to include the intra-particle couplings $`g_{jk}`$.
-- The section of this README on stochastic simulations of a bead in a free-space tweezer, and its documentation page.
-
-Each of its pull requests says so too.
-<!-- LLM-DISCLAIMER-END -->
-
-License chosen through [choosealicense.com](https://choosealicense.com)
+GNU General Public License v3.0 (see [`LICENSE`](LICENSE)), chosen through [choosealicense.com](https://choosealicense.com).
