@@ -1,70 +1,90 @@
+"""
+Theoretical spectral densities of a free-space trap driven by thermal and directed force noises
+"""
+
 import numpy as np
 
 
 class SpectralDensityTheory:
     """
-    Spectral density definition:
-    Sab(ω) =〈[a(ω)]†.b(ω)〉
+    Spectral density definition::
 
-    where [O(ω)]† = O†(-ω) for operators
-    but [f(ω)]† = [f(ω)]* = f*(ω) for functions
+        Sab(ω) =〈[a(ω)]†.b(ω)〉
 
-    Displacement responds to a force via a response function:
-    x(ω) = χx(ω) Fx(ω)
-    y(ω) = χy(ω) Fy(ω)
-    χ(ω) = 1 / (m(Ω²-ω² + iωΓ))
+        where [O(ω)]† = O†(-ω) for operators
+        but [f(ω)]† = [f(ω)]* = f*(ω) for functions
 
-    Notably, for the harmonic oscillator's susceptibility (a.k.a. response) functions:
-    χ*(-ω) = χ(ω)
+    Displacement responds to a force via a response function::
+
+        x(ω) = χx(ω) Fx(ω)
+        y(ω) = χy(ω) Fy(ω)
+        χ(ω) = 1 / (m(Ω²-ω² + iωΓ))
+
+    Notably, for the harmonic oscillator's susceptibility (a.k.a. response) functions::
+
+        χ*(-ω) = χ(ω)
 
     There are two force noises (units, N/√Hz), thermal and directed, whose magnitude we relate by β.
-    The total stochastic forces are sums of independent random forces (not of their noise amplitudes):
-    Fx(t) = fthx(t) + fdx(t),  Fy(t) = fthy(t) + fdy(t)
-    fthx = fthy = fth
-    fd = β fth
+    The total stochastic forces are sums of independent random forces (not of their noise amplitudes)::
+
+        Fx(t) = fthx(t) + fdx(t),  Fy(t) = fthy(t) + fdy(t)
+        fthx = fthy = fth
+        fd = β fth
 
 
     --- AUTO-CORRELATIONS ---
-    The stochastic forces (such as the thermal and directed ones considered here) are 'delta-correlated':
-    〈fthj(t).fthj(t')〉= Sth.δ(t - t') - equal in x, y
-    〈fd(t).fd(t')〉= Sdir.δ(t - t') - different components in x, y
-    The x, y components are:
-    〈fdx(t).fdx(t')〉= 〈fd(t)cos(ψ).fd(t')cos(ψ)〉= Sdir.cos²(ψ).δ(t - t') = Sdirx.δ(t - t')
-    〈fdy(t).fdy(t')〉= 〈fd(t)sin(ψ).fd(t')sin(ψ)〉= Sdir.sin²(ψ).δ(t - t') = Sdiry.δ(t - t')
 
-    This means their force spectral densities (units, N²/Hz) are constant:
-    〈fthj²〉= Sthj(ω) = Sth, equal in both x, y
-    〈fd²〉= Sdir(ω) = Sdir, different components in x, y
-    The x, y components are:
-    〈fdx²〉= Sdirx = Sdir.cos²(ψ)
-    〈fdy²〉= Sdiry = Sdir.sin²(ψ)
-    Sdir = β² Sth
+    The stochastic forces (such as the thermal and directed ones considered here) are 'delta-correlated'::
+
+        〈fthj(t).fthj(t')〉= Sth.δ(t - t') - equal in x, y
+        〈fd(t).fd(t')〉= Sdir.δ(t - t') - different components in x, y
+
+    The x, y components are::
+
+        〈fdx(t).fdx(t')〉= 〈fd(t)cos(ψ).fd(t')cos(ψ)〉= Sdir.cos²(ψ).δ(t - t') = Sdirx.δ(t - t')
+        〈fdy(t).fdy(t')〉= 〈fd(t)sin(ψ).fd(t')sin(ψ)〉= Sdir.sin²(ψ).δ(t - t') = Sdiry.δ(t - t')
+
+    This means their force spectral densities (units, N²/Hz) are constant::
+
+        〈fthj²〉= Sthj(ω) = Sth, equal in both x, y
+        〈fd²〉= Sdir(ω) = Sdir, different components in x, y
+
+    The x, y components are::
+
+        〈fdx²〉= Sdirx = Sdir.cos²(ψ)
+        〈fdy²〉= Sdiry = Sdir.sin²(ψ)
+        Sdir = β² Sth
 
     NOTE: forces vs. force noises, and how 〈.〉 turns a force into a force spectrum.
     A stochastic force F(t) [N] (thermal: the Langevin force of the gas; directed: the applied
     noise) is a random function of time: each realisation differs, and only its statistics are
     meaningful. 〈.〉 is the ensemble average over realisations. For a stationary force the
     autocorrelation 〈F(t + τ) F(t)〉 depends only on τ, and the Wiener-Khinchin theorem says its
-    Fourier transform is the force PSD,
+    Fourier transform is the force PSD, ::
+
         S_FF(ω) = ∫ 〈F(t + τ) F(t)〉 e^{iωτ} dτ     [N²/Hz],
+
     equivalently 〈F*(ω) F(ω')〉 = 2π S_FF(ω) δ(ω - ω') for the Fourier components. A white
     ('delta-correlated') force, 〈F(t) F(t')〉 = S δ(t - t'), therefore has a flat PSD S_FF = S.
     The 'force noise' f = √S [N/√Hz] is just the square root of that flat PSD: an amplitude
     spectral density, not a force. For the thermal force the fluctuation-dissipation theorem fixes
     S = Sth = 2 m kB T Γth (two-sided), the Langevin result for Brownian motion. Since the
     displacement is linear in the force, x(ω) = χ(ω) F(ω), the same averaging gives
-    Sxx(ω) = |χ(ω)|² S_FF(ω), and for two forces 〈f1 f2〉 = 0 unless they are correlated - which is
+    ``Sxx(ω) = |χ(ω)|² S_FF(ω)``, and for two forces 〈f1 f2〉 = 0 unless they are correlated - which is
     why the PSDs below add the *spectral densities* (quadrature sum of the force noises), and why
     only the shared directed force survives in Sxy. Simulation draws exactly such forces: for a time
     step Δt, a force held constant over the step with variance S/Δt has 〈F F〉 → S δ(t - t').
 
 
     --- CROSS-CORRELATIONS ---
-    By definition, the thermal noises in x, y are uncorrelated:
-    〈fthx(t).fthy(t')〉= 0
 
-    By definition, the directed and thermal noises are uncorrelated:
-    〈fth(t).fd(t')〉= 0
+    By definition, the thermal noises in x, y are uncorrelated::
+
+        〈fthx(t).fthy(t')〉= 0
+
+    By definition, the directed and thermal noises are uncorrelated::
+
+        〈fth(t).fd(t')〉= 0
 
     So the spectral densities associated with their combination are zero.
     (NOTE: The above assumption is what is broken if one does not use two separate Wiener processes to model the two stochastic forces.)
@@ -74,51 +94,59 @@ class SpectralDensityTheory:
 
 
     --- POWER SPECTRAL DENSITIES (PSDs) ---
+
     The power spectral density is Sab(ω) for a=b
     They are real-valued, always.
     Displacement PSDs are the product of:
+
     - the absolute square of the response function, and
     - the force spectral densities
 
-    PSD of x-motion:
-    Sxx(ω) =〈[x(ω)]†.x(ω)〉
-           = |χx(ω)|².〈(fthx + fdx)(fthx + fdx)〉
-           = |χx(ω)|².〈fthx² + 2.fthx.fdx + fdx²〉
-           = |χx(ω)|².(Sth + 0 + Sdirx)
-           = |χx(ω)|².Sth.(1 + β² cos²(ψ))
+    PSD of x-motion::
 
-    PSD of y-motion:
-    Syy(ω) =〈[y(ω)]†.y(ω)〉
-           = |χy(ω)|².〈(fthy + fdy)(fthy + fdy)〉
-           = |χy(ω)|².〈fthy² + 2.fth.fdy + fdy²〉
-           = |χy(ω)|².(Sth + 0 + Sdiry)
-           = |χy(ω)|².Sth.(1 + β² sin²(ψ))
+        Sxx(ω) =〈[x(ω)]†.x(ω)〉
+               = |χx(ω)|².〈(fthx + fdx)(fthx + fdx)〉
+               = |χx(ω)|².〈fthx² + 2.fthx.fdx + fdx²〉
+               = |χx(ω)|².(Sth + 0 + Sdirx)
+               = |χx(ω)|².Sth.(1 + β² cos²(ψ))
 
-    |χ(ω)|² = 1 / (m²((Ω²-ω²)² + Γ²ω²))
+    PSD of y-motion::
 
-    NOTE: This means that the force noise deduced from the PSD Fx = √(Sxx(ω))/|χx(ω)| = √(Sth.(1 + β² cos²(ψ)))
+        Syy(ω) =〈[y(ω)]†.y(ω)〉
+               = |χy(ω)|².〈(fthy + fdy)(fthy + fdy)〉
+               = |χy(ω)|².〈fthy² + 2.fth.fdy + fdy²〉
+               = |χy(ω)|².(Sth + 0 + Sdiry)
+               = |χy(ω)|².Sth.(1 + β² sin²(ψ))
+
+        |χ(ω)|² = 1 / (m²((Ω²-ω²)² + Γ²ω²))
+
+    NOTE: This means that the force noise deduced from the PSD ``Fx = √(Sxx(ω))/|χx(ω)| = √(Sth.(1 + β² cos²(ψ)))``
     does *not* equal the linear sum of fthx + fdx, but rather the quadrature sum √(fthx² + fdx²).
 
 
     --- CROSS-SPECTRAL DENSITIES (CSDs) ---
+
     The cross-correlation spectral density is defined as Sab(ω) for a≠b
     It is complex-valued, in general, with Sba(ω) = Sab(ω)*
 
-    CSD of x-, y-motions:
-    Sxy(ω) =〈[x(ω)]†.y(ω)〉
-           = χxy(ω).〈(fthx + fdx)(fthy + fdy)〉
-           = χxy(ω).〈fthx.fthy + fth.fdy + fdx.fth + fdx.fdy〉
-           = χxy(ω).〈0 + 0 + 0 + fd².cos(ψ)sin(ψ)〉
-           = χxy(ω).Sdir.cos(ψ)sin(ψ)
-           = χxy(ω).Sfψ
+    CSD of x-, y-motions::
+
+        Sxy(ω) =〈[x(ω)]†.y(ω)〉
+               = χxy(ω).〈(fthx + fdx)(fthy + fdy)〉
+               = χxy(ω).〈fthx.fthy + fth.fdy + fdx.fth + fdx.fdy〉
+               = χxy(ω).〈0 + 0 + 0 + fd².cos(ψ)sin(ψ)〉
+               = χxy(ω).Sdir.cos(ψ)sin(ψ)
+               = χxy(ω).Sfψ
 
     Displacement CSDs are the product of the cross-susceptibility and the angular force spectrum (defined below).
 
-    "cross-susceptibility"
-    χxy(ω) = χx*(ω).χy(ω)
+    "cross-susceptibility" ::
 
-    "angular force spectrum"
-    Sfψ = Sdir.cos(ψ)sin(ψ) = ½.Sdir.sin(2ψ)
+        χxy(ω) = χx*(ω).χy(ω)
+
+    "angular force spectrum" ::
+
+        Sfψ = Sdir.cos(ψ)sin(ψ) = ½.Sdir.sin(2ψ)
     """
 
     def __init__(
@@ -305,7 +333,7 @@ class SpectralDensityTheory:
         return self.Syy(ω) / np.sqrt(self.nd)
 
     def σSxy(self, ω):
-        """ Standard deviation of |Sxy| """
+        """ Standard deviation of ``|Sxy|`` """
         return np.sqrt(self.Sxx(ω) * self.Syy(ω) / self.nd)
 
     def σCxy(self, ω):

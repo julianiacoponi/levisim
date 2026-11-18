@@ -4,7 +4,7 @@ Second-order expansion of a tightly focused tweezer about its focus, for any lin
 FocussingOptics evaluates the Richards-Wolf focal field (Novotny & Hecht, Principles of
 Nano-Optics, §3.6) by quadrature at every point. Near the focus its three Bessel integrals
 I00, I01, I02 have Taylor expansions whose coefficients are single θ-integrals ('moments')
-⟨g⟩ = ∫₀^θmax f_w(θ)·cos^½θ·g(θ) dθ. For x-polarised input light, with Σ the field prefactor:
+⟨g⟩ = ∫₀^θmax f_w(θ)·cos^½θ·g(θ) dθ. For x-polarised input light, with Σ the field prefactor::
 
     E_x/Σ ≈ a0 + ikz·a1 - ½k²z²·a2 - ¼k²(x² + y²)·b0 + ⅛k²(x² - y²)·d0
     E_y/Σ ≈ ¼k²·d0·xy
@@ -12,7 +12,7 @@ I00, I01, I02 have Taylor expansions whose coefficients are single θ-integrals 
 
     a_n = ⟨sinθ(1 + cosθ)cosⁿθ⟩,  b0 = ⟨sin³θ(1 + cosθ)⟩,  d0 = ⟨sin³θ(1 - cosθ)⟩,  e0 = ⟨sin³θ⟩
 
-so that |E|²/|Σ|² ≈ a0² - k²(κ_∥·x² + κ_⊥·y² + κ_z·z²) with
+so that ``|E|²/|Σ|² ≈ a0² - k²(κ_∥·x² + κ_⊥·y² + κ_z·z²)`` with ::
 
     κ_∥ = a0·b0/2 - a0·d0/4 - e0²      (along the polarisation)
     κ_⊥ = a0·b0/2 + a0·d0/4            (across it)
@@ -21,14 +21,14 @@ so that |E|²/|Σ|² ≈ a0² - k²(κ_∥·x² + κ_⊥·y² + κ_z·z²) with
 The focus is softer along the polarisation because of the longitudinal field E_z and the
 cross-polarised I02 term; this is where Ω_∥ < Ω_⊥ comes from for a round input beam.
 
-TWO POLARISATIONS. The interference term of an x- and a y-polarised field is
+TWO POLARISATIONS. The interference term of an x- and a y-polarised field is ::
 
     E^(x)·E^(y)*/|Σ|² ≈ k²·(κ_⊥ - κ_∥)·xy
 
 exactly the anisotropy, and nothing else to this order (no x², y², z² or xz, yz terms). This is
 forced by rotational symmetry: the field polarised at 45° is the x-polarised one rotated by 45°,
 whose quadratic form has the cross term (κ_⊥ - κ_∥)·xy. In general, for polarisations ψ1, ψ2
-measured from x,
+measured from x, ::
 
     ∂²Re(E^(ψ1)·E^(ψ2)*)/|Σ|² = -2k²[cos(ψ1 - ψ2)·κ̄·1 + ½(κ_⊥ - κ_∥)·σ(ψ1 + ψ2)]   (transverse)
                                = -2k²·cos(ψ1 - ψ2)·κ_z                            (axial)
@@ -59,6 +59,7 @@ def polarisation_matrix(Ψ):
 class FocalExpansion:
     """
     Taylor coefficients of a FocussingOptics focal field about the focus
+
         - optics: a FocussingOptics instance (wavelength, NA, filling factor, apodisation)
         - apodisation: 'levisim' uses FocussingOptics._fw as it stands; 'novotny' uses
           exp(-sin²θ / (f0²·sin²θmax)) (Novotny & Hecht Eq. 3.52). The two differ by sinθmax in the
@@ -123,7 +124,7 @@ class FocalExpansion:
     @cached_property
     def curvatures(self):
         """
-        κ_∥, κ_⊥, κ_z with |E|²/|Σ|² ≈ a0² - k²(κ_∥x² + κ_⊥y² + κ_z z²) for x-polarised light [·]
+        κ_∥, κ_⊥, κ_z with ``|E|²/|Σ|² ≈ a0² - k²(κ_∥x² + κ_⊥y² + κ_z z²)`` for x-polarised light [·]
         """
         m = self.moments
         a0, a1, a2, b0, d0, e0 = (m[key] for key in ('a0', 'a1', 'a2', 'b0', 'd0', 'e0'))
@@ -166,14 +167,16 @@ class FocalExpansion:
 
     def intensity_hessian(self, ψ):
         """
-        3×3 Hessian of |E^(ψ)|² at the focus for light polarised at ψ from x [k²|Σ|²]
+        3×3 Hessian of ``|E^(ψ)|²`` at the focus for light polarised at ψ from x ``[k²|Σ|²]``
         """
         return self.interference_hessian(ψ, ψ)
 
     def numerical_hessian(self, ψ1, ψ2, step=0.02):
         """
         The same Hessian by finite differences of FocussingOptics' full focal field (for checks)
+
             - step: finite-difference step in units of 1/k [·]
+
         Uses the optics' own apodisation, so compare with apodisation='levisim'.
         """
         optics = self.optics

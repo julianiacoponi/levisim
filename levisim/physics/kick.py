@@ -1,3 +1,7 @@
+"""
+Step-like impulses (Kick) on the levitated bead
+"""
+
 from levisim.core.constants import c
 from levisim.core.units import (
     ms, ns,

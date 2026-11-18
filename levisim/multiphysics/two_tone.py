@@ -9,9 +9,9 @@ docs/two_tone_entanglement/README.md derives the scheme step by step; in brief:
 2. A second tone, blue of the cavity by Ω̄ = (Ω_x + Ω_y)/2 while the first is red by Ω̄, supplies
    exactly that energy: blue photon → red photon + x phonon + y phonon is resonant.
 3. In the frame rotating at Ω̄ (rotating-wave approximation, RWA) the cavity couples to two
-   Bogoliubov modes, β_1 ∝ G_-·G_x·b_x + G_+·G_y·b_y† and β_2 ∝ G_-·G_y·b_y + G_+·G_x·b_x†, sitting at
+   Bogoliubov modes, ``β_1 ∝ G_-·G_x·b_x + G_+·G_y·b_y†`` and ``β_2 ∝ G_-·G_y·b_y + G_+·G_x·b_x†``, sitting at
    ±(Ω_x - Ω_y)/2. For balanced couplings (G_x = G_y) these are b_x, b_y two-mode squeezed by
-   tanh(r) = G_+/G_-.
+   ``tanh(r) = G_+/G_-``.
 4. The cavity is a zero-temperature bath, so it cools β_1 and β_2 just as it cools x and y in
    ordinary 2D cooling. Their joint vacuum is the two-mode squeezed vacuum of x and y: E_N = 2r.
 5. The non-degeneracy Ω_x ≠ Ω_y that a tweezer provides naturally is essential: for Ω_x = Ω_y,
@@ -105,11 +105,13 @@ def deplano2025_multitrap(
     levisim's thermal bath is gas damping Γ_j at temperature T, so the fitted decoherence rates
     are reproduced as Γ_j = Γ_decoherence,j / n_j(T): the heating rate Γ_j·n_j is the fitted one
     and the damping itself is negligible (~1e-4 Hz).
+
         - Γ_scale: multiplies both decoherence rates [·]
         - coupling_scale: multiplies both couplings g_x, g_y [·]
         - balanced: replace g_x, g_y by their RMS value, so G_x = G_y [bool]
         - gx_over_gy: impose this coupling ratio at the same RMS coupling (overrides balanced) [·]
         - Ωx, Ωy, κ, Δ: override the experimental values [2π·Hz]
+
     Other kwargs go to MultiTrap (e.g. ω_range).
     """
     p = DEPLANO2025
@@ -158,13 +160,14 @@ def two_tone_drive(mtrap, ratio, relative_phase=0.0, offset=0.0, labels=('x1', '
     2·offset in the difference) is critical, while `common_shift` s (both tones moved together,
     i.e. the cavity drifting relative to the laser) only moves the sidebands within the cavity line.
 
-        - ratio: blue/red field amplitude ratio G_+/G_- (for balanced couplings, tanh r) [·]
+        - ratio: blue/red field amplitude ratio ``G_+/G_-`` (for balanced couplings, tanh r) [·]
         - relative_phase: optical phase of the blue tone relative to the red tone [rad]
         - offset: moves the tones apart (offset > 0) or together, symmetrically [2π·Hz]
         - common_shift: moves both tones by the same amount [2π·Hz]
-        - fixed_total_power: if True the two amplitudes satisfy c_-² + c_+² = 1, so the total
+        - fixed_total_power: if True the two amplitudes satisfy ``c_-² + c_+² = 1``, so the total
           tweezer power (hence the trap) is unchanged and the red tone loses what the blue gains;
-          if False the red tone keeps c_- = 1 and the blue tone is added on top
+          if False the red tone keeps ``c_- = 1`` and the blue tone is added on top
+
     Returns (red Tone, blue Tone).
     """
     ν = np.mean([mtrap.dimensions[label].Ω for label in labels]) + offset
@@ -193,8 +196,8 @@ def bogoliubov_coefficients(mtrap, ratio, relative_phase=0.0, labels=('x1', 'y1'
     """
     (u_1, v_1, u_2, v_2) with β_1 = u_1·b_x + v_1·b_y† and β_2 = u_2·b_y + v_2·b_x†
 
-    β_1 ∝ c_-·G_x·b_x + c̃_+·G_y·b_y† is the combination the cavity sees rotating with b_x in the
-    RWA, and |u|² - |v|² = 1 normalises it. If |c_+·G_y| ≥ |c_-·G_x| that combination is not an
+    ``β_1 ∝ c_-·G_x·b_x + c̃_+·G_y·b_y†`` is the combination the cavity sees rotating with b_x in the
+    RWA, and ``|u|² - |v|² = 1`` normalises it. If ``|c_+·G_y| ≥ |c_-·G_x|`` that combination is not an
     annihilation operator: the cavity then AMPLIFIES it and there is no steady state, which is
     returned as NaN coefficients.
     """
@@ -216,7 +219,7 @@ def bogoliubov_occupations(V_rotating, mtrap, ratio, relative_phase=0.0, labels=
     """
     〈β_1†β_1〉, 〈β_2†β_2〉 from a ROTATING-frame x-y covariance matrix
 
-    〈β†β〉 = |u|²〈b†b〉 + |v|²(〈b'†b'〉 + 1) + 2Re(u·v*·〈b b'〉). Both are zero exactly when the
+    ``〈β†β〉 = |u|²〈b†b〉 + |v|²(〈b'†b'〉 + 1) + 2Re(u·v*·〈b b'〉)``. Both are zero exactly when the
     state is the two-mode squeezed vacuum the scheme aims for.
     """
     u1, v1, u2, v2 = bogoliubov_coefficients(mtrap, ratio, relative_phase, labels, fixed_total_power)
@@ -258,14 +261,17 @@ class TwoToneSteadyState:
 
     @property
     def E_N_min(self):
+        """Smallest logarithmic negativity over the sampled times, 0 if unstable [·]"""
         return float(np.min(self.log_negativities)) if self.stable else 0.0
 
     @property
     def E_N_max(self):
+        """Largest logarithmic negativity over the sampled times, 0 if unstable [·]"""
         return float(np.max(self.log_negativities)) if self.stable else 0.0
 
     @property
     def summary_str(self):
+        """One-line summary: E_N, phonon numbers, Bogoliubov occupations and Floquet multiplier, or UNSTABLE"""
         if not self.stable:
             return f'G+/G- = {self.ratio:.3f}: UNSTABLE (|Floquet multiplier| = {self.floquet_multiplier:.4f})'
         return (
@@ -336,9 +342,11 @@ def two_tone_rwa_steady_state(
     """
     Steady state of the rotating-wave model, in the frame rotating at ν for every dimension
 
-    H/ħ = -s·a†a + Σ_j (Ω_j - ν)·b̃_j†b̃_j - [a†·Σ_j G_j(c̃_-·b̃_j + c̃_+·b̃_j†) + h.c.]
-          + Σ_j (Ω_j·v/4P)(c̃_-·c̃_+*·b̃_j² + h.c.)            (trap beat, visibility v)
-          - Σ_pairs g_jk (b̃_j†b̃_k + h.c.)                    (exchange part of mech-mech terms)
+    ::
+
+        H/ħ = -s·a†a + Σ_j (Ω_j - ν)·b̃_j†b̃_j - [a†·Σ_j G_j(c̃_-·b̃_j + c̃_+·b̃_j†) + h.c.]
+              + Σ_j (Ω_j·v/4P)(c̃_-·c̃_+*·b̃_j² + h.c.)            (trap beat, visibility v)
+              - Σ_pairs g_jk (b̃_j†b̃_k + h.c.)                    (exchange part of mech-mech terms)
 
     (s = common_shift; the light is in the frame rotating at ω_c + s.)
     It is time independent, so one Lyapunov solve gives the state. Comparing it with
@@ -393,9 +401,9 @@ def two_tone_rwa_steady_state(
 # ----------------------------------------------------------------------------------------------
 def quantum_cooperativity(mtrap, labels=('x1', 'y1'), include_lorentzian=True):
     """
-    C = 4〈|G|²〉/(κ·〈Γn〉) for a pair of dimensions, optionally times L = 1/(1 + ((Ω_x - Ω_y)/κ)²)
+    ``C = 4〈|G|²〉/(κ·〈Γn〉)`` for a pair of dimensions, optionally times L = 1/(1 + ((Ω_x - Ω_y)/κ)²)
 
-    4|G|²/κ is the resolved-sideband cooling rate a single red tone of the full power gives one
+    ``4|G|²/κ`` is the resolved-sideband cooling rate a single red tone of the full power gives one
     dimension at Δ = -Ω, and Γ·n its thermal heating rate, so C is that dimension's quantum
     cooperativity; the pair's couplings and heating rates are averaged. In the two-tone scheme
     the Bogoliubov modes sit at ±(Ω_x - Ω_y)/2 from the cavity resonance, which the Lorentzian
@@ -423,13 +431,13 @@ def analytic_log_negativity(r, cooperativity, fixed_total_power=True):
 
     Ideal limit of the scheme: balanced couplings, the RWA, equal heating Γn on both modes, and
     Bogoliubov modes spectrally resolved from each other but inside the cavity line. Then the
-    cavity damps x and y at Γ_c(r) = 4G²(c_-² - c_+²)/κ = C·Γn/cosh(2r) (at fixed total power)
+    cavity damps x and y at ``Γ_c(r) = 4G²(c_-² - c_+²)/κ = C·Γn/cosh(2r)`` (at fixed total power)
     TOWARDS the two-mode squeezed vacuum, i.e. each sees a two-mode squeezed reservoir, while the
     thermal bath adds n_add = Γn/Γ_c phonons to each. That gives n_x = n_y = sinh²(r) + n_add,
-    |〈b_x b_y〉| = sinh(r)cosh(r), and ν̃_- = exp(-2r) + 2n_add.
+    ``|〈b_x b_y〉| = sinh(r)cosh(r)``, and ``ν̃_- = exp(-2r) + 2n_add``.
 
     NOTE: the Bogoliubov modes then hold n_β = n_add·cosh(2r) each, but they are CORRELATED (the
-    image of uncorrelated x and y noise), so ν̃_- ≠ (2n_β + 1)exp(-2r); treating them as
+    image of uncorrelated x and y noise), so ``ν̃_- ≠ (2n_β + 1)exp(-2r)``; treating them as
     independent thermal modes overstates the entanglement.
     [·]
     """
@@ -441,9 +449,11 @@ def analytic_optimum(cooperativity, fixed_total_power=True):
     """
     (r*, E_N*) maximising analytic_log_negativity over the squeezing parameter r
 
-    Closed forms, found numerically here so that the noise model can be changed:
+    Closed forms, found numerically here so that the noise model can be changed::
+
         fixed total power:  exp(4r*) = 1 + C,   E_N* = ln[C / (2·sqrt(1 + C))]
         fixed red tone:     exp(4r*) = 1 + 2C,  E_N* = ln[C / (1 + sqrt(1 + 2C))]
+
     so E_N* ≈ ½·ln(C/4) for large C: each factor of e² ≈ 7.4 in C buys one nat.
     """
     objective = lambda r: np.exp(-2*r) + 2 * _added_noise(r, cooperativity, fixed_total_power)

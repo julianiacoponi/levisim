@@ -1,3 +1,8 @@
+"""
+levisim's loguru logger: logs go to a local Elasticsearch (ELK) stack when the elasticsearch
+package is installed and the stack is reachable, and to stderr if LEVISIM_LOG_TO_CONSOLE is set
+"""
+
 # NOTE: for instructions on how to see these logs locally, see `levisim/docker-compose.yaml`
 
 import os

@@ -1,3 +1,7 @@
+"""
+Combined physics of a levitated free-space tweezer trap (Trap)
+"""
+
 import numpy as np
 from functools import cached_property
 from scipy.optimize import brentq
@@ -106,6 +110,7 @@ class Trap:
 
     @property
     def info_str(self):
+        """A multi-line summary of the trap's parameters"""
         return (
             f'Trap(id={id(self)}'
             f'\n    trap_index={self.trap_index}'
@@ -757,11 +762,11 @@ class Trap:
         Equilibrium point between optical gradient and scattering forces, linearised in z/zR
         [m]
 
-        Balancing F_scattering (on axis, ∝ |E|² (k - 1/zR) at z = 0, the 1/zR being the Gouy-phase
+        Balancing F_scattering (on axis, ``∝ |E|² (k - 1/zR)`` at z = 0, the 1/zR being the Gouy-phase
         gradient) against the linearised gradient force -(Re α/2) E0² z / zR² gives
         z_eq = (Im α / Re α) k (zR² - zR/k).
         This agrees with Eq. (A4) of Toroš et al., arXiv:2012.15822, z0 = (εr-1)/(εr+2) (2k⁴zR²/3) R³,
-        to leading order in the particle size (Im α ≈ k³|α|²/6πε0), apart from the factor (1 - 1/(k zR)),
+        to leading order in the particle size (``Im α ≈ k³|α|²/6πε0``), apart from the factor (1 - 1/(k zR)),
         because Eq. (A2) uses the plane-wave scattering force without the Gouy phase. Since
         z_eq/zR is not tiny for 100 nm-scale beads (≈ 0.12 for the defaults), see z_eq_exact for the
         root of the full on-axis force.
@@ -777,20 +782,26 @@ class Trap:
         """
         Scaling factor for the theoretical PSD fitting expression, *without* feedback cooling
         [m²(2π·Hz)²] = [m²/s²]
-        S(ω) = A Γ / ((Ω²-ω²)² + Γ²ω²)
 
-        Derived via
-        Sxx = |χ(ω)|² Sth
-        |χ(ω)|² = 1 / (m²((Ω²-ω²)² + Γ²ω²))
-        Sth = 2m kBT Γ
+        ::
 
-        Hence
-        A = 2 kBT / m
+            S(ω) = A Γ / ((Ω²-ω²)² + Γ²ω²)
+
+        Derived via ::
+
+            Sxx = |χ(ω)|² Sth
+            |χ(ω)|² = 1 / (m²((Ω²-ω²)² + Γ²ω²))
+            Sth = 2m kBT Γ
+
+        Hence ::
+
+            A = 2 kBT / m
 
         Conventions: S is the *two-sided* displacement PSD per unit (linear) frequency [m²/Hz],
         written as a function of angular frequencies ω, Ω, Γ [2π·Hz]; Sth = fth² = 2 m kB T Γth is
         the two-sided force PSD, 〈F(t)F(t')〉 = Sth δ(t - t'). Check: ∫ S df over all f
         = A Γ / (2 Γ Ω²) = kB T / (m Ω²), i.e. equipartition.
+
         - a one-sided PSD G = 2S has amplitude 2A
         - with feedback (Γ = Γth + Γfb) and the directed force, the amplitude is 2 kB T_eff / m,
           with T_eff given by self.T_eff (A itself uses the gas temperature)
@@ -804,11 +815,15 @@ class Trap:
         """
         PSD fit amplitude A for a fit done in linear-frequency variables (f, Ω/2π, Γ/2π)
         [m²·Hz²]
-        S(f) = A_Hz (Γ/2π) / (((Ω/2π)² - f²)² + (Γ/2π)² f²)
+
+        ::
+
+            S(f) = A_Hz (Γ/2π) / (((Ω/2π)² - f²)² + (Γ/2π)² f²)
 
         The Lorentzian Γ/((Ω²-ω²)²+Γ²ω²) has dimensions of time³, so changing every frequency
-        from 2π·Hz to Hz scales it by (2π)³ while the PSD value [m²/Hz] itself does not change:
-        A_Hz = A / (2π)³ (two-sided; double it for a one-sided PSD)
+        from 2π·Hz to Hz scales it by (2π)³ while the PSD value [m²/Hz] itself does not change::
+
+            A_Hz = A / (2π)³ (two-sided; double it for a one-sided PSD)
         """
         return self.A / Hz**3
 
@@ -817,7 +832,10 @@ class Trap:
         """
         Scaling factor for the theoretical PSD fitting expression
         [m²(2π·Hz)²]
-        A_rad = A / 2π = kBT / π m
+
+        ::
+
+            A_rad = A / 2π = kBT / π m
         """
         # NOTE: answer to "why A/2π and not A/(2π)²?": A_rad is the number the old
         # SpectralDensityEstimate.fit_PSD reported, which converted its Hz-fit amplitude with Hz² instead
@@ -831,9 +849,12 @@ class Trap:
         """
         Dict of effective (motional) temperatures of the (x, y, z)-motions, from equipartition
         [K]
+
         The total force PSD on axis j is Sth + Sdir,j = Sth (1 + β² cos²ψ) for x, (1 + β² sin²ψ) for y,
-        (1) for z, and the total damping is Γj = Γth + Γfb,j, so
-        T_eff,j = T Γth (1 + Sdir,j / Sth) / Γj
+        (1) for z, and the total damping is Γj = Γth + Γfb,j, so ::
+
+            T_eff,j = T Γth (1 + Sdir,j / Sth) / Γj
+
         which reduces to the cold-damping result T Γth / (Γth + Γfb,j) when β = 0.
         """
         return {
@@ -846,11 +867,13 @@ class Trap:
         """
         Conversion factor of position variance into temperature
         [kg.(2π·Hz)² / (J/K)] = [K.(2π/m)]
-        Equipartition theorem states
-        kinetic energy from oscillation = thermal energy
-        ½mΩ²〈x²〉 = ½kB*T
-        Therefore expecting
-        T = (mΩ² / kB) * 〈x²〉
+
+        Equipartition theorem states ::
+
+            kinetic energy from oscillation = thermal energy
+            ½mΩ²〈x²〉 = ½kB*T
+            Therefore expecting
+            T = (mΩ² / kB) * 〈x²〉
         """
         return {
             axis: self.bead.m * Ωj**2 / kB
@@ -863,6 +886,7 @@ class Trap:
     def kinetic_energy(self, px, py, pz):
         """
         Energy associated with the nanoparticle Hamiltonian
+
         H_np = p² / 2m
         [J]
         """
@@ -871,7 +895,8 @@ class Trap:
     def Utw(self, x, y, z):
         """
         Energy of the tweezer-bead interaction Hamiltonian
-        H_tw = -α/2 * |Etw|²
+
+        ``H_tw = -α/2 * |Etw|²``
         [J]
         i.e. energy of tweezer-bead dipole interaction
         """
@@ -883,6 +908,7 @@ class Trap:
     def Ftwx(self, x, y, z):
         """
         Gradient force due to the tweezer potential in the x-direction
+
         Ftw,x = -dUtw/dx (derived manually)
         [N]
         """
@@ -893,6 +919,7 @@ class Trap:
     def Ftwy(self, x, y, z):
         """
         Gradient force due to the tweezer potential in the y-direction
+
         Ftw,y = -dUtw/dy (derived manually)
         [N]
         """
@@ -903,6 +930,7 @@ class Trap:
     def Ftwz(self, x, y, z):
         """
         Gradient force due to the tweezer potential in the z-direction
+
         Ftw,z = -dUtw/dz (derived manually)
         [N]
         """
@@ -933,6 +961,7 @@ class Trap:
     def σ_Rayleigh(self):
         """
         Rayleigh scattering cross section of a small dielectric sphere (no radiation reaction)
+
         σR = (8π/3) k⁴ (α/(4πε0))² = (8π/3) (π²V²/λ⁴) χ0², χ0 = 3(εr - 1)/(εr + 2)
         To leading order in the size it equals σ_scattering = k Im(α_eff)/ε0, which is what
         F_scattering uses.
@@ -948,16 +977,20 @@ class Trap:
     def F_scattering(self, x, y, z):
         """
         Scattering (photon recoil, radiation pressure) force along the beam axis
-        F_scat,z = (Im α_eff / 2) |E(r)|² ∂z[kz - arctan(z/zR)]
-                 = σ_scattering I(r) / c × (1 - zR/(k(zR² + z²)))
-        with |E(r)|² = E_field_amplitude(x, y, z)², I = ε0 c |E|²/2 the local intensity, and the
+
+        ::
+
+            F_scat,z = (Im α_eff / 2) |E(r)|² ∂z[kz - arctan(z/zR)]
+                     = σ_scattering I(r) / c × (1 - zR/(k(zR² + z²)))
+
+        with ``|E(r)|² = E_field_amplitude(x, y, z)²``, ``I = ε0 c |E|²/2`` the local intensity, and the
         Gouy-phase gradient reducing the effective wavenumber near the focus.
         The tweezer light is taken to propagate along +z, so the force pushes the bead towards +z,
         consistent with z_eq > 0.
 
         This is the dipole force's dissipative part, in the same time-averaged convention as
-        Utw/Ftwj (|E| is the complex amplitude, F_grad = (Re α/4)∇|E|²). It equals Marko Toroš's
-        F = (σR/σL)(2P/c)|u|² (σL = πw0², in the commented code it replaces) up to the Gouy factor
+        Utw/Ftwj (``|E|`` is the complex amplitude, ``F_grad = (Re α/4)∇|E|²``). It equals Marko Toroš's
+        ``F = (σR/σL)(2P/c)|u|²`` (σL = πw0², in the commented code it replaces) up to the Gouy factor
         and σR ≈ σ_scattering. Its transverse components (from the wavefront curvature, ∝ x/R(z))
         and the associated recoil heating (momentum diffusion) are NOT included.
         [N]

@@ -1,3 +1,7 @@
+"""
+The optical tweezer (Tweezer): a focussed, elliptical Gaussian beam
+"""
+
 import numpy as np
 from functools import cached_property
 
@@ -183,6 +187,7 @@ class Tweezer:
     def flattening(self):
         """
         Flattening of the Gaussian beam
+
         f = (a - b)/a = 1 - b/a
         NOTE: https://en.wikipedia.org/wiki/Flattening
         [·]

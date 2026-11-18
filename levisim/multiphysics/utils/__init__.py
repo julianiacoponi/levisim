@@ -1,6 +1,6 @@
 """
 levisim.multiphysics.utils
-===============
+==========================
 A module for helpful utilities for plotting and analysing multiphysics
 """
 

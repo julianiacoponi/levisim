@@ -1,6 +1,6 @@
 """
 levisim.analysis
-============
+================
 A module to handle the analysis of the time traces produced by simulation or experiment, including theoretical expressions
 """
 

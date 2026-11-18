@@ -1,3 +1,7 @@
+"""
+The Richards-Wolf focal field of a strongly focussed Gaussian beam (FocussingOptics)
+"""
+
 import numpy as np
 from functools import cached_property
 from scipy.special import jv as Jn

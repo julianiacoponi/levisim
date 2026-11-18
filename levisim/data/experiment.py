@@ -1,3 +1,7 @@
+"""
+Experimental time traces (Experiment), loaded from .mat or .bin files
+"""
+
 import numpy as np
 import matplotlib.pyplot as plt
 

@@ -1,3 +1,7 @@
+"""
+Decorators for timing, profiling and showing a progress bar
+"""
+
 import time
 import inspect
 import cProfile

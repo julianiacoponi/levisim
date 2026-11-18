@@ -1,3 +1,7 @@
+"""
+The NoiseVectorType enumeration: which noise vector to calculate
+"""
+
 from enum import Enum, auto
 
 

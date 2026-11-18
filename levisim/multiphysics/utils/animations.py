@@ -1,3 +1,7 @@
+"""
+Animations of the spectra of a MultiTrap as its parameters are varied (heatmaps and slices)
+"""
+
 import sys
 import numpy as np
 import matplotlib
@@ -69,18 +73,21 @@ def calculate_area(mtrap, values):
 def calculate_phonons_and_temperatures_from_PSD(mtrap, Sqq_values, label):
     """
     Take the area under the given PSD to find the number of phonons and temperature
-    - area under zpf-normalised PSD = 2n + 1, where n = phonon occupation
-        area = 2n + 1
-        ∴
-        n = ½(area - 1)
-    - area under (two-sided) PSD of variable = variance of variable
-        〈q²〉= (1/2π) ∫ Sqq(Ω)dΩ
-        ∴
-        〈q²〉= ∫ Sxx(f)df
-    - equipartition theorem states: kinetic energy from oscillation = thermal energy
-        ½mΩ²〈q²〉 = ½kB×T
-        ∴
-        T = (mΩ² / kB) × 〈q²〉
+
+    ::
+
+        - area under zpf-normalised PSD = 2n + 1, where n = phonon occupation
+            area = 2n + 1
+            ∴
+            n = ½(area - 1)
+        - area under (two-sided) PSD of variable = variance of variable
+            〈q²〉= (1/2π) ∫ Sqq(Ω)dΩ
+            ∴
+            〈q²〉= ∫ Sxx(f)df
+        - equipartition theorem states: kinetic energy from oscillation = thermal energy
+            ½mΩ²〈q²〉 = ½kB×T
+            ∴
+            T = (mΩ² / kB) × 〈q²〉
     """
     jn = mtrap.dimensions[label]
     ħΩ = ħ * jn.Ω
@@ -248,6 +255,11 @@ def calculate_spectra_for_all_frames(
     y, frame,
     **kwargs,
 ):
+    """
+    Calculates the spectra across the y range for every frame value
+
+    Returns (spectra per frame, their global (min, max), info per frame).
+    """
     all_spectra = []
     info_for_all_frames = []
     global_min = float('inf')
@@ -283,6 +295,11 @@ def generate_heatmap_animation_frames(
 
     **kwargs,
 ):
+    """
+    Draws a heatmap of the spectra over frequency and the y parameter for each frame value
+
+    Returns (fig, animation frames).
+    """
 
     global_min, global_max = limits
 
@@ -386,6 +403,12 @@ def generate_slices_animation_frames(
 
     **kwargs,
 ):
+    """
+    Draws the spectrum for each y value, with its area (optical spectra) or phonons and temperatures
+    (position PSDs) below, for each frame value
+
+    Returns (fig, animation frames).
+    """
     global_min, global_max = limits
 
     figsize = kwargs.get('figsize', (6, 6))
@@ -514,6 +537,11 @@ def animate_spectra(
     spectrum_type,
     **kwargs,
 ):
+    """
+    Animates the spectra as the frame parameter is varied, as a 'heatmap' or 'slices' animation
+
+    Saved as an .mp4 if save_mp4=True. Returns the matplotlib ArtistAnimation.
+    """
     all_spectra_by_frame, limits, info_for_all_frames = calculate_spectra_for_all_frames(
         multitrap_kwargs,
         spectrum_type,

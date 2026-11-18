@@ -1,3 +1,7 @@
+"""
+Stochastic Runge-Kutta simulation (Simulation) of the motion of a bead in a free-space tweezer trap
+"""
+
 import numpy as np
 
 from os import makedirs
@@ -23,12 +27,15 @@ class Simulation:
     """
     Tweezer-bead dynamics simulated using a Runge-Kutta (RK) stochastic numerical solver
 
-    Integrates the Langevin equations of motion of a bead in a free-space Trap,
+    Integrates the Langevin equations of motion of a bead in a free-space Trap, ::
+
         dX = F(t, X) dt + G dW,   X = [x, y, z, px, py, pz]
+
     (see dynamics_vector and noise_matrix_RK4), and stores the recorded position traces
     self.x, self.y, self.z (Trace instances, also in self.traces).
 
-    Keyword arguments (defaults in brackets):
+    Keyword arguments (defaults in brackets)::
+
         trap [Trap()]: the Trap whose physics is simulated
         num_samples [1e6]: number of time steps
         Δt [0.1 μs]: time step [s]
@@ -84,6 +91,7 @@ class Simulation:
 
     @property
     def info(self):
+        """Prints a summary of the simulation's settings and of its position traces"""
         print(
             f'Simulation(id={id(self)}'
             f'\n    RK_method = {self.RK_method}'
@@ -138,8 +146,11 @@ class Simulation:
         """
         Deterministic part of the equations of motion, dX = F(t, X) dt + G dW
 
-        F = (px/m, py/m, pz/m, Ftw,x - Γx px + F_kick,x, Ftw,y - Γy py + F_kick,y, Ftw,z - Γz pz)
-        i.e. Hamilton's equations for H = |p|²/2m + Utw(r), plus the (gas + feedback) damping and
+        ::
+
+            F = (px/m, py/m, pz/m, Ftw,x - Γx px + F_kick,x, Ftw,y - Γy py + F_kick,y, Ftw,z - Γz pz)
+
+        i.e. Hamilton's equations for ``H = |p|²/2m + Utw(r)``, plus the (gas + feedback) damping and
         any Kick impulses active at time t.
         [m/s, m/s, m/s, N, N, N]
         """
@@ -196,14 +207,16 @@ class Simulation:
         """
         Noise matrix G of the equations of motion dX = F dt + G dW (used by every RK_method)
 
-                      dynamics                  noise matrix (6 x 4)
-        |  dx |   |     px/m     |       |   0      0      0      0     |
-        |  dy |   |     py/m     |       |   0      0      0      0     |
-        |  dz |   |     pz/m     |       |   0      0      0      0     ||   dWx  |
-        |     | = |              | dt +  |                              ||   dWy  |
-        | dpx |   | -dU/dx - Γpx |       |   1      0      0    cos(ψ)  ||   dWz  |
-        | dpy |   | -dU/dy - Γpy |       |   0      1      0    sin(ψ)  ||  dWdir |
-        | dpz |   | -dU/dz - Γpz |       |   0      0      1      0     |
+        ::
+
+                          dynamics                  noise matrix (6 x 4)
+            |  dx |   |     px/m     |       |   0      0      0      0     |
+            |  dy |   |     py/m     |       |   0      0      0      0     |
+            |  dz |   |     pz/m     |       |   0      0      0      0     ||   dWx  |
+            |     | = |              | dt +  |                              ||   dWy  |
+            | dpx |   | -dU/dx - Γpx |       |   1      0      0    cos(ψ)  ||   dWz  |
+            | dpy |   | -dU/dy - Γpy |       |   0      1      0    sin(ψ)  ||  dWdir |
+            | dpz |   | -dU/dz - Γpz |       |   0      0      1      0     |
 
         dWx,y,z and dWdir are four *independent* Wiener processes that carry their physical
         variances, i.e. the (two-sided) force spectral densities Sth and Sdir = β²Sth, whose square
@@ -500,10 +513,13 @@ class Simulation:
     def temperature_via_variance(self, axis, Ωj=None):
         """
         Temperature estimated via the variance, using equipartition theorem
-        ½mΩj²〈j²〉 = ½kb*Tj
-        〈j²〉= Var(j)
-        Therefore expecting T = (mΩ² / kb) * Var(j)
-        j = x, y, z
+
+        ::
+
+            ½mΩj²〈j²〉 = ½kb*Tj
+            〈j²〉= Var(j)
+            Therefore expecting T = (mΩ² / kb) * Var(j)
+            j = x, y, z
 
         Ωj may be passed to account for how the simulated frequencies are shifted from the first
         order (harmonic) approximations; by default the Trap's harmonic Ωj is used.

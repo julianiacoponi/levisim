@@ -1,14 +1,15 @@
 """
-Fails if the Sphinx build warned about anything other than docstrings in the package
+Fails if the Sphinx build warned about anything (the equivalent of sphinx-build -W)
 
 Usage (from the repo root):
     sphinx-build -b html docs docs/_build/html -w docs/_build/warnings.log
     python docs/check_sphinx_warnings.py docs/_build/warnings.log
 
-The hand-written pages under docs/ are held to "no warnings" (equivalent to sphinx-build -W).
-Warnings raised while rendering the docstrings of levisim itself - mostly free-form physics notes
-that are not valid reStructuredText - are counted and listed by module, but do not fail the build:
-they are fixed in the code, not here.
+Both the hand-written pages under docs/ and the docstrings of levisim (rendered into the API
+reference) are held to "no warnings". The warnings are listed in two groups - by object for the
+docstrings, verbatim for the pages - so that a docstring that is not valid reStructuredText is
+easy to find: they are fixed in the code, with markup only (blank lines, ``::`` literal blocks,
+``inline literals``, roles, underline lengths).
 """
 import re
 import sys
@@ -32,7 +33,7 @@ def is_from_docstring(location):
 
 
 def main(log_path):
-    docstring_warnings, page_warnings = Counter(), []
+    docstring_warnings, docstring_lines, page_warnings = Counter(), [], []
     for line in Path(log_path).read_text(encoding='utf-8').splitlines():
         match = RECORD_START.match(line)
         if not match:
@@ -41,17 +42,21 @@ def main(log_path):
         if is_from_docstring(location):
             module = re.search(r'docstring of ([\w.]+)', location)
             docstring_warnings[module.group(1) if module else location] += 1
+            docstring_lines.append(line)
         else:
             page_warnings.append(line)
 
-    print(f'{sum(docstring_warnings.values())} warnings from docstrings in levisim (not failing the build):')
-    for name, count in docstring_warnings.most_common():
-        print(f'  {count:3d}  {name}')
+    if docstring_warnings:
+        print(f'{sum(docstring_warnings.values())} warnings from docstrings in levisim:')
+        for name, count in docstring_warnings.most_common():
+            print(f'  {count:3d}  {name}')
+        print('\n'.join(f'  {line}' for line in docstring_lines))
     if page_warnings:
         print(f'\n{len(page_warnings)} warnings from the documentation pages:')
         print('\n'.join(f'  {line}' for line in page_warnings))
+    if docstring_warnings or page_warnings:
         return 1
-    print('\nNo warnings from the documentation pages.')
+    print('No warnings from the documentation pages or the docstrings.')
     return 0
 
 

@@ -1,3 +1,7 @@
+"""
+Spectral density estimates (PSDs and CSDs) of recorded time traces, by Bartlett's method
+"""
+
 import scipy.signal
 
 import numpy as np
@@ -16,6 +20,7 @@ from levisim.core.units import (
 class SpectralDensityEstimate:
     """
     Estimates S_AB, i.e. the spectral density:
+
     - PSD (Power Spectral Density), if B=A, e.g. Sxx, Syy etc.
     - CSD (Cross-correlation Spectral Density), if B≠A, e.g. Sxy etc.
 
@@ -339,29 +344,33 @@ class SpectralDensityEstimate:
 
     def define_averaging_variables(self, num_segments, num_samples_per_segment, desired_Δf):
         """
-        Given one of the three:
+        Given one of the three::
+
             - num_segments (to divide the time trace into)
             or
             - num_samples_per_segment (how many time step samples of the time trace do we want to have per segment?)
             or
             - desired_Δf (how big a frequency bin size do we want?)
+
         the other two can be derived.
         (NOTE: I do not do any zero-padding of the data!)
 
-        In particular, the frequency bin size can be seen as:
-        Δf = frequency step size for each segmented PSD estimate
-        Δf = 1 / segment_time
-        equivalent to
-        Δf = num_segments / time_length
-        Δf = sample_rate / num_samples_per_segment (where sample_rate = 1 / Δt)
-        Δf = the index-to-frequency(Hz) conversion factor, in Hertz
+        In particular, the frequency bin size can be seen as::
 
-        Also, in particular:
-        segment_time = time length of each segment, equivalent to:
-        segment_time = 1 / Δf
-        segment_time = num_samples_per_segment * Δt
-        segment_time = time_length / num_segments
-        segment_time = the frequency(Hz)-to-index conversion factor, in seconds
+            Δf = frequency step size for each segmented PSD estimate
+            Δf = 1 / segment_time
+            equivalent to
+            Δf = num_segments / time_length
+            Δf = sample_rate / num_samples_per_segment (where sample_rate = 1 / Δt)
+            Δf = the index-to-frequency(Hz) conversion factor, in Hertz
+
+        Also, in particular::
+
+            segment_time = time length of each segment, equivalent to:
+            segment_time = 1 / Δf
+            segment_time = num_samples_per_segment * Δt
+            segment_time = time_length / num_segments
+            segment_time = the frequency(Hz)-to-index conversion factor, in seconds
         """
 
         # ensure only one of these 3 args is given
@@ -449,15 +458,18 @@ class SpectralDensityEstimate:
     @property
     def temperature_via_area(self):
         """
-        NOTE: Bendat, Piersol -- Random Data - Analysis and Measurement Procedures, p147, Eq 5.125
-        Area under PSD = Var(x) =〈x²〉
-        〈x²〉= (1/2π) ∫ Sxx(Ω)dΩ
-        〈x²〉= ∫ Sxx(f)df = ∫ Gxx(f)df
-        For two-sided Sxx, the limits are -∞ to +∞
-        For one-sided Gxx = 2 * Sxx, the limits are 0 to +∞
+        NOTE: Bendat, Piersol -- Random Data - Analysis and Measurement Procedures, p147, Eq 5.125 ::
 
-        Equipartition theorem
-        ½mΩ²〈x²〉 = ½kb*T
+            Area under PSD = Var(x) =〈x²〉
+            〈x²〉= (1/2π) ∫ Sxx(Ω)dΩ
+            〈x²〉= ∫ Sxx(f)df = ∫ Gxx(f)df
+            For two-sided Sxx, the limits are -∞ to +∞
+            For one-sided Gxx = 2 * Sxx, the limits are 0 to +∞
+
+        Equipartition theorem ::
+
+            ½mΩ²〈x²〉 = ½kb*T
+
         Therefore expecting T = (mΩ² / kb) * Area
 
         NOTE: since 〈z〉≠ 0, Var(z) =〈z²〉- 〈z〉², so the z-trace needs to be adjusted for it to
@@ -601,6 +613,7 @@ class SpectralDensityEstimate:
     def temperature_via_fit(self):
         """
         Effective temperature from the fitted PSD amplitude
+
         Afit = 2 kB T_eff / m (two-sided), 4 kB T_eff / m (one-sided)
         [K]
         """

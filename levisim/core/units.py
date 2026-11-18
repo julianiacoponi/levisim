@@ -1,3 +1,8 @@
+"""
+Unit conversion factors: divide a value in SI units by a factor to express it in that unit, e.g. x
+/ μm
+"""
+
 from levisim.core.constants import π, e
 
 

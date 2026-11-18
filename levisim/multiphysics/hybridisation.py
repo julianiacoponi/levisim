@@ -1,3 +1,7 @@
+"""
+Power-series expansion of the hybridisation matrix H = D⁻¹ in terms of the hybridisation functions
+"""
+
 import random
 
 from collections import namedtuple
@@ -124,13 +128,15 @@ def term_latex(term, with_ω=True):
 
 def generate_subscripts_and_labels(num_traps, Cartesian_axes_per_trap):
     """
-    Generates:
-    - the unique subscripts for the hybridisation functions
-        e.g. 'abcd' for 4 total dimensions
-    - the unique labels of the form
-        e.g. ['x1' 'y1', 'x2', 'y2'] for 2 particles xy
+    Generates::
 
-    Possible combinations (up to 10 total dimensions)
+        - the unique subscripts for the hybridisation functions
+            e.g. 'abcd' for 4 total dimensions
+        - the unique labels of the form
+            e.g. ['x1' 'y1', 'x2', 'y2'] for 2 particles xy
+
+    Possible combinations (up to 10 total dimensions) ::
+
         10 = 10 particles, x (10x1)
         10 = 5 particles, xy (5x2)
 
