@@ -515,8 +515,22 @@ class MultiTrap:
         # [·]
         self.cavity.P0 = 2 * self.cavity.αI
 
-        # TODO: figure out how to add optical spring corrections (per tweezer?) and
-        # coherent scattering corrections (overall?) to this
+        # NOTE: frequency corrections, and why none is added here:
+        # - the optical spring (dynamical backaction, the frequency shift and damping from the
+        #   cavity-filtered coupling Gjn) is NOT a correction to apply: every QLT method solves the
+        #   linearised Langevin equations with the cavity included, so the spring appears in the
+        #   spectra by itself (the mechanical peaks are shifted and broadened, and Dimension.cooling_rate
+        #   agrees with -2·Re of the drift-matrix eigenvalue: ratio 1.00007 at g = -5 kHz). Adding it to
+        #   Ω as well would count it twice.
+        # - the static coherent-scattering corrections are different: expanding V_CS to second order
+        #   about the trap centre with the static field α gives, besides the gxy, gxz, gyz couplings
+        #   computed in Dimension.mech_mech_coupling (∝ A0, P0), diagonal terms ∝ A0·qx², A0·qy², P0·qz²
+        #   that shift each Ωjn per tweezer. They are not included: Dimension.Ω is the bare tweezer
+        #   frequency trap.Ωj, and the zero-point fluctuations use the same Ω, so the model is
+        #   self-consistent at that order. Including them needs the second-order expansion of the
+        #   full V_CS (tweezer and cavity mode profiles, Gouy phase for z), which should be derived
+        #   and checked against the CS literature before being added (as an opt-in, defaulting off,
+        #   since it changes every off-node result) - see open questions in the Nov 2026 analytic PR.
 
     def setup_toy_parameters(self, **params):
         """
@@ -1844,41 +1858,42 @@ class MultiTrap:
     ################################################################################################
     # NOISE VECTORS FOR CALCULATING SPECTRA
     # ----------------------------------------------------------------------------------------------
-    def homodyne_noise_vector(self, method, ω):
+    def homodyne_quadrature(self, a_out_hat, a_out_dag):
         """
-        The homodyne quadrature of the output light, defined by the homodyne angle of the cavity
-        A_out(ω) = a†_out(ω) + a_out(ω)
-        P_out(ω) = i(a†_out(ω) - a_out(ω))
-        θ = homodyne phase angle
-        S_hom(ω) = a†_out(ω)·exp(iθ) + a_out(ω)·exp(-iθ) = A_out(ω)·cos(θ) + P_out(ω)·sin(θ)
-        [1/√Hz]
+        The output-light quadrature selected by the homodyne angle θ = `cavity.θhom`
+
+        h(ω) = A_out(ω)·cos(θ) + P_out(ω)·sin(θ) = a_out(ω)·exp(iθ) + a_out†(ω)·exp(-iθ)
+        with A_out = a_out + a_out† and P_out = i(a_out - a_out†) (the phase quadrature convention
+        used in Tania's derivation; the opposite sign i(a† - a) would mirror θ → -θ).
+        [same units as the noise vectors]
         """
-        a_out_hat, a_out_dag = self.output_light_noise_vectors(method, ω)
-
-        # A_out = a_out_dag + a_out_hat
-        # P_out = 1j*(a_out_dag - a_out_hat)
-        # return A_out * np.cos(self.cavity.θhom) + P_out * np.sin(self.cavity.θhom)
-        # return a_out_dag * np.exp(1j * self.cavity.θhom) + a_out_hat * np.exp(-1j * self.cavity.θhom)
-
-        # NOTE: Tania defines the opposite phase quadratrue P = i(a - a†)
         A_out = a_out_hat + a_out_dag
         P_out = 1j * (a_out_hat - a_out_dag)
         return A_out * np.cos(self.cavity.θhom) + P_out * np.sin(self.cavity.θhom)
 
-    def heterodyne_noise_vector(self, method, ω):
+    def homodyne_noise_vector(self, method, ω):
         """
-        The heterodyne quadrature of the output light
-        S_het(ω) = S_aa†(ω + Ω) + S_a†a(ω - Ω)
+        The homodyne quadrature of the output light, defined by the homodyne angle of the cavity
+
+        h(ω) = a_out(ω)·exp(iθ) + a_out†(ω)·exp(-iθ) = A_out(ω)·cos(θ) + P_out(ω)·sin(θ)
+        (see `homodyne_quadrature`), θ = `cavity.θhom`
         [1/√Hz]
         """
-        # if self.cavity.Ωhet:
-            # TODO: clarify which vector for heterodyne...  should it be a sum of CSDs?
-            # technically heterodyne is sum of two CSDs, S_aa†(ω + Ω) + S_a†a(ω - Ω)
-            # return a_out_hat * a_out_dag + a_out_dag * a_out_hat
-            # a_out_hat_p, a_out_dag_p = self.output_light_noise_vectors(method, ω + self.cavity.Ωhet)
-            # a_out_hat_m, a_out_dag_m = self.output_light_noise_vectors(method, ω - self.cavity.Ωhet)
-            # return a_out_hat_p * a_out_dag_p + a_out_dag_m * a_out_hat_m
+        return self.homodyne_quadrature(*self.output_light_noise_vectors(method, ω))
 
+    def heterodyne_noise_vector(self, method, ω):
+        """
+        The output light annihilation operator, whose PSD levisim calls the heterodyne spectrum
+
+        S_het(ω) ≡ S_aout,aout(ω) = 〈|a_out(ω)|²〉, as in PRR 8, Eq. (5) and below, i.e. the
+        spectrum in the frame of the local oscillator (Ωhet = 0).
+        NOTE: this is a single PSD, not a sum of cross-spectral densities. A real heterodyne
+        measurement with the local oscillator detuned by Ωhet records the two sidebands
+        S_aout,aout(Ωhet - ω) + S_aout†,aout†(ω + Ωhet) (PRR 8, Sec. IV): a sum of two PSDs at
+        shifted frequencies, which is not the PSD of any single noise vector at ω. That shift is
+        not applied anywhere in levisim; `cavity.Ωhet` is currently unused.
+        [1/√Hz]
+        """
         a_out_hat, a_out_dag = self.output_light_noise_vectors(method, ω)
         return a_out_hat
 
@@ -1886,21 +1901,12 @@ class MultiTrap:
         """
         Returns both homodyne and heterodyne noise vectors
         (in order to only call `output_light_noise_vectors` once)
+
+        Identical to (`homodyne_noise_vector`, `heterodyne_noise_vector`).
         [1/√Hz, 1/√Hz]
         """
-        # if self.cavity.Ωhet:
-            # TODO: clarify which vector for heterodyne...  should it be a sum of CSDs?
-            # technically heterodyne is sum of two CSDs, S_aa†(ω + Ω) + S_a†a(ω - Ω)
-            # return a_out_hat * a_out_dag + a_out_dag * a_out_hat
-            # a_out_hat_p, a_out_dag_p = self.output_light_noise_vectors(method, ω + self.cavity.Ωhet)
-            # a_out_hat_m, a_out_dag_m = self.output_light_noise_vectors(method, ω - self.cavity.Ωhet)
-            # return a_out_hat_p * a_out_dag_p + a_out_dag_m * a_out_hat_m
-
         a_out_hat, a_out_dag = self.output_light_noise_vectors(method, ω)
-        # NOTE: this uses the -1 sign convention (Tania's) implicitly
-        homodyne = a_out_hat * np.exp(self.cavity.θhom) + a_out_dag * np.exp(-self.cavity.θhom)
-        heterodyne = a_out_hat
-        return homodyne, heterodyne
+        return self.homodyne_quadrature(a_out_hat, a_out_dag), a_out_hat
 
     def analytic_response_matrix(self, ω):
         """
@@ -2040,8 +2046,8 @@ class MultiTrap:
     def homodyne_spectrum(self, method):
         """
         Calculates homodyne spectrum of output light from the cavity, S_hh
-        h = a†_out·exp(iθ) + a_out·exp(-iθ) = A_out·cos(θ) + P_out·sin(θ)
-        θ = homodyne angle
+        h = a_out·exp(iθ) + a_out†·exp(-iθ) = A_out·cos(θ) + P_out·sin(θ)
+        θ = homodyne angle (see `homodyne_quadrature`)
         """
         msg = f'🧮 Calculating homodyne spectrum with {method=}'
         print(msg), logger.info(msg)
@@ -2057,7 +2063,7 @@ class MultiTrap:
     def heterodyne_spectrum(self, method):
         """
         Calculates the heterodyne spectrum of output light from the cavity, S_het
-        S_het(ω) = S_aa†(ω + Ω) + S_a†a(ω - Ω)
+        S_het(ω) = S_aout,aout(ω) = 〈|a_out(ω)|²〉 (see `heterodyne_noise_vector`)
         """
         msg = f'🧮 Calculating heterodyne spectrum with {method=}'
         print(msg), logger.info(msg)
@@ -2076,8 +2082,9 @@ class MultiTrap:
     @progress_bar('self.ω_range', PROGRESS_BAR)
     def homodyne_and_heterodyne_spectra(self, method):
         """
-        Calculates the heterodyne spectrum of output light from the cavity, S_het
-        S_het(ω) = S_aa†(ω + Ω) + S_a†a(ω - Ω)
+        Calculates the homodyne and heterodyne spectra of output light from the cavity together
+        S_hom(ω) = 〈|h(ω)|²〉,  S_het(ω) = 〈|a_out(ω)|²〉
+        (see `homodyne_noise_vector` and `heterodyne_noise_vector`)
         """
         msg = f'🧮 Calculating both homodyne and heterodyne spectra with {method=}'
         print(msg), logger.info(msg)
