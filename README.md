@@ -197,6 +197,22 @@ Two more modules build such traps from the actual tweezer geometry:
 - A static mech-mech coupling does not help, and neither does leaving the node.
 - A second particle in the same cavity needs its sidebands kept apart. It is more useful as the other half of an inter-particle pair, with one tone per tweezer.
 
+# Logging
+
+`levisim` logs with [loguru](https://loguru.readthedocs.io). The console (stderr) shows WARNING and above: set `LEVISIM_LOG_LEVEL=INFO` (or `DEBUG`, `TRACE`, `OFF`) before importing `levisim`, or call `set_console_level('INFO')`, imported from `levisim.core.logger`, at any time. Every record from DEBUG up also goes to a rotating JSON-lines file, `~/.levisim/logs/levisim.jsonl` (`LEVISIM_LOG_DIR` moves it, `LEVISIM_LOG_FILE=0` turns it off), which `jq` reads directly.
+
+To browse the logs in Kibana without Docker, on an Apple-silicon Mac or on Linux:
+
+```sh
+levisim-logs install     # Elasticsearch + Kibana 9.5.6 into ~/.levisim/elk/, SHA-512 checked
+levisim-logs up          # start both, load the log file, create the Kibana data view
+levisim-logs open        # the Kibana Discover URL
+levisim-logs down        # stop both
+pip install ".[elk]"     # optional: also send each record to Elasticsearch as it is made
+```
+
+On an Intel Mac or on Windows, start the same stack with `docker compose up -d` (see [`docker-compose.yaml`](docker-compose.yaml)) and use `levisim-logs ingest` and `levisim-logs open` with it. The documentation's [*Logging*](docs/guide/logging.md) page covers both setups in full, the level each kind of message uses, and the file's fields.
+
 <!-- MIXINS-START -->
 # Planned refactor: mixins for `multitrap`
 

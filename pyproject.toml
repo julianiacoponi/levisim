@@ -36,6 +36,10 @@ video = ["opencv-python"]
 # running the test suite and the linter
 dev = ["pytest", "ruff"]
 
+# `levisim-logs install|up|down|status|ingest|open`: Elasticsearch and Kibana without Docker
+[project.scripts]
+levisim-logs = "levisim.core.elk:main"
+
 [project.urls]
 Homepage = "https://github.com/julianiacoponi/levisim"
 Issues = "https://github.com/julianiacoponi/levisim/issues"
