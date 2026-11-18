@@ -1,4 +1,5 @@
 import time
+import inspect
 import cProfile
 import pstats
 
@@ -67,46 +68,58 @@ def profiler(enabled):
     return decorator
 
 
-# TODO: this only works for self.ω_range at the moment...
+def resolve_variable_path(bound_arguments, path):
+    """
+    Resolves a dotted `path` against a function call's bound arguments
+
+    The first part names any argument of the call (`self` in a method, or e.g. `labels` in a
+    plain function); each later part is an attribute lookup, or a key lookup if the object is a
+    dict. So 'self.ω_range', 'labels' and 'mtrap.cavity.κ' all work.
+    """
+    parts = path.split('.')
+    if parts[0] not in bound_arguments:
+        raise ValueError(
+            f'Variable path "{path}" could not be resolved:'
+            f' "{parts[0]}" is not an argument of the call ({list(bound_arguments)})'
+        )
+    obj = bound_arguments[parts[0]]
+    for part in parts[1:]:
+        try:
+            obj = obj[part] if isinstance(obj, dict) else getattr(obj, part)
+        except (AttributeError, KeyError):
+            raise ValueError(f'Variable path "{path}" could not be resolved at "{part}"')
+    return obj
+
+
 def progress_bar(loop_variable_path, enabled):
     """
-    A decorator to add a loading bar to a loop in a function
-    The loop must iterate over an iterable stored in the function's local or nested attributes
+    A decorator that shows a tqdm progress bar sized by an iterable the function loops over
 
-    :param loop_variable_path: The dotted path to the loop variable (e.g., 'self.ω_range')
-    :param enabled: Boolean to toggle the loading bar on or off
+    The iterable is found from `loop_variable_path`, a dotted path whose first part is the name
+    of any argument of the decorated function (see `resolve_variable_path`): 'self.ω_range' for
+    the MultiTrap spectrum methods, 'labels' for generate_determinant_and_adjugate_by_order.
+    Defaults of unpassed arguments are applied before resolving.
+
+    NOTE: a decorator cannot see inside the function's loop, so the bar is not updated per
+    iteration: it opens with the total length, the function runs, and the bar is filled when it
+    returns (it then reports the elapsed time and the mean time per item).
+
+    :param loop_variable_path: the dotted path to the iterable (e.g. 'self.ω_range')
+    :param enabled: Boolean to toggle the progress bar on or off
     """
-    def resolve_variable_path(obj, path):
-        """
-        Resolve a dotted variable path to get the actual value
-        """
-        parts = path.split('.')
-        # handle 'self' as the first part explicitly
-        if parts[0] == 'self':
-            # `obj` is `self` in class methods
-            obj = obj
-            # remove 'self' from the path
-            parts = parts[1:]
-
-        for part in parts:
-            obj = getattr(obj, part)
-        return obj
-
     def decorator(func):
+        signature = inspect.signature(func)
+
         @wraps(func)
         def wrapper(*args, **kwargs):
             if not enabled:
                 return func(*args, **kwargs)
 
-            # resolve the loop variable path
-            try:
-                # args[0] is 'self'
-                loop_variable = resolve_variable_path(args[0], loop_variable_path)
-            except AttributeError:
-                raise ValueError(f'Variable path "{loop_variable_path}" could not be resolved')
+            bound = signature.bind(*args, **kwargs)
+            bound.apply_defaults()
+            loop_variable = resolve_variable_path(bound.arguments, loop_variable_path)
 
-            # wrap the loop with a progress bar
-            with tqdm(loop_variable, desc=f'Looping through {loop_variable_path}') as prog_bar:
+            with tqdm(total=len(loop_variable), desc=f'Looping through {loop_variable_path}') as prog_bar:
                 result = func(*args, **kwargs)
                 prog_bar.update(len(loop_variable))
 
