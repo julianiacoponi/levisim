@@ -67,7 +67,7 @@ class Trace:
             f'\n    Δt = {self.Δt / ns:.6f} ns'
             f'\n'
             f'\n    time_length = {self.time_length / ms:.6f} ms'
-            f'\n    num_samples = {self.num_samples / Megasamples:.6f} Megasamples'
+            f'\n    num_samples = {self.num_samples / megasamples:.6f} Megasamples'
             f'\n    min_Δf = {self.min_Δf:.6f} Hz'
             f'\n'
             f'\n    mean = {self.mean:.3f}'
