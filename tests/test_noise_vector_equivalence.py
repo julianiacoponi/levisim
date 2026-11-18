@@ -15,7 +15,8 @@ other method agrees on the light noise vectors to a median relative difference o
 
 These tests therefore compare at difficulty_level='easy' (1e-6), which is still three orders
 of magnitude tighter than the worst observed disagreement, and they include the analytic
-methods - which agree here, unlike for the spectra (see test_method_equivalence.py).
+methods, which agree with the rest on the noise vectors and (since the analytic closed form was
+made exact) on the spectra too (see test_method_equivalence.py).
 """
 import numpy as np
 import pytest
@@ -110,15 +111,15 @@ def test_light_noise_vectors_agree_including_analytic_methods(
 
 
 @pytest.mark.slow
-def test_analytic_hybridised_positions_deviate_only_locally(make_phase_dependent_mtrap):
+def test_analytic_hybridised_positions_agree_with_lam(make_phase_dependent_mtrap):
     """
-    The analytic hybridised positions match LAM almost everywhere, with localised deviations
+    The analytic hybridised positions match LAM component by component
 
-    Measured on a 2×2 system: median relative difference ~4e-16 (machine epsilon) but a worst
-    case of ~5e-3, which pulls the mean to ~9e-6 and is why the threshold-based comparison at
-    difficulty_level='easy' (1e-6) rejects them. Pinning the measured bounds records the
-    current state precisely: a global divergence would break the median assertion, and a
-    worsening of the local deviation would break the max assertion.
+    Before the analytic closed form was fixed at exact resonances, the worst component on this
+    2×2 unequal-phase system was off by ~5e-3. It is now: median ~4e-16 (machine epsilon), mean
+    ~6e-11, worst ~3.5e-8 - the worst cases being components that pass through zero, where a
+    relative difference is ill-conditioned. The bounds below leave ~30x headroom on the worst
+    case.
     """
     mtrap = make_phase_dependent_mtrap('2×2', ω_range=OMEGA_RANGE)
     per_method = noise_vectors_per_method(
@@ -128,7 +129,7 @@ def test_analytic_hybridised_positions_deviate_only_locally(make_phase_dependent
     for method in (ANALYTIC_INSIDE, ANALYTIC_OUTPUT):
         relative = np.abs(per_method[method] - reference) / np.maximum(np.abs(reference), 1e-300)
         assert np.median(relative) < 1e-12, f'{method!r} median {np.median(relative):.3e}'
-        assert np.max(relative) < 1e-2, f'{method!r} max {np.max(relative):.3e}'
+        assert np.max(relative) < 1e-6, f'{method!r} max {np.max(relative):.3e}'
 
 
 @pytest.mark.slow

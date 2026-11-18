@@ -194,7 +194,17 @@ class Dimension:
         self.noise_phonons_exact = (np.exp(ħΩ / kBT) - 1)**(-1)
         self.noise_phonons_approx = kBT / ħΩ
 
-        # TODO: derive this properly?
+        # NOTE: this is the standard weak-coupling sideband-cooling (optical damping) rate,
+        #   Γ_opt = |G|²·κ·[1/((Δ + Ω)² + (κ/2)²) - 1/((Δ - Ω)² + (κ/2)²)] = A₋ - A₊
+        # (anti-Stokes minus Stokes scattering rates; Aspelmeyer, Kippenberg & Marquardt, Rev. Mod.
+        # Phys. 86, 1391 (2014), Eqs. (81)-(85)), with levisim's Δ = ω_tweezer - ω_cavity (red detuning
+        # Δ < 0 cools: the first term peaks at Δ = -Ω) and |G| the coupling of H/ħ = -(b + b†)(G·a† + G*·a),
+        # which is the g of that reference. No factor or sign is missing: checked against the exact
+        # optical damping -2·Re(λ) - Γ of the 1×1 drift-matrix eigenvalue λ, the ratio is 1.00007,
+        # 1.0012 and 1.006 for g = -5, -20 and -40 kHz (κ = 2π·390 kHz); the residual is the
+        # strong-coupling correction O(|G|²/κ²). Two limits of the derived quantities below: they
+        # ignore the backaction floor n_min = A₊/(A₋ - A₊) (so the cooled phonon number is an
+        # underestimate near the ground state), and they are per dimension, with no hybridisation.
         Δ, κ = self.multitrap.cavity.Δ, self.multitrap.cavity.κ
         Cp = 1 / ((Δ + self.Ω)**2 + (κ/2)**2)
         Cm = 1 / ((Δ - self.Ω)**2 + (κ/2)**2)
@@ -352,8 +362,14 @@ class Dimension:
         Zero-point fluctuation of the position of the oscillator, per axis
         [m]
         """
-        # TODO: sort CS frequency corrections
-        # return np.sqrt(ħ/2 / (self.bead.m * self.Ω_CS(axis)))
+        # NOTE: this deliberately uses the bare tweezer frequency trap.Ωj[axis], the same Ω that
+        # Dimension.Ω (and so the mechanical susceptibilities) uses. The zero-point fluctuation sets the
+        # scale of bjn, so it must use the frequency of the oscillator whose bjn appears in the
+        # Langevin equations; the dynamical optical spring is already in those equations and must not
+        # be folded in here. Static coherent-scattering frequency shifts are not modelled (see the NOTE
+        # at the end of MultiTrap.setup_linearised_coherent_scattering_physics); if they are added,
+        # they must change Dimension.Ω and this together. (The old commented-out line called
+        # self.Ω_CS, which no longer exists anywhere in levisim.)
         return np.sqrt(ħ/2 / (self.trap.bead.m * self.trap.Ωj[axis]))
 
     ################################################################################################
