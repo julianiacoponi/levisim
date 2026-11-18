@@ -1,66 +1,64 @@
-# INSTRUCTIONS TO SETUP THE DOCKER IMAGES:
-
-# 1. Make sure the docker daemon is running (i.e. that `docker ps` returns something!)
-#   - if on macOS, this means downloading Docker Desktop and seeing the Docker whale in menu bar
-
-# 2. Download the latest docker images for `elasticsearch` and `kibana` that work with your machine's architecture (arm64, amd64 etc.)
-#   - assign these images in the `services:images:` entries below
-
-# 3. `docker-compose up -d` will setup these two images
-
-# 4. `http://localhost:9200` will give you a json printout with details of the elasticsearch instance
-# {
-#   "name" : "5ff30c836c64",
-#   "cluster_name" : "docker-cluster",
-#   "cluster_uuid" : "37l1ZljzSrm-L1_ujgdmgw",
-#   "version" : {
-#     "number" : "8.17.1-SNAPSHOT",
-#     "build_flavor" : "default",
-#     "build_type" : "docker",
-#     "build_hash" : "85f8a64177fe95d80b99b9b8c8060bdd666c351a",
-#     "build_date" : "2025-01-14T23:12:07.629233410Z",
-#     "build_snapshot" : true,
-#     "lucene_version" : "9.12.0",
-#     "minimum_wire_compatibility_version" : "7.17.0",
-#     "minimum_index_compatibility_version" : "7.0.0"
-#   },
-#   "tagline" : "You Know, for Search"
-
-# 5. `http://localhost:5601` should send you to a kibana-style web app
-#   - go to Stack Management > Index Patterns and ensure the `loguru-logs*` index pattern exists.
-#   - go to Discover and select the `loguru-logs*` index pattern.
-#   - (something like this URL below should do something similar)
-# http://localhost:5601/app/discover#/?_g=(filters:!(),refreshInterval:(pause:!t,value:60000),time:(from:now-15m,to:now))&_a=(columns:!(),dataSource:(dataViewId:'5eeff2e0-4cf7-4581-9410-d62b6e585fb2',type:dataView),filters:!(),interval:auto,query:(language:kuery,query:''),sort:!(!(timestamp,desc)))
-
-# NOTE: to configure the loguru-logger further, see `levisim/levisim/core/logger.py`
+# Elasticsearch + Kibana for levisim's logs, in Docker.
+#
+# This is the FALLBACK. On Apple-silicon Macs and on Linux, `levisim-logs up` runs the same stack
+# natively, without Docker (see docs/guide/logging.md). Use this file where that cannot work:
+# Intel Macs (Elasticsearch has published no macOS x86_64 archive since 9.5.4) and Windows.
+#
+# 1. Install Docker (Docker Desktop on macOS and Windows) and start it: `docker ps` must answer.
+# 2. From the repo root, start the stack:
+#        docker compose up -d                (older Docker installs: docker-compose up -d)
+#    The image tags below are multi-architecture, so this works on arm64 and x86_64 alike.
+# 3. Wait until both services report healthy (about a minute):
+#        docker compose ps
+#    `curl http://localhost:9200` then prints a JSON description of the Elasticsearch node.
+# 4. Let levisim send records to it as they are made: `pip install "levisim[elk]"` (or
+#    `pip install elasticsearch`). Each new Python session sends every record to the
+#    `loguru-logs` index as well as to the log file (~/.levisim/logs/levisim.jsonl).
+# 5. Load what was logged while the stack was down, and create the Kibana data view:
+#        levisim-logs ingest
+#        levisim-logs open                   (prints, and opens, the Kibana Discover URL)
+#    or by hand: http://localhost:5601 > Stack Management > Data views > Create, index pattern
+#    `loguru-logs*`, timestamp field `timestamp`; then Discover.
+# 6. Stop it with `docker compose down`. The indexed logs persist in the `levisim-es-data` volume;
+#    `docker compose down -v` deletes them too.
+#
+# Both ports are bound to 127.0.0.1, so the stack (with security off) is not reachable from other
+# machines. To use a newer release, change both tags together: Kibana must match Elasticsearch.
 
 services:
   elasticsearch:
-    # latest arm64 image from https://www.docker.elastic.co/r/elasticsearch
-    image: docker.elastic.co/elasticsearch/elasticsearch:sha256-ffdaa5c751e98670c85154b3dd9601abd64c1b4b2498433e9c9fefa197b5a754
-    container_name: elasticsearch
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.5.6
     environment:
       - discovery.type=single-node
-      - ES_JAVA_OPTS=-Xms512m -Xmx512m
       - xpack.security.enabled=false
+      - cluster.routing.allocation.disk.threshold_enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
     ports:
-      - "9200:9200"
-    networks:
-      - elk
+      - "127.0.0.1:9200:9200"
+    volumes:
+      - levisim-es-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s' || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 30s
 
   kibana:
-    # latest arm64 image from https://www.docker.elastic.co/r/kibana
-    image: docker.elastic.co/kibana/kibana:sha256-ffbf7d6a3d73064036ff232dd7f680b7b124397fd3617d1e2370ccac93c59403
-    container_name: kibana
-    ports:
-      - "5601:5601"
+    image: docker.elastic.co/kibana/kibana:9.5.6
     environment:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - "127.0.0.1:5601:5601"
     depends_on:
-      - elasticsearch
-    networks:
-      - elk
+      elasticsearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:5601/api/status | grep -q '\"level\":\"available\"' || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 60s
 
-networks:
-  elk:
-    driver: bridge
+volumes:
+  levisim-es-data:

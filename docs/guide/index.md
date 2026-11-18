@@ -5,6 +5,7 @@
 
 cavity_spectra
 stochastic_simulations
+logging
 ../two_tone_entanglement/README
 ../two_tone_entanglement/polarisation_and_two_particles
 ```
@@ -13,6 +14,8 @@ stochastic_simulations
   calculating and cross-checking its optical and mechanical spectra.
 - [Stochastic simulations of a bead in a free-space tweezer](stochastic_simulations.md): the
   Langevin simulator, its spectral estimates and their comparison with theory.
+- [Logging](logging.md): where levisim's log records go, what each level means, reading the
+  JSON-lines log file, and browsing it in Kibana with `levisim-logs` (no Docker) or Docker.
 - [Steady-state entanglement with a two-tone drive](../two_tone_entanglement/README.md): whether a
   second, blue-detuned tweezer tone can entangle one particle's $x$ and $y$ motions, at the
   parameters of Deplano et al. (2025).
