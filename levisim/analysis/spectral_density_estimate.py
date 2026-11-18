@@ -13,13 +13,27 @@ from levisim.core.units import (
 )
 
 
-# TODO: what do momentum spectra look like... or radial spectra?!
-# TODO: write unit tests
 class SpectralDensityEstimate:
     """
     Estimates S_AB, i.e. the spectral density:
     - PSD (Power Spectral Density), if B=A, e.g. Sxx, Syy etc.
     - CSD (Cross-correlation Spectral Density), if B≠A, e.g. Sxy etc.
+
+    Bartlett's method: the traces are cut into `num_segments` non-overlapping segments, each is
+    (optionally) windowed and Fourier transformed, and the periodograms X*_i(f) Y_i(f) are averaged.
+    Normalised so that, for the default rectangular window, the two-sided estimate obeys Parseval
+    exactly: Σ S(f_k) Δf = 〈a b〉 over the averaged samples. Units: [A][B]/Hz, e.g. m²/Hz.
+
+    Any trace in source.traces can be used, e.g. 'x', 'y', 'z', the momenta 'px', 'py', 'pz'
+    (Simulation(store_momenta=True)) or the radial 'r' = √(x² + y²) (Simulation(store_radial=True));
+    pass multi-character axes as a tuple, e.g. ('px', 'px'). A PSD of 'x', 'y' or 'z' is fitted
+    automatically (fit_PSD) when the source has a Trap.
+    NOTE: momentum spectra follow from the position ones, Spp(ω) = m²ω² Sxx(ω) (since p = m dx/dt);
+    the radial trace r(t) is a non-linear function of x, y, so its spectrum mixes them (difference and
+    sum frequencies Ωx ± Ωy, and near-DC power from 〈r〉 fluctuations) and has no single Lorentzian form.
+
+    Keyword arguments: window [None => rectangular], see the window property; fit_PSD_kwargs;
+    num_segments_to_average; debug.
     """
 
     properties = [
@@ -122,10 +136,18 @@ class SpectralDensityEstimate:
         self.averaging_time = self.num_segments_to_average * self.segment_time
         self.measurement_bandwidth = 1 / self.averaging_time
 
-        # TODO: figure out best window?
-        # from Jon's code
-        self.window = scipy.signal.windows.blackmanharris(int(self.num_samples_per_segment)) / ( 287/800 ) / np.sqrt(2)
-        self.window = 1
+        # NOTE: answer to "figure out best window?": there is no single best one - a window trades
+        # leakage (dynamic range far from a peak) against resolution and variance. The rectangular
+        # window (default, unchanged) has the best resolution and is unbiased for white noise, but its
+        # -13 dB, 1/f² sidelobes leak a sharp, high-Q peak into the wings; Hann or Blackman-Harris
+        # (-92 dB sidelobes) are better for measuring a weak floor next to a strong, narrow peak.
+        # `window` takes any scipy.signal.get_window spec (e.g. 'hann', 'blackmanharris') or an array.
+        # It is normalised to unit mean square, w / √〈w²〉, which preserves the level (and area) of
+        # broadband PSDs. Jon's Blackman-Harris normalisation, 1/((287/800)√2), is this to within 0.1%:
+        # 287/800 = 0.35875 is the window's mean (a0), and 0.35875·√2 = 0.50735 vs √〈w²〉 = 0.50784
+        # (4096-sample periodic window).
+        self.window_spec = kwargs.get('window', None)
+        self.window = self.make_window(self.window_spec, self.num_samples_per_segment)
 
         # initialise the arrays to sum each data segment's periodogram
         segment_SDs = np.zeros(self.num_samples_per_segment, dtype=complex)
@@ -176,8 +198,8 @@ class SpectralDensityEstimate:
 
             self.time_arrays_per_segment[segment_index] = time_array[start_index:end_index]
             if self.one_sided:
-                # self.SDs_per_segment.append(2 * segment_SD[:self.halfway_index])
                 self.SDs_per_segment[segment_index] = 2 * segment_SD[:self.halfway_index]
+                self.SDs_per_segment[segment_index, 0] = segment_SD[0]
             else:
                 # self.SDs_per_segment.append(segment_SD)
                 self.SDs_per_segment[segment_index] = segment_SD
@@ -216,14 +238,17 @@ class SpectralDensityEstimate:
         fft_spectrum = two_sided_spectrum = normalisation * segment_SDs
 
         # NOTE: Random Data (Bendat, Piersol) bottom of p387 describes how the 0 + Nyquist frequencies suffer from errors and are usually discarded!
-        # TODO: store freq_range + values in a 2D array, so that they are linked?
+        # (the frequencies and values are also available together as the 2D array self.spectrum)
         if self.one_sided:
             # throw away the second half of the arrays fft and fftfreq return which represent negative frequency values
             # [0, Δf, 2Δf, ... nΔf], len = n
             # i.e. 0 first, then positive
             self.freq_range = fftfreqs[:self.halfway_index]
-            # one-sided spectra simply double the values of the two-sided spectra
+            # one-sided spectra double the values of the two-sided spectra at 0 < f < f_Nyq
+            # NOTE: the f = 0 bin has no negative-frequency partner, so it is *not* doubled
+            # (Bendat & Piersol, Random Data, bottom of p387); earlier versions doubled it too
             self.values = 2 * two_sided_spectrum[:self.halfway_index]
+            self.values[0] = two_sided_spectrum[0]
         else:
             # reorder the frequencies to be:
             # [ -nΔf, -(n-1)Δf, ..., -2Δf, -Δf, 0, Δf, 2Δf, ... (n-1)Δf, nΔf], len = 2n
@@ -235,9 +260,37 @@ class SpectralDensityEstimate:
 
         # self.Afit, self.Ωfit, self.Γfit = 0, 0, 0
         # self.Afit_sd, self.Γfit_sd, self.Ωfit_sd = 0, 0, 0
-        if self.type == 'PSD':
+        # fit the PSD automatically for the position axes of a source that has a Trap
+        trap = getattr(source, 'trap', None)
+        if self.type == 'PSD' and trap is not None and self.A.axis in trap.Γj and kwargs.get('fit', True):
             fit_PSD_kwargs = kwargs.get('fit_PSD_kwargs', {})
             self.fit_PSD(**fit_PSD_kwargs)
+
+    @staticmethod
+    def make_window(window, num_samples):
+        """
+        Segment window, normalised to unit mean square so that broadband PSD levels are preserved
+        window: None or 'rectangular' => 1 (no window); a scipy.signal.get_window spec, e.g. 'hann',
+        'blackmanharris', ('tukey', 0.25); or an array of length num_samples
+        [·]
+        """
+        if window is None or (isinstance(window, str) and window in ('rectangular', 'boxcar')):
+            return 1
+        if isinstance(window, (str, tuple)):
+            w = scipy.signal.get_window(window, int(num_samples), fftbins=True)
+        else:
+            w = np.asarray(window, dtype=float)
+            assert len(w) == num_samples, f'window has {len(w)} samples, segments have {num_samples}'
+        return w / np.sqrt(np.mean(w**2))
+
+    @property
+    def spectrum(self):
+        """
+        The frequencies and values as one 2D array, shape (len(freq_range), 2): [[f, S(f)], ...]
+        (complex dtype, since a CSD is complex)
+        [Hz, units²/Hz]
+        """
+        return np.column_stack((self.freq_range, self.values))
 
     @property
     def info(self):

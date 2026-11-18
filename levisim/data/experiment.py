@@ -99,10 +99,15 @@ class Experiment:
         - to acquire `num_samples` and `Δt`
         - to assign the trace data to the traces dict
         """
-        return {
-            'mat': self.load_matfile(),
-            'bin': self.load_binfile(),
-        }[self.file_extension]
+        # NOTE: the loaders were called while *building* a dict of their results, so loading a .mat
+        # file also ran load_binfile (and vice versa), which fails; look the loader up first instead
+        loaders = {
+            'mat': self.load_matfile,
+            'bin': self.load_binfile,
+        }
+        if self.file_extension not in loaders:
+            raise ValueError(f'Unsupported file extension {self.file_extension!r}; expected one of {list(loaders)}')
+        return loaders[self.file_extension]()
 
 
     def load_matfile(self):
@@ -144,6 +149,8 @@ class Experiment:
             self.Δt = 1 / float(sample_rate)
 
         data = np.fromfile(self.data_path, dtype='int16')
+        # NOTE: num_samples was never set for .bin files, so time_length (used just below) raised
+        self.num_samples = len(data) // num_channels
 
         for axis, channel in self.channel_dict.items():
             trace_values = data[channel:len(data):num_channels]
