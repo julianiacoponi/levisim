@@ -35,3 +35,7 @@ fortran/symmetric_group_iterative
 build/
 dist/
 *.egg-info/
+
+# sphinx documentation build output (docs/_autosummary is generated from the docstrings)
+docs/_build/
+docs/_autosummary/

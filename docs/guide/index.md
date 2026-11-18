@@ -1,0 +1,20 @@
+# User guides
+
+```{toctree}
+:maxdepth: 1
+
+cavity_spectra
+stochastic_simulations
+../two_tone_entanglement/README
+../two_tone_entanglement/polarisation_and_two_particles
+```
+
+- [Spectra of several particles in one cavity](cavity_spectra.md): building a `MultiTrap`, and
+  calculating and cross-checking its optical and mechanical spectra.
+- [Stochastic simulations of a bead in a free-space tweezer](stochastic_simulations.md): the
+  Langevin simulator, its spectral estimates and their comparison with theory.
+- [Steady-state entanglement with a two-tone drive](../two_tone_entanglement/README.md): whether a
+  second, blue-detuned tweezer tone can entangle one particle's $x$ and $y$ motions, at the
+  parameters of Deplano et al. (2025).
+- [Two-tone traps: polarisation, mech-mech coupling, the node, and a second particle](../two_tone_entanglement/polarisation_and_two_particles.md):
+  the follow-up study, with traps built from the focal field of each tone.

@@ -645,6 +645,7 @@ Two more modules build such traps from the actual tweezer geometry:
 - A static mech-mech coupling does not help, and neither does leaving the node.
 - A second particle in the same cavity needs its sidebands kept apart. It is more useful as the other half of an inter-particle pair, with one tone per tweezer.
 
+<!-- MIXINS-START -->
 # Planned refactor: mixins for `multitrap`
 
 `MultiTrap` currently branches on `method` inside each calculation function, which is why `multitrap.py` is over 2,000 lines. Mapping the branches out while documenting the above, the split falls fairly cleanly into three mixins plus the parts that are genuinely shared:
@@ -656,11 +657,14 @@ Two more modules build such traps from the actual tweezer geometry:
 
 The one real obstacle is that `hybridised_position_noise_vector` and `light_noise_vectors` are mutually recursive across mixins for the analytic methods - a position needs the light operators, which for Analytic Cavity Output come from the output operators, which need the collective modes. So the dispatch has to live on the base class rather than inside any one mixin.
 
+<!-- MIXINS-END -->
+
+<!-- LLM-DISCLAIMER-START -->
 # Disclaimer regarding use of LLMs
 
 While in early 2025 I dabbled with using ChatGPT and DeepSeek to give me starting points for certain more generic parts of this code (help with wrappers etc.) the only thing that remains of legitimate value that I gained from using those tools is the first attempt at the `docker-compose.yaml`, which I otherwise would have likely laboured a bit harder to do. Otherwise this code was proudly written without any LLM generated code :-)
 
-### October 2026 update
+## October 2026 update
 
 That remains true of every commit on `main`. In one session I pointed Claude (Anthropic) at this repository, the untracked `notebooks/` folder and the `fortran/` folder, and asked it to propose fixes as pull requests. It opened a stack of them, and **this paragraph and the two sections above it are themselves part of that work** - so the claim above no longer covers the whole repository if any of those branches are merged. Each pull request description carries the same note.
 
@@ -686,5 +690,7 @@ A third session followed that up, on the tones' polarisation, mech-mech coupling
 - `docs/two_tone_entanglement/polarisation_and_two_particles.*`.
 
 Its pull request says so too.
+
+<!-- LLM-DISCLAIMER-END -->
 
 License chosen through [choosealicense.com](https://choosealicense.com)
