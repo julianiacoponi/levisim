@@ -2,13 +2,13 @@
 Coherent scattering driven by several tweezer tones: a time-periodic Linear Amplifier Model
 
 With one tweezer tone, levisim works in the frame rotating at the tweezer frequency, where the
-linearised Hamiltonian is time independent:
+linearised Hamiltonian is time independent::
 
     H/ħ = -Δ·a†a + Σ_j Ω_j·b_j†b_j - Σ_j (G_j·a† + G_j*·a)(b_j + b_j†)   [+ mech-mech terms]
 
 With several tones k at ω_k = ω_c + Δ_k (Δ_k uses levisim's sign convention, Δ = ω_L - ω_c),
 there is no frame in which all tones are static. In the frame rotating at the CAVITY resonance
-each tone keeps its own time dependence, and the coupling of dimension j becomes
+each tone keeps its own time dependence, and the coupling of dimension j becomes ::
 
     G_j → F_j(t) = G_j · Σ_k c_k·exp(iϑ_k)·exp(-iΔ_k·t)
 
@@ -21,7 +21,7 @@ overall amplitude and phase differ. (The light can equally be described in a fra
 -frame_offset; this changes no mechanical moment, only how short the drive period is.)
 
 THE DRIVE IS ALSO THE TRAP. Tones that share a polarisation and spatial mode interfere in the
-tweezer intensity, so the trap stiffness is modulated at every difference frequency Δ_k - Δ_l:
+tweezer intensity, so the trap stiffness is modulated at every difference frequency Δ_k - Δ_l::
 
     Ω_j² → Ω_j²·(1 + ε(t)),   ε(t) = beat_visibility · 2 Σ_k<l Re(c̃_k c̃_l* exp(-i(Δ_k - Δ_l)t)) / Σ_k |c_k|²
 
@@ -29,6 +29,7 @@ beat_visibility = 1 is the co-polarised case and 0 a perfectly suppressed beat. 
 no analogue in the microwave and membrane experiments the two-tone schemes come from.
 
 MORE GENERAL GEOMETRIES. Two extensions cover tones that differ in more than amplitude and phase:
+
   - Tone.couplings gives a tone its own coupling G_jk to each dimension, replacing Dimension.G
     (dimensions not listed are not coupled to that tone), e.g. a second tweezer that only
     reaches its own particle, or a tone whose polarisation projects differently on the cavity
@@ -40,7 +41,7 @@ MORE GENERAL GEOMETRIES. Two extensions cover tones that differ in more than amp
 
 The drift matrix is then periodic, A(t + T) = A(t), and the asymptotic state is periodic too. It
 is found exactly from one period of evolution (the monodromy, i.e. a Floquet treatment of the
-Lyapunov equation): with Φ = 𝒯exp∫A and W the noise accumulated over one period,
+Lyapunov equation): with Φ = 𝒯exp∫A and W the noise accumulated over one period, ::
 
     V(0) = Φ·V(0)·Φᵀ + W
 
@@ -80,6 +81,7 @@ __all__ = [
 class Tone:
     """
     One frequency component of the tweezer light
+
         - Δ: detuning from the cavity resonance, ω_tone - ω_c [2π·Hz] (red detuned is Δ < 0)
         - amplitude: field amplitude relative to the tone that defines Dimension.G [·]
         - phase: optical phase relative to that tone [rad]
@@ -94,6 +96,7 @@ class Tone:
 
     @property
     def complex_amplitude(self):
+        """Complex field amplitude, amplitude·exp(i·phase) [·]"""
         return self.amplitude * np.exp(1j * self.phase)
 
     def coupling(self, dimension):
@@ -107,6 +110,7 @@ class Tone:
 class QuadraticPotential:
     """
     A quadratic mechanical term H/ħ = Σ_(i,j) Re(W_ij·exp(-iω·t))·X_i X_j
+
         - frequency: ω, 0 for a static term [2π·Hz]
         - coefficients: {(label_i, label_j): W_ij}; each entry is one product X_i X_j, so
           (x1, y1) and (y1, x1) would be counted twice [2π·Hz]
@@ -344,7 +348,7 @@ class MultiToneDrive:
 
     def floquet_multipliers(self):
         """
-        Eigenvalues of the one-period propagator: stable if and only if all |μ| < 1
+        Eigenvalues of the one-period propagator: stable if and only if all ``|μ| < 1``
         """
         Φ, _ = self.monodromy()
         return np.linalg.eigvals(Φ)
@@ -369,7 +373,7 @@ class MultiToneDrive:
         """
         The asymptotic, T-periodic state, sampled at `num_samples` times over one period
 
-        If any Floquet multiplier has |μ| ≥ 1 the drive amplifies some combination of modes and
+        If any Floquet multiplier has ``|μ| ≥ 1`` the drive amplifies some combination of modes and
         no steady state exists; the result then has stable=False and no covariances.
         """
         Φ, W = self.monodromy()
@@ -395,4 +399,5 @@ class PeriodicSteadyState:
 
     @property
     def largest_multiplier(self):
+        """Largest magnitude of the Floquet multipliers, below 1 for a stable drive [·]"""
         return float(np.max(np.abs(self.floquet_multipliers)))

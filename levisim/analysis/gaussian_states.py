@@ -4,7 +4,8 @@ Gaussian states of bosonic modes, described by their covariance matrices
 Everything here acts on covariance matrices (plain numpy arrays), so it applies equally to the
 mechanical modes of a `MultiTrap`, to its cavity mode, or to any other set of bosonic modes.
 
-Conventions (the same as levisim's light quadratures A = a† + a, P = i(a† - a)):
+Conventions (the same as levisim's light quadratures A = a† + a, P = i(a† - a))::
+
     quadratures per mode      X = b + b†,  P = i(b† - b),  so [X, P] = 2i
     quadrature ordering       u = (X1, P1, X2, P2, ...)
     covariance matrix         V_ij = ½〈{Δu_i, Δu_j}〉, so the vacuum is the identity matrix
@@ -327,7 +328,7 @@ def optimised_duan_criterion(V, num_starts=12, seed=0):
 
 def hillery_zubairy_ratio(V):
     """
-    |〈b1 b2〉|² / (〈b1†b1〉〈b2†b2〉), Hillery & Zubairy, PRL 96, 050503 (2006)
+    ``|〈b1 b2〉|² / (〈b1†b1〉〈b2†b2〉)``, Hillery & Zubairy, PRL 96, 050503 (2006)
 
     A value above 1 proves entanglement; it is only sufficient, and blind to entanglement that
     is not carried by the pair correlation 〈b1 b2〉.
@@ -335,7 +336,7 @@ def hillery_zubairy_ratio(V):
     It is the same test as optimised_duan_criterion: with u = a·X1 + X2/a, v = a·P1 - P2/a,
     Var(u) + Var(v) = a²(4n1 + 2) + (4n2 + 2)/a² + 8·Re(〈b1 b2〉e^{-i(θ1 + θ2)}), which contains
     neither local squeezing nor the exchange correlation 〈b1†b2〉; minimising over the phases and
-    over a gives Var(u) + Var(v) < 2(a² + 1/a²) exactly when |〈b1 b2〉|² > n1·n2.
+    over a gives Var(u) + Var(v) < 2(a² + 1/a²) exactly when ``|〈b1 b2〉|² > n1·n2``.
     [·]
     """
     N, M = phonon_moments(V)

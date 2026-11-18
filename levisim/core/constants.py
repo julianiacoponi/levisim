@@ -1,3 +1,7 @@
+"""
+Physical constants (from scipy.constants) and the properties of air used throughout levisim
+"""
+
 from scipy.constants import (
     pi as π,
     hbar as ħ,  # Planck's reduced constant [J·s]

@@ -1,3 +1,7 @@
+"""
+Matplotlib style (inspired by xmgrace) and figure-size helpers for thesis-ready plots
+"""
+
 import matplotlib.pyplot as plt
 
 __all__ = [

@@ -1,3 +1,8 @@
+"""
+The parameters that can be varied in the multiphysics animations (ParameterType, Parameter and its
+instances)
+"""
+
 import numpy as np
 from enum import Enum, auto
 from levisim.core.constants import π
@@ -74,6 +79,9 @@ class ParameterType(Enum):
 
 
 class Parameter:
+    """
+    A parameter that can be varied in an animation: its type, plot symbol, units and range of values
+    """
     def __init__(
         self,
         _type,

@@ -1,3 +1,8 @@
+"""
+Named colour hex codes used in levisim's plots (matplotlib's tab10 palette, RGB primaries and
+secondaries, and a few others)
+"""
+
 # https://matplotlib.org/stable/gallery/color/named_colors.html
 # https://stackoverflow.com/questions/64369710/what-are-the-hex-codes-of-matplotlib-tab10-palette#64369873
 blue = '#1f77b4'

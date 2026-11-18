@@ -1,3 +1,7 @@
+"""
+The Fabry-Perot optical cavity (Cavity)
+"""
+
 import numpy as np
 
 from levisim.core.constants import π, ħ, c, ε0

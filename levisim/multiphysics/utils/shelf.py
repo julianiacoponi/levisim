@@ -1,3 +1,8 @@
+"""
+Ready-made parameter sets and MultiTrap fixtures (defaults, the Fortran comparison system, off-node
+and phase-dependent systems), built on first use
+"""
+
 import numpy as np
 from copy import copy
 from functools import lru_cache

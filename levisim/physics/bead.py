@@ -1,3 +1,7 @@
+"""
+The levitated nanoparticle (Bead) and the refractive index of fused silica
+"""
+
 import numpy as np
 from functools import cached_property
 
@@ -12,10 +16,12 @@ from levisim.core.units import (
 def SiO2_refractive_index_Malitson(λ):
     """
     Refractive index of fused silica (SiO2) at vacuum wavelength λ, from the Sellmeier formula of
-    I. H. Malitson, J. Opt. Soc. Am. 55, 1205 (1965), valid for 0.21-3.71 μm (20 °C):
-    n² - 1 = Σi Bi λ² / (λ² - Ci²), λ in μm,
-    B = (0.6961663, 0.4079426, 0.8974794), C = (0.0684043, 0.1162414, 9.896161) μm
-    e.g. n(1064 nm) = 1.44963
+    I. H. Malitson, J. Opt. Soc. Am. 55, 1205 (1965), valid for 0.21-3.71 μm (20 °C)::
+
+        n² - 1 = Σi Bi λ² / (λ² - Ci²), λ in μm,
+        B = (0.6961663, 0.4079426, 0.8974794), C = (0.0684043, 0.1162414, 9.896161) μm
+        e.g. n(1064 nm) = 1.44963
+
     [·]
     """
     λ_μm = np.asarray(λ, dtype=float) / μm
@@ -180,6 +186,7 @@ class Bead:
         """
         Static polarisability of the bead
         [Capacitance × Area] = [Fm²]
+
         [F] = [Farad] = Capacitance = Charge / Electric Potential = [C/V]
         NOTE: https://en.wikipedia.org/wiki/Clausius–Mossotti_relation#Lorentz–Lorenz_equation
         """

@@ -1,3 +1,7 @@
+"""
+The background gas (Gas) that the bead is levitated in
+"""
+
 import numpy as np
 from functools import cached_property
 

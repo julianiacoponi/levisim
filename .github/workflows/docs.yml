@@ -37,9 +37,9 @@ jobs:
           MPLBACKEND: Agg
         run: sphinx-build -b html docs docs/_build/html -w docs/_build/warnings.log
 
-      - name: Check for warnings from the documentation pages
-        # fails on any warning from a page under docs/ (the equivalent of -W for the pages);
-        # warnings from the package's docstrings are listed but do not fail the build
+      - name: Check for warnings
+        # fails on any warning, from a page under docs/ or from a docstring in levisim (the
+        # equivalent of sphinx-build -W --keep-going); docstring warnings are listed by object
         run: python docs/check_sphinx_warnings.py docs/_build/warnings.log
 
       - name: Upload the site for GitHub Pages

@@ -1,3 +1,7 @@
+"""
+The SpectrumType enumeration: which spectrum to calculate
+"""
+
 from enum import Enum, auto
 
 

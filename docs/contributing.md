@@ -69,16 +69,30 @@ sphinx-build -b html docs docs/_build/html
 open docs/_build/html/index.html
 ```
 
-The pages themselves must build without warnings. The docstrings of `levisim` still produce
-some (they are free-form physics notes, not all valid reStructuredText), so instead of
-`sphinx-build -W` the docs workflow writes a warnings log and checks it with
-`docs/check_sphinx_warnings.py`, which fails on any warning from a page under `docs/` and only
-lists, by module, the ones from docstrings:
+The site must build without warnings, from the pages and from the docstrings of `levisim` alike
+(the API reference is generated from them). The docs workflow writes a warnings log and checks it
+with `docs/check_sphinx_warnings.py`, which fails on any warning - the equivalent of
+`sphinx-build -W --keep-going` - and lists the docstring warnings by object, so they are easy to
+find:
 
 ```sh
 sphinx-build -b html docs docs/_build/html -w docs/_build/warnings.log
 python docs/check_sphinx_warnings.py docs/_build/warnings.log
 ```
+
+The docstrings are mostly free-form physics notes rather than numpydoc, and they stay that way;
+they only need to be valid reStructuredText. The usual fixes are markup only:
+
+- a blank line before a list, and between a one-line summary and what follows it;
+- an aligned derivation or matrix (where the layout is the point) as a literal block: end the
+  line before it with `::` (`text::` renders as `text:`, and `text ::` as `text`), leave a blank
+  line, and indent the block;
+- an inline expression containing `|...|` (read as a substitution), `*` or a trailing `_` (read
+  as emphasis or a link, e.g. `G_-`) in double backticks, e.g. ` ``|χ(ω)|²`` `, or as
+  `` :math:`...` ``;
+- a section underline at least as long as its title.
+
+Every public module, class and function also needs at least a one-line summary docstring.
 
 Set `LEVISIM_DOCS_OFFLINE=1` to skip fetching the Python, NumPy and SciPy inventories that link
 type names to their documentation. The API pages are generated at build time into

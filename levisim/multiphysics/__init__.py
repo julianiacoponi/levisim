@@ -1,6 +1,6 @@
 """
 levisim.multiphysics
-===============
+====================
 A module to handle all the physics involved in multitrap cavity levitation
 """
 

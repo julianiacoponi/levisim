@@ -63,7 +63,7 @@ napoleon_google_docstring = True
 napoleon_numpy_docstring = True
 
 # Cross-references to targets Sphinx cannot resolve are NOT errors. Most of the API's docstrings
-# are free-form physics notes rather than numpydoc, and are being tidied separately.
+# are free-form physics notes rather than numpydoc, with no type annotations to resolve.
 nitpicky = False
 
 # set LEVISIM_DOCS_OFFLINE=1 to build without fetching the intersphinx inventories
@@ -140,6 +140,27 @@ def _convert_include(app, relative_path, parent_docname, content):
     content[0] = github_math_to_myst(content[0])
 
 
+# ----------------------------------------------------------------------------------------------
+# instances of third-party classes re-exported by levisim
+# ----------------------------------------------------------------------------------------------
+def _point_reexported_instances_to_their_docs(app, what, name, obj, options, lines):
+    """
+    Replaces the docstring of a module-level instance of a third-party class with a pointer to it
+
+    autodoc shows such an instance (e.g. levisim.core.logger.logger, which is loguru's logger) with
+    its class's docstring, written for that package's own documentation and full of substitutions
+    that are undefined here. The levisim module's own docstring says what levisim does with it.
+    """
+    if what != 'data':
+        return
+    cls = type(obj)
+    if cls.__module__.split('.')[0] in ('levisim', 'builtins', 'numpy'):
+        return
+    package = cls.__module__.split('.')[0]
+    lines[:] = [f'An instance of ``{cls.__qualname__}`` from ``{package}``; see that package\'s documentation.']
+
+
 def setup(app):
     app.connect('source-read', _convert_source)
     app.connect('include-read', _convert_include)
+    app.connect('autodoc-process-docstring', _point_reexported_instances_to_their_docs)

@@ -7,13 +7,13 @@ the cavity standing wave. This module derives, for one or more tweezers each car
 tones, everything `MultiToneDrive` needs:
 
 1. THE TRAP. Light polarised at ψ (from the trap x axis) gives the stiffness K(ψ, ψ), and two
-   tones k, l interfere with K(ψ_k, ψ_l) (levisim.physics.focal_expansion, in frequency² units)
+   tones k, l interfere with K(ψ_k, ψ_l) (levisim.physics.focal_expansion, in frequency² units) ::
 
        K(ψ1, ψ2) = cos(ψ1 - ψ2)·[Ω̄²·1 + ½ΔΩ_s²·diag(1, -1)] + ½ΔΩ_p²·σ(ψ1 + ψ2)  ⊕  cos(ψ1 - ψ2)·Ω_z²
        σ(Ψ) = [[-cos Ψ, -sin Ψ], [-sin Ψ, cos Ψ]]
 
    ΔΩ_p² = f_pol·(Ω_⊥² - Ω_∥²) is the part of the anisotropy the polarisation causes (it turns with
-   the polarisation), ΔΩ_s² = (1 - f_pol)·(Ω_⊥² - Ω_∥²) a fixed beam ellipticity. The trap is
+   the polarisation), ΔΩ_s² = (1 - f_pol)·(Ω_⊥² - Ω_∥²) a fixed beam ellipticity. The trap is ::
 
        m⁻¹·K(t) = Σ_k |c_k|²·K(ψ_k, ψ_k) + Σ_(k<l) 2Re(c_k c_l*·K(ψ_k, ψ_l)·exp(-i(Δ_k - Δ_l)t))
 
@@ -23,7 +23,7 @@ tones, everything `MultiToneDrive` needs:
 
 2. THE COUPLINGS. The cavity axis u_c lies in the focal plane at angle θ from the trap y axis
    (Deplano et al.'s θ), its mode polarisation ε_c in the focal plane perpendicular to it. Tone k
-   induces a dipole along its polarisation e_k, which scatters into the mode with e_k·ε_c, so
+   induces a dipole along its polarisation e_k, which scatters into the mode with e_k·ε_c, so ::
 
        G_jk = -ω_d·(e_k·ε_c)·sinΦ·k·zpf_j·(u_c·ê_j)        (j along the trap's principal axes)
        G_zk = i·ω_d·(e_k·ε_c)·cosΦ·k_z·zpf_z              (couples to the other quadrature)
@@ -34,7 +34,7 @@ tones, everything `MultiToneDrive` needs:
 
 3. OFF A NODE (Φ ≠ π/2) the carrier of every tone scatters into the cavity, building a coherent
    intracavity field α_l = i·ω_d(e_l·ε_c)c_l·cosΦ/(κ/2 - iΔ_l). Its interference with the tweezer
-   adds, with Z(t) = Σ_(k,l) D_k·α_l*·exp(-i(Δ_k - Δ_l)t) and D_k = 2ω_d(e_k·ε_c)c_k,
+   adds, with Z(t) = Σ_(k,l) D_k·α_l*·exp(-i(Δ_k - Δ_l)t) and D_k = 2ω_d(e_k·ε_c)c_k, ::
 
        H/ħ ⊃ Re[Z(t)]·(½cosΦ·k²(u_c·r)² + ½cosΦ·k_z²z²) + Re[i·Z(t)]·k·k_z·sinΦ·z(u_c·r)
 
@@ -81,6 +81,7 @@ __all__ = [
 class TweezerOptics:
     """
     Single-tone trap of one tweezer, used to build the multi-tone potential
+
         - Ω_perp, Ω_par: frequencies across and along the polarisation for ONE tone carrying
           the full power, polarised along the trap y axis [2π·Hz]
         - Ω_z: axial frequency, or None to leave z out [2π·Hz]
@@ -94,10 +95,12 @@ class TweezerOptics:
 
     @property
     def mean_square(self):
+        """Mean square transverse frequency, (Ω_perp² + Ω_par²)/2 [(2π·Hz)²]"""
         return (self.Ω_perp**2 + self.Ω_par**2) / 2
 
     @property
     def anisotropy(self):
+        """Transverse anisotropy, Ω_perp² - Ω_par² [(2π·Hz)²]"""
         return self.Ω_perp**2 - self.Ω_par**2
 
     def cross_stiffness(self, ψ1, ψ2):
@@ -122,6 +125,7 @@ class TweezerOptics:
 class CavityGeometry:
     """
     Where the cavity is relative to one tweezer
+
         - θ: angle between the trap y axis (the reference polarisation) and the cavity axis [rad]
         - Φ: phase of the standing wave at the particle; π/2 is a node, where x, y couple most [rad]
     """
@@ -143,6 +147,7 @@ class CavityGeometry:
 class TweezerTone:
     """
     One tone of one tweezer
+
         - Δ: detuning from the cavity resonance [2π·Hz]
         - amplitude: field amplitude, with Σ amplitude² = 1 for a tweezer's full power [·]
         - phase: optical phase [rad]
@@ -156,10 +161,12 @@ class TweezerTone:
 
     @property
     def complex_amplitude(self):
+        """Complex field amplitude, amplitude·exp(i·phase) [·]"""
         return self.amplitude * np.exp(1j * self.phase)
 
     @property
     def polarisation(self):
+        """Polarisation unit vector e_k, in the focal plane at ψ from the trap x axis"""
         return np.array([np.cos(self.ψ), np.sin(self.ψ), 0.0])
 
 
@@ -367,6 +374,7 @@ def multitone_drive(traps, κ, heating_rates, T=300*K, frame_offset=0.0, period=
         - κ: cavity linewidth [2π·Hz]
         - heating_rates: {label: Γ_j·n_j}, the decoherence rate of each dimension [2π·Hz]
         - frame_offset, period: as for MultiToneDrive
+
     Returns (mtrap, drive).
     """
     axes = {len(trap.labels) for trap in traps}
@@ -404,7 +412,7 @@ def deplano2025_tweezer(f_pol=1.0, include_z=False, radius=50*nm, density=2200.0
 
     The published frequencies (Table 1) are taken as Ω_⊥ = Ω_X, Ω_∥ = Ω_Y (Y is the polarisation
     axis in the paper), and Ω_Z/2π = 21.4 kHz from the text. θ follows from g_X/g_Y = tanθ·(Ω_Y/Ω_X)^½,
-    giving 55.2° (the paper quotes '~45°'), and ω_d from |g_X| at the node with the dipole projection
+    giving 55.2° (the paper quotes '~45°'), and ω_d from ``|g_X|`` at the node with the dipole projection
     sinθ. The mass (a 100 nm diameter silica sphere) only matters off a node. Returns
     (optics, geometry, ω_d, m).
     """
@@ -425,7 +433,7 @@ def two_tone_tones(ν, ratio, ψ_red=π/2, ψ_blue=π/2, projections=None, offse
     """
     Red and blue TweezerTones at ω_c ∓ ν(+offset) + common_shift, at fixed total power
 
-        - ratio: the coupling ratio G_+/G_- the tones should give [·]
+        - ratio: the coupling ratio ``G_+/G_-`` the tones should give [·]
         - ψ_red, ψ_blue: their polarisations [rad]
         - projections: (e_red·ε_c, e_blue·ε_c), to convert the coupling ratio into an amplitude
           ratio when the polarisations project differently on the cavity mode

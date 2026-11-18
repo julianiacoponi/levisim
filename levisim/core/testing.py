@@ -1,3 +1,8 @@
+"""
+A small helper (Test) that announces the start and end of a named test, with its duration and
+result, in the log, on the console and as an optional desktop notification
+"""
+
 import time
 from datetime import datetime
 # NOTE: plyer gives desktop notifications and is purely a convenience, so it is optional.

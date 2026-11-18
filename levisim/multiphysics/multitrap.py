@@ -1,3 +1,8 @@
+"""
+Quantum linear theory of several levitated particles coherently scattering into one cavity
+(MultiTrap)
+"""
+
 import os
 import time
 import random
@@ -58,7 +63,8 @@ class ΩModel:
     """
     Model for the x and y mechanical frequencies of a toy-parameter MultiTrap
 
-    Kinds and their parameters (defaults in KINDS), filling the x, y labels in order:
+    Kinds and their parameters (defaults in KINDS), filling the x, y labels in order::
+
       'pairs'                  Ω_first, Ω_intrapair_gap, Ω_interpair_gap - x,y of each bead
                                split by the intrapair gap, beads split by the interpair gap,
                                descending (copies Tania's ParametersNpair.f90)
@@ -128,7 +134,7 @@ class ΩModel:
 
     def as_toy_params(self):
         """
-        The legacy toy_params form, dict(Ω_model=kind, **parameters), for splatting into toy_params
+        The legacy toy_params form, ``dict(Ω_model=kind, **parameters)``, for splatting into toy_params
         """
         return dict(Ω_model=self.kind, **self.params)
 
@@ -633,37 +639,42 @@ class MultiTrap:
         Setup the linearised properties of tweezers levitating beads
         which are all coherently scattering into the same cavity
 
-        Linearisation splits the optical degrees of freedom into 2 parts
-        α ≡ a dominant, static, complex valued part
-        a ≡ a small, dynamic, operator valued part
+        Linearisation splits the optical degrees of freedom into 2 parts ::
 
-        a → α + a
-        a† → α* + a†
-        A → A0 + (a† + a)
-        P → P0 + i(a† - a)
+            α ≡ a dominant, static, complex valued part
+            a ≡ a small, dynamic, operator valued part
 
-        α = 1/2 (A0 + iP0)
-        α* = 1/2 (A0 - iP0)
+            a → α + a
+            a† → α* + a†
+            A → A0 + (a† + a)
+            P → P0 + i(a† - a)
 
-        To derive α (the mean static cavity photon field), consider the full Hamiltonian
-        H ≡ H_free + H_int
-        H_free ≡ -ħΔ·a†a
+            α = 1/2 (A0 + iP0)
+            α* = 1/2 (A0 - iP0)
 
-        NOTE: *all* tweezers are now included in a multi-particle setup!
-        Ed --> Etot = Ed1 + Ed2 + ... = ∑ Ed
-        H_int ≡ ∑ V_CS = Σ -Ed·sin(θ)[cos(Φ)·(...)...]·(A ...)
-        V_CS(0) = -Ed·sin(θ)·cos(Φ).A
+        To derive α (the mean static cavity photon field), consider the full Hamiltonian ::
 
-        Heisenberg's EoMs + dissipation
-        da/dt = i[H/ħ, a] - (κ/2)a
-        da/dt = (iΔ - κ/2)a + ∑ i[V_CS/ħ, a]
+            H ≡ H_free + H_int
+            H_free ≡ -ħΔ·a†a
 
-        Static part exists at origin
-        dα/dt = 0 = (iΔ - κ/2)α +  ∑ i[V_CS(0)/ħ, a]
-        i[V_CS(0)/ħ, a] = -iωd·sin(θ)·cos(Φ)·[A, a] = +iωd·sin(θ)·cos(Φ), since [A, a] = -1
-        dα/dt = 0 = (iΔ - κ/2)α + ∑ iωd·sin(θ)·cos(Φ)
-        α = -∑ iωd·sin(θ)·cos(Φ) / (iΔ - κ/2)
-        α = +∑ ωd·sin(θ)·cos(Φ) · [(-Δ + iκ/2) / (Δ² + (κ/2)²]
+        NOTE: *all* tweezers are now included in a multi-particle setup! ::
+
+            Ed --> Etot = Ed1 + Ed2 + ... = ∑ Ed
+            H_int ≡ ∑ V_CS = Σ -Ed·sin(θ)[cos(Φ)·(...)...]·(A ...)
+            V_CS(0) = -Ed·sin(θ)·cos(Φ).A
+
+        Heisenberg's EoMs + dissipation ::
+
+            da/dt = i[H/ħ, a] - (κ/2)a
+            da/dt = (iΔ - κ/2)a + ∑ i[V_CS/ħ, a]
+
+        Static part exists at origin ::
+
+            dα/dt = 0 = (iΔ - κ/2)α +  ∑ i[V_CS(0)/ħ, a]
+            i[V_CS(0)/ħ, a] = -iωd·sin(θ)·cos(Φ)·[A, a] = +iωd·sin(θ)·cos(Φ), since [A, a] = -1
+            dα/dt = 0 = (iΔ - κ/2)α + ∑ iωd·sin(θ)·cos(Φ)
+            α = -∑ iωd·sin(θ)·cos(Φ) / (iΔ - κ/2)
+            α = +∑ ωd·sin(θ)·cos(Φ) · [(-Δ + iκ/2) / (Δ² + (κ/2)²]
         """
 
         for trap in self.traps:
@@ -859,27 +870,29 @@ class MultiTrap:
         to help solve the quantum Langevin equations directly
         via a Linear Amplifier Model (LAM) approach
 
-        dc(t)/dt = A @ c(t) + c_in(t)
+        ::
 
-        Heisenberg (commutator with Hamiltonian)
-        +
-        Langevin (minus dissipation, plus input noise)
-        = (
-            da/dt  = i[H/ħ, a]  - (κ/2)a  + √κ·a_in
-            da†/dt = i[H/ħ, a†] - (κ/2)a† + √κ·a_in†
-            ...
-            dbjn/dt  = i[H/ħ, bjn]  - (Γjn/2)bjn  + √Γjn·bjn_in
-            dbjn†/dt = i[H/ħ, bjn†] - (Γjn/2)bjn† + √Γjn·bjn†_in
-            ...
-        )
+            dc(t)/dt = A @ c(t) + c_in(t)
 
-        c ≡ vector of annihilation and creation operators
-        c ≡ (a, a†, ..., bjn, bjn†, ...)^⊤
+            Heisenberg (commutator with Hamiltonian)
+            +
+            Langevin (minus dissipation, plus input noise)
+            = (
+                da/dt  = i[H/ħ, a]  - (κ/2)a  + √κ·a_in
+                da†/dt = i[H/ħ, a†] - (κ/2)a† + √κ·a_in†
+                ...
+                dbjn/dt  = i[H/ħ, bjn]  - (Γjn/2)bjn  + √Γjn·bjn_in
+                dbjn†/dt = i[H/ħ, bjn†] - (Γjn/2)bjn† + √Γjn·bjn†_in
+                ...
+            )
 
-        c_in ≡ noise column vector times the square root of the damping rate
-        c_in ≡ (√κ·a_in, √κ·a_in†, ..., √Γjn·bjn_in, √Γjn·bjn_in†, ...)^⊤
+            c ≡ vector of annihilation and creation operators
+            c ≡ (a, a†, ..., bjn, bjn†, ...)^⊤
 
-        A ≡ 'drift' matrix of couplings between them
+            c_in ≡ noise column vector times the square root of the damping rate
+            c_in ≡ (√κ·a_in, √κ·a_in†, ..., √Γjn·bjn_in, √Γjn·bjn_in†, ...)^⊤
+
+            A ≡ 'drift' matrix of couplings between them
         """
         self.identity_matrix = np.eye(self.num_operators)
         self.drift_matrix = np.zeros((self.num_operators, self.num_operators), dtype=np.complex128)
@@ -1046,23 +1059,31 @@ class MultiTrap:
     def T_matrix(self, ω):
         """
         The transformation matrix of input noises into operator values
-        c(ω) ≡ T(ω) @ c_in(ω)
-        with
-        T(ω) ≡ (-iω·I - A(ω))⁻¹
-        (where I is the identity matrix)
 
-        Derived from the Fourier-transformed drift matrix relation
-        dc(t)/dt = A(t) @ c(t) + c_in(t)
-        -iω.c(ω) = A(ω) @ c(ω) + c_in(ω)
-        c(ω) = (-iω·I - A(ω))⁻¹ @ c_in(ω)
+        ::
+
+            c(ω) ≡ T(ω) @ c_in(ω)
+            with
+            T(ω) ≡ (-iω·I - A(ω))⁻¹
+            (where I is the identity matrix)
+
+        Derived from the Fourier-transformed drift matrix relation ::
+
+            dc(t)/dt = A(t) @ c(t) + c_in(t)
+            -iω.c(ω) = A(ω) @ c(ω) + c_in(ω)
+            c(ω) = (-iω·I - A(ω))⁻¹ @ c_in(ω)
         """
         return np.linalg.inv(-1j*ω * self.identity_matrix - self.drift_matrix)
 
     def c_noise_vector(self, ω):
         """
         Calculates the vector of operators, without summing all the noises together
-        c ≡ (a, a†, ..., bjn, bjn†, ...)^⊤
-        c(ω) = T(ω) @ c_in(ω)
+
+        ::
+
+            c ≡ (a, a†, ..., bjn, bjn†, ...)^⊤
+            c(ω) = T(ω) @ c_in(ω)
+
         i.e. where each operator is a noise vector of all the input noises
         """
         c_noise = np.zeros((self.num_operators, self.num_operators), dtype=np.complex128)
@@ -1089,12 +1110,16 @@ class MultiTrap:
     def derangement_matrix(self, ω):
         """
         The matrix that transforms x to x1D
-        x = R @ x + x1D
-        D @ x = x1D
-        D = I - R
 
-        Invert it to solve the fully hybridised position vector using the 1D noise vectors
-        x = D⁻¹ @ x1D
+        ::
+
+            x = R @ x + x1D
+            D @ x = x1D
+            D = I - R
+
+        Invert it to solve the fully hybridised position vector using the 1D noise vectors ::
+
+            x = D⁻¹ @ x1D
         """
         D_matrix = np.eye(self.num_dimensions, dtype=np.complex128)
         for jj, label_jn in enumerate(self.labels):
@@ -1370,35 +1395,46 @@ class MultiTrap:
         """
         Frequency-dependent building blocks shared by every analytic-method function at ω
 
-        Eliminating the cavity field from the quantum Langevin equations
+        Eliminating the cavity field from the quantum Langevin equations ::
+
             a(ω)   = χC(ω)·[ i·Σ Gjn·qjn(ω) + √κ·a_in]
             a†(ω)  = χC*(-ω)·[-i·Σ Gjn*·qjn(ω) + √κ·a_in†]
             qjn(ω) = μjn(ω)·[i(Gjn*·a + Gjn·a†) + ...] + √Γjn·Q_THERMjn(ω)
-        leaves, for the positions q (ordered as `self.labels`),
+
+        leaves, for the positions q (ordered as `self.labels`), ::
+
             (W⁻¹ - iC)·q = sources,   C = iχC·G*Gᵀ - iχC*·GG†  (rank 2: the two light channels)
+
         where W = (diag(1/μ) - i·g_intra)⁻¹ is the mechanical response matrix, μjn = χjn(ω) - χjn*(-ω),
         and g_intra holds the direct mechanical couplings gxy, gxz, gyz between the dimensions of the
         same bead (`intra_bead_coupling_matrix`). W is block diagonal per bead (W = diag(μ) when a
         bead's dimensions are uncoupled), symmetric, and only needs one (axes × axes) inverse per
         bead - the closed form never inverts an N×N matrix. Each thermal drive enters through
         B⁻¹ = W·diag(1/μ).
-        Because C has rank 2, the cavity field only ever sees three collective response sums
+        Because C has rank 2, the cavity field only ever sees three collective response sums ::
+
             D(0) = Gᵀ·W·G*,   D(2) = Gᵀ·W·G,   D(-2) = G*ᵀ·W·G*
-        and the determinant of the remaining 2×2 light-only problem is the normalisation
+
+        and the determinant of the remaining 2×2 light-only problem is the normalisation ::
+
             M_norm = 1 + ηm·D(0) - ξC·P,   P = D(0)² - D(2)·D(-2).
 
         NOTE: P is NOT evaluated as D(0)² - D(2)·D(-2). When the frequency grid hits a mechanical
-        resonance exactly, |gjn²·μjn| ~ 1e13 rad/s for the toy parameters, and that subtraction
-        loses ~ε·|D(0)|², i.e. ~1e-9 of P. With unequal tweezer phases this error was then
-        amplified ~|Mjn| ~ 1e7 in the resonant dimension's position (where the thermal drive and
+        resonance exactly, ``|gjn²·μjn|`` ~ 1e13 rad/s for the toy parameters, and that subtraction
+        loses ``~ε·|D(0)|²``, i.e. ~1e-9 of P. With unequal tweezer phases this error was then
+        amplified ``~|Mjn| ~ 1e7`` in the resonant dimension's position (where the thermal drive and
         the cavity backaction nearly cancel), which was the 0.2-0.6% disagreement of the analytic
-        position PSDs with LAM. The identity
+        position PSDs with LAM. The identity ::
+
             P = 2i·hᵀ·I·h̃,   h = W·G,   h̃ = W·G*,   I = `coupling_quadrature_overlap_matrix`
+
         involves no such subtraction, since I is exactly zero between dimensions coupling to the
         same quadrature. The same identity gives the brackets multiplying each dimension's
-        thermal noise in a and a† without cancellation:
+        thermal noise in a and a† without cancellation::
+
             F_Q·G + F_Q†·G*     → B⁻ᵀ·[G  - 2i·χC*(-ω)·Iᵀ·h ]
             FF_Q·G + FF_Q†·G*   → B⁻ᵀ·[G* - 2i·χC(ω)·Iᵀ·h̃]
+
         (with g_intra = 0, B⁻¹ = 1 and these are exactly the brackets of PRR 8).
 
         The result for the last ω requested is cached, since the analytic noise vectors call
@@ -1459,7 +1495,10 @@ class MultiTrap:
         """
         Phase-dependent collective coupling and mechanical susceptibility rate
 
-        D(0) = Gᵀ·W·G*,   D(2) = Gᵀ·W·G,   D(-2) = G*ᵀ·W·G*   (see `analytic_kernel`)
+        ::
+
+            D(0) = Gᵀ·W·G*,   D(2) = Gᵀ·W·G,   D(-2) = G*ᵀ·W·G*   (see `analytic_kernel`)
+
         which without intra-bead coupling (W = diag(μ)) are D(0) = Σ gjn²·μjn and
         D(±2) = Σ gjn²·μjn·exp(±2iθjn). Only n = 0, ±2 appear in the closed form.
         [complex 2π·Hz]
@@ -1718,6 +1757,7 @@ class MultiTrap:
         """
         Transduction function to collective mode Q
         from annihilation operator of cavity input noise photons a_in
+
         Q ∝ Fa·a_in
         [complex 1/√(2π·Hz)]
         """
@@ -1728,6 +1768,7 @@ class MultiTrap:
         """
         Transduction function to collective mode Q†
         from creation operator of cavity input noise photons a_in†
+
         Q† ∝ FFa_dag·a_in†
         [complex 1/√(2π·Hz)]
         """
@@ -1738,6 +1779,7 @@ class MultiTrap:
         """
         Transduction function to collective mode Q
         from creation operator of cavity input noise photons a_in†
+
         Q ∝ Fa_dag·a_in†
         [complex 1/√(2π·Hz)]
         """
@@ -1747,6 +1789,7 @@ class MultiTrap:
     def FFa(self, ω):
         """
         Transduction function to collective mode Q†
+
         Q† ∝ FFa·a_in
         i.e. from annihilation operator of cavity input noise photons a_in
         [complex 1/√(2π·Hz)]
@@ -1758,6 +1801,7 @@ class MultiTrap:
         """
         Transduction function to collective mode Q
         from annihilation operator of collective thermal noise mode Q_TOT
+
         Q ∝ FQ·Q_TOT
         [complex]
         """
@@ -1767,6 +1811,7 @@ class MultiTrap:
         """
         Transduction function to collective mode Q
         from creation operator of collective thermal noise mode Q_TOT†
+
         Q ∝ FQ_dag·Q_TOT†
         [complex]
         """
@@ -1776,6 +1821,7 @@ class MultiTrap:
         """
         Transduction function to collective mode Q†
         from annihilation operator of collective thermal noise mode Q_TOT
+
         Q† ∝ FFQ·Q_TOT
         [complex]
         """
@@ -1785,6 +1831,7 @@ class MultiTrap:
         """
         Transduction function to collective mode Q†
         from creation operator of collective thermal noise mode Q_TOT†
+
         Q† ∝ FFQ_dag·Q_TOT†
         [complex]
         """
@@ -1883,9 +1930,10 @@ class MultiTrap:
     def output_light_noise_vectors(self, method, ω):
         """
         The noise vectors for the annihilation and creation operators of photons leaving the cavity
-        accounted for via input-output theory
-        a_out(ω)  = -√κ·a(ω)  + a_in(ω)
-        a_out†(ω) = -√κ·a†(ω) + a_in†(ω)
+        accounted for via input-output theory ::
+
+            a_out(ω)  = -√κ·a(ω)  + a_in(ω)
+            a_out†(ω) = -√κ·a†(ω) + a_in†(ω)
         """
         if method == QuantumLinearTheoryMethod.ANALYTIC_CAVITY_OUTPUT:
             gbar, κ = self.gbar, self.cavity.κ
@@ -1918,12 +1966,13 @@ class MultiTrap:
         """
         The matrix that transforms the column vector of 1D position operators (as noise vectors)
         to the column vector of fully hybridised position operators (as noise vectors)
-        i.e. the inverse of the derangement matrix
-        x = D⁻¹ @ x1D
-        via
-        x = R @ x + x1D
-        D @ x = x1D
-        D = I - R
+        i.e. the inverse of the derangement matrix ::
+
+            x = D⁻¹ @ x1D
+            via
+            x = R @ x + x1D
+            D @ x = x1D
+            D = I - R
         """
         if method == QuantumLinearTheoryMethod.NUMERICAL_HYBRIDISATION:
             # this method inverts D directly/numerically
@@ -2010,7 +2059,7 @@ class MultiTrap:
         """
         The output light annihilation operator, whose PSD levisim calls the heterodyne spectrum
 
-        S_het(ω) ≡ S_aout,aout(ω) = 〈|a_out(ω)|²〉, as in PRR 8, Eq. (5) and below, i.e. the
+        S_het(ω) ≡ S_aout,aout(ω) = ``〈|a_out(ω)|²〉``, as in PRR 8, Eq. (5) and below, i.e. the
         spectrum in the frame of the local oscillator (Ωhet = 0).
         NOTE: this is a single PSD, not a sum of cross-spectral densities. A real heterodyne
         measurement with the local oscillator detuned by Ωhet records the two sidebands
@@ -2037,12 +2086,16 @@ class MultiTrap:
         """
         Closed-form mechanical response matrix H ≡ (W⁻¹ - iC)⁻¹ of all dimensions, including the cavity
 
-        (see `analytic_kernel` for W and C). The off-bead blocks follow from the Woodbury identity
+        (see `analytic_kernel` for W and C). The off-bead blocks follow from the Woodbury identity ::
+
             H = W + W·Φ·W / M_norm,   Φ = iC - 4ξC·I·W·I
+
         but on a bead's own block that sum cancels almost completely when one of its dimensions
-        is driven on resonance (|W| ~ |μ| is then up to ~1e7 times larger than the result). The
-        on-bead blocks are therefore taken from the Schur complement instead,
+        is driven on resonance (``|W| ~ |μ|`` is then up to ~1e7 times larger than the result). The
+        on-bead blocks are therefore taken from the Schur complement instead, ::
+
             H_nn = (W_n⁻¹ - Φ_nn^(¬n) / M_norm^(¬n))⁻¹
+
         where ^(¬n) means the same quantity built from all the OTHER beads only, with
         Φ_nn^(¬n) = iC_nn - 4ξC·I_n,¬n·W_¬n·I_¬n,n. This is one small (axes × axes) inverse per
         bead, so the closed form never inverts an N×N matrix. For a single uncoupled dimension it
@@ -2099,8 +2152,10 @@ class MultiTrap:
         All hybridised position noise vectors from the analytic closed form
 
         Each dimension's thermal noise reaches the positions through H·diag(1/μ) (H from
-        `analytic_response_matrix`), and the cavity input noise through the light force
+        `analytic_response_matrix`), and the cavity input noise through the light force ::
+
             q = W·i(G*·a + G·a†)   per unit a_in, a_in†
+
         written so that the resonant terms of D(0) and D(±2) do not have to cancel numerically.
         The positions are the same for both analytic methods (ANALYTIC_INSIDE_CAVITY and
         ANALYTIC_CAVITY_OUTPUT share this closed form). Rows are ordered as `self.labels`.
@@ -2128,6 +2183,7 @@ class MultiTrap:
     def hybridised_position_noise_vector(self, label, method, ω):
         """
         The noise vector for the specific hybridised position operator qjn
+
         qjn(ω) = bjn(ω) + bjn†(ω)
         """
         if method.is_analytic:
@@ -2171,7 +2227,11 @@ class MultiTrap:
     def homodyne_spectrum(self, method):
         """
         Calculates homodyne spectrum of output light from the cavity, S_hh
-        h = a_out·exp(iθ) + a_out†·exp(-iθ) = A_out·cos(θ) + P_out·sin(θ)
+
+        ::
+
+            h = a_out·exp(iθ) + a_out†·exp(-iθ) = A_out·cos(θ) + P_out·sin(θ)
+
         θ = homodyne angle (see `homodyne_quadrature`)
         """
         msg = f'🧮 Calculating homodyne spectrum with {method=}'
@@ -2188,7 +2248,8 @@ class MultiTrap:
     def heterodyne_spectrum(self, method):
         """
         Calculates the heterodyne spectrum of output light from the cavity, S_het
-        S_het(ω) = S_aout,aout(ω) = 〈|a_out(ω)|²〉 (see `heterodyne_noise_vector`)
+
+        ``S_het(ω) = S_aout,aout(ω) = 〈|a_out(ω)|²〉`` (see `heterodyne_noise_vector`)
         """
         msg = f'🧮 Calculating heterodyne spectrum with {method=}'
         print(msg), logger.info(msg)
@@ -2208,7 +2269,8 @@ class MultiTrap:
     def homodyne_and_heterodyne_spectra(self, method):
         """
         Calculates the homodyne and heterodyne spectra of output light from the cavity together
-        S_hom(ω) = 〈|h(ω)|²〉,  S_het(ω) = 〈|a_out(ω)|²〉
+
+        ``S_hom(ω) = 〈|h(ω)|²〉,  S_het(ω) = 〈|a_out(ω)|²〉``
         (see `homodyne_noise_vector` and `heterodyne_noise_vector`)
         """
         msg = f'🧮 Calculating both homodyne and heterodyne spectra with {method=}'
@@ -2239,10 +2301,11 @@ class MultiTrap:
         """
         Invert the derangement matrix D to get the hybridisation matrix H
         This solves for the multi-dimensional hybridised position vector, x
-        in terms of the 1D noise vectors, x1D
-        D @ x = x1D
-        H ≡ D⁻¹
-        x = H @ x1D
+        in terms of the 1D noise vectors, x1D ::
+
+            D @ x = x1D
+            H ≡ D⁻¹
+            x = H @ x1D
         """
         msg = f'🧮 Calculating all position PSDs with {method=} ({zpf_scaled=})'
         print(msg), logger.info(msg)
@@ -2328,7 +2391,10 @@ class MultiTrap:
     def quantum_operator_spectral_density_array(self):
         """
         Calculate all spectra 'at once' using 'TNT' Linear Amplifier Model (TNT LAM)
-        Scc†(ω) = T(ω) @ N @ T(ω)†
+
+        ::
+
+            Scc†(ω) = T(ω) @ N @ T(ω)†
         """
         msg = '🧮 Calculating the quantum operator spectral density array Scc† via TNT method'
         print(msg), logger.info(msg)

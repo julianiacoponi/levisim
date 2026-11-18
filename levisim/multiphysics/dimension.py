@@ -1,3 +1,7 @@
+"""
+One mechanical degree of freedom (Dimension) of a multi-particle cavity trap
+"""
+
 import sympy
 import numpy as np
 
@@ -16,6 +20,7 @@ __all__ = [
 class Dimension:
     """
     Class to represent a mechanical degree of freedom in the system
+
         - φ: phase of tweezer that is trapping this dimension [rad]
 
         - T: thermal bath temperature [K]
@@ -28,11 +33,13 @@ class Dimension:
         - gxy, gxz, gyz: mech-mech coupling rates [2π·Hz]
 
     There are two ways to initialise this class:
+
     1) TOY MODEL:
-    This takes 'toy model' parameters that define the physics directly
+       This takes 'toy model' parameters that define the physics directly
 
     2) PHYSICS MODEL:
-    This derives the parameters from the original physics classes, and includes:
+       This derives the parameters from the original physics classes, and includes:
+
         - Φ: trapping position along the cavity's standing wave [rad]
     """
     def __init__(self, multitrap, label, **params):
@@ -197,7 +204,7 @@ class Dimension:
         # NOTE: this is the standard weak-coupling sideband-cooling (optical damping) rate,
         #   Γ_opt = |G|²·κ·[1/((Δ + Ω)² + (κ/2)²) - 1/((Δ - Ω)² + (κ/2)²)] = A₋ - A₊
         # (anti-Stokes minus Stokes scattering rates; Aspelmeyer, Kippenberg & Marquardt, Rev. Mod.
-        # Phys. 86, 1391 (2014), Eqs. (81)-(85)), with levisim's Δ = ω_tweezer - ω_cavity (red detuning
+        # Phys. 86, 1391 (2014), quantum-noise treatment of radiation-pressure cooling), with levisim's Δ = ω_tweezer - ω_cavity (red detuning
         # Δ < 0 cools: the first term peaks at Δ = -Ω) and |G| the coupling of H/ħ = -(b + b†)(G·a† + G*·a),
         # which is the g of that reference. No factor or sign is missing: checked against the exact
         # optical damping -2·Re(λ) - Γ of the 1×1 drift-matrix eigenvalue λ, the ratio is 1.00007,
@@ -276,9 +283,14 @@ class Dimension:
     def linearised_coherent_scattering_coupling_phase(self):
         """
         Phase of linear coherent scattering coupling of (x, y, z)-motion to the cavity light
-        C(Φ) = A·cos(Φ) + P·sin(Φ) = a†·exp(iΦ) + a·exp(-iΦ)
+
+        ::
+
+            C(Φ) = A·cos(Φ) + P·sin(Φ) = a†·exp(iΦ) + a·exp(-iΦ)
+
         - Φ = 0 couples to amplitude quadrature, C(0) = A = a† + a
         - Φ = π/2 couples to phase quadrature, C(π/2) = P = i(a† - a)
+
         [rad]
         """
         return {
@@ -291,7 +303,11 @@ class Dimension:
     def φ_coupling(self):
         """
         Phase defining which quadrature of cavity light this dimension is coupled to
-        C(φ) = A·cos(φ) + P·sin(φ) = a†·exp(iφ) + a·exp(-iφ)
+
+        ::
+
+            C(φ) = A·cos(φ) + P·sin(φ) = a†·exp(iφ) + a·exp(-iφ)
+
         [rad]
         """
         # NOTE: the sign is applied here and again in G = g·exp(sign·i·φ_coupling) (and, until Nov 2026,

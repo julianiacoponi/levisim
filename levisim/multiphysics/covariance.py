@@ -3,7 +3,7 @@ Time-domain (covariance matrix) description of a `MultiTrap`
 
 The rest of levisim solves the quantum Langevin equations in the frequency domain to get
 spectra. Entanglement is a property of the STATE, i.e. of equal-time second moments, so here the
-same drift and noise matrices are used in the Lyapunov equation instead:
+same drift and noise matrices are used in the Lyapunov equation instead::
 
     dV/dt = A·V + V·Aᵀ + D        steady state:  A·V + V·Aᵀ + D = 0
 

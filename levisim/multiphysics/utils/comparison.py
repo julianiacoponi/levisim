@@ -1,3 +1,7 @@
+"""
+Checks that different calculation methods agree, with the plotting and labelling helpers they use
+"""
+
 import os
 
 # NOTE: OpenCV is only needed by the image-comparison helpers below, so it is optional.
@@ -88,7 +92,8 @@ def _require_cv2():
 
 def thresholds_for_difficulty_level(difficulty_level):
     """
-    Returns tuple of
+    Returns tuple of ::
+
         (
             errant_pixel_allowed_percentage,
             relative_diff_threshold,
@@ -119,9 +124,15 @@ def thresholds_for_difficulty_level(difficulty_level):
 # CUSTOM EXCEPTIONS
 # --------------------------------------------------------------------------------------------------
 class TooManyErrantPixelsInImageDiff(Exception):
+    """
+    Raised when the greyscale diff of two plots has too many errant pixels
+    """
     pass
 
 class RelativeDifferenceTooHigh(Exception):
+    """
+    Raised when two calculations differ by more than the allowed relative difference
+    """
     pass
 
 
@@ -131,7 +142,9 @@ class RelativeDifferenceTooHigh(Exception):
 def verify_equivalence_of_spectrum_calculation_methods(mtrap, spectrum_types, methods, **kwargs):
     """
     Calculate all `spectrum_types` via all `methods`
+
     Verify their equivalnece by
+
         - checking for sufficently few errant pixels in a greyscale image diff
         - checking the relative absolute difference is sufficiently low
     """
@@ -255,7 +268,9 @@ def verify_equivalence_of_spectrum_calculation_methods(mtrap, spectrum_types, me
 def verify_equivalence_of_spectral_functions(mtrap, func_dict, **kwargs):
     """
     Calculate all functions in `func_dict` across the given `mtrap.ω_range`
+
     Verify their equivalnece by
+
         - checking for sufficently few errant pixels in a greyscale image diff of their plots
         - checking the relative absolute difference is sufficiently low
     """
@@ -1225,6 +1240,7 @@ def delete_local_png_files():
 def calculate_temperature_from_position_PSD(mtrap, vals, ii, label):
     """
     Calculates the temperature from the PSD via two methods:
+
         - phonons
         - variance
     """

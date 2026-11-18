@@ -1,3 +1,7 @@
+"""
+General helpers: pickling, time arrays and slices, filtering, and generating and finding kicks
+"""
+
 import pickle
 import scipy.signal
 

@@ -1,3 +1,7 @@
+"""
+Time traces (Trace) and pairs of time traces (TracePair) from simulation or experiment
+"""
+
 import numpy as np
 
 from levisim.core.units import (
@@ -9,7 +13,8 @@ from levisim.core.utils import calculate_contrast
 
 class Trace:
     """
-    Class to represent a time trace a.k.a. time series data that helps keep track of:
+    Class to represent a time trace a.k.a. time series data that helps keep track of::
+
         - values: all values of the time trace
 
         - start_time: what point in time does this trace start
@@ -128,6 +133,7 @@ class Trace:
 class TracePair:
     """
     Class to represent a pair of Traces, to help calculate
+
     - PSDs, trace_1 = trace_2
     - CSDs, trace_1 ≠ trace_2
     """
