@@ -30,3 +30,8 @@ a.out
 fortran/*.ipynb
 fortran/symmetric_group
 fortran/symmetric_group_iterative
+
+# python build artefacts
+build/
+dist/
+*.egg-info/
