@@ -181,3 +181,17 @@ def test_detection_floor_is_measurement_noise_only():
     per_axis = Simulation(num_samples=1000, Δt=Δt, seed=21, detection_floor={'y': G_floor})
     assert np.array_equal(per_axis.position_values['x'], per_axis.X[:, 0])
     assert not np.array_equal(per_axis.position_values['y'], per_axis.X[:, 1])
+
+
+def test_off_resonance_tail_matches_theory_with_window():
+    """
+    Far above resonance the RK4 PSD follows |χ|²S_FF to a few %, once a Blackman-Harris window
+    removes the rectangular window's leakage from the resonance (which inflates the 0.8-1.2 MHz
+    band by ~60% for these settings)
+    """
+    trap = Trap()
+    sim = Simulation(trap=trap, num_samples=40_000, Δt=Δt, seed=1)
+    est = SpectralDensityEstimate(sim, 'xx', num_segments=4, window='blackmanharris')
+    band = (est.freq_range > 0.8*megaHz) & (est.freq_range < 1.2*megaHz)
+    ratio = np.mean(np.real(est.values[band])) / np.mean(trap.theory.Sxx(2*np.pi*est.freq_range[band]))
+    assert ratio == pytest.approx(1, rel=0.08)
