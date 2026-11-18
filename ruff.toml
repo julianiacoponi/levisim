@@ -1,0 +1,4 @@
+# The code uses match statements (Python 3.10+). Without a target version ruff parses it as
+# Python 3.9 and reports invalid-syntax errors. The rule selection itself lives in
+# .pre-commit-config.yaml (see the reasons given there).
+target-version = "py310"

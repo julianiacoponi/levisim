@@ -26,8 +26,17 @@ def test_no_multitrap_fixtures_built_at_import():
     in-process check would see it and fail for the wrong reason. The claim being tested is
     about a fresh interpreter, so it needs a fresh interpreter.
     """
+    import os
     import subprocess
     import sys
+    from pathlib import Path
+
+    # make the in-tree package importable in the fresh interpreter whatever the environment:
+    # pytest.ini's pythonpath only affects this process, and with PYTHONSAFEPATH set (or when
+    # pytest is launched from elsewhere) the child would not see the repo root otherwise
+    repo_root = str(Path(__file__).resolve().parents[1])
+    env = dict(os.environ)
+    env['PYTHONPATH'] = os.pathsep.join(p for p in (repo_root, env.get('PYTHONPATH')) if p)
 
     script = (
         'import levisim\n'
@@ -37,7 +46,7 @@ def test_no_multitrap_fixtures_built_at_import():
     )
     result = subprocess.run(
         [sys.executable, '-c', script],
-        capture_output=True, text=True, timeout=300,
+        capture_output=True, text=True, timeout=300, env=env,
     )
     assert result.returncode == 0, f'importing levisim failed:\n{result.stderr[-2000:]}'
     marker = 'FIXTURES_BUILT_AT_IMPORT:'
