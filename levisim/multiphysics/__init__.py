@@ -32,6 +32,7 @@ __all__ = [
     'PeriodicSteadyState',
     'QuadraticPotential',
     'QuantumLinearTheoryMethod',
+    'ΩModel',
     'RelativeDifferenceTooHigh',
     'SpectrumType',
     'Tone',
