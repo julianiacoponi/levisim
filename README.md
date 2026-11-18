@@ -626,6 +626,16 @@ $`F \equiv`$ number of $`\omega`$ values in `ω_range` property
 
 ---
 
+# Steady-state entanglement of the transverse motions (two-tone drive)
+
+Four modules add covariance-matrix (time-domain) dynamics to `MultiTrap`:
+- `levisim.analysis.gaussian_states`: two-mode Gaussian-state measures, including the PPT test and log-negativity, discord, and the Duan and Hillery–Zubairy witnesses.
+- `levisim.multiphysics.covariance`: the Lyapunov steady state of any setup.
+- `levisim.multiphysics.multitone`: several coherently scattering tweezer tones, solved exactly as a periodic (Floquet) problem.
+- `levisim.multiphysics.two_tone`: the two-tone scheme itself.
+
+[`docs/two_tone_entanglement/README.md`](docs/two_tone_entanglement/README.md) uses them to work out whether a second, blue-detuned tweezer tone can entangle a particle's $`x`$ and $`y`$ motions at the parameters of Deplano et al., Nat. Commun. **16**, 4215 (2025). In short: not at the published heating rates. It needs them roughly halved (÷2.1 with balanced couplings), and a trap that does not see the tones' intensity beat.
+
 # Planned refactor: mixins for `multitrap`
 
 `MultiTrap` currently branches on `method` inside each calculation function, which is why `multitrap.py` is over 2,000 lines. Mapping the branches out while documenting the above, the split falls fairly cleanly into three mixins plus the parts that are genuinely shared:
@@ -657,5 +667,7 @@ For the record, the things it found that I had not:
 - The comparison helpers default to `difficulty_level='very hard'`, a relative-difference threshold of 1e-12 that double-precision linear algebra cannot reach. This is why the test notebooks reported hundreds of failing method pairs that were not real disagreements - though the analytic-vs-rest disagreement on the **spectra** (mean 28-147%) is real, and is the thing the "BROKEN!" heading in `test_all_systems.ipynb` was correctly pointing at.
 
 It also could not fix, and I should: the `kappa_nano (Hz) 1.216e-86` that `NParticle.f90` prints, and the two `NOT SURE: CHECK!!!` susceptibilities in `3DEQRom.f90`.
+
+In a later session I asked it for a study of whether a two-tone drive can entangle the transverse motions. The four modules listed under *Steady-state entanglement of the transverse motions* above, their tests (`tests/test_gaussian_states.py`, `tests/test_two_tone.py`) and `docs/two_tone_entanglement/` are its work too, and the pull request that adds them says so.
 
 License chosen through [choosealicense.com](https://choosealicense.com)
