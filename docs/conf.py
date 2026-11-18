@@ -33,6 +33,7 @@ extensions = [
     'sphinx.ext.mathjax',
     'sphinx.ext.intersphinx',
     'sphinx_copybutton',
+    'sphinxcontrib.mermaid',
 ]
 
 source_suffix = {'.md': 'markdown', '.rst': 'restructuredtext'}
@@ -51,6 +52,9 @@ exclude_patterns = [
 myst_enable_extensions = ['dollarmath', 'amsmath', 'colon_fence', 'deflist']
 # GitHub-style #heading-slug anchors, so the in-page tables of contents written for GitHub work
 myst_heading_anchors = 4
+# ```mermaid fences (which GitHub renders) become sphinxcontrib-mermaid directives, so the README's
+# flowchart of the calculation methods renders on the site too
+myst_fence_as_directive = ['mermaid']
 
 # autodoc / autosummary: one page per public module, generated at build time into _autosummary/
 autosummary_generate = True

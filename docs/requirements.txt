@@ -1,9 +1,10 @@
 # Documentation build requirements: pip install -r docs/requirements.txt
 # (levisim's own runtime dependencies are needed too, because autodoc imports the package)
 sphinx>=7.2
-myst-parser>=2.0
+myst-parser>=3.0  # myst_fence_as_directive
 furo
 sphinx-copybutton
+sphinxcontrib-mermaid
 numpy
 scipy
 matplotlib

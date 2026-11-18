@@ -14,6 +14,11 @@ mtrap.homodyne_spectrum(QuantumLinearTheoryMethod.NUMERICAL_HYBRIDISATION)
 They exist to be compared: each makes a different part of the physics explicit, and agreement
 between routes that share no code is the main check on all of them.
 
+```{include} ../../README.md
+:start-after: <!-- QLT-FLOWCHART-START -->
+:end-before: <!-- QLT-FLOWCHART-END -->
+```
+
 ## Which method to use
 
 | | Method | How $\hat{\mathbf c}(\omega)$ or $\hat{\mathbf q}(\omega)$ is obtained | Spectra | Use it for |
