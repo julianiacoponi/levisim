@@ -3,7 +3,7 @@ import scipy.signal
 import numpy as np
 
 from scipy.optimize import curve_fit
-from scipy.integrate import simpson
+from scipy.integrate import simpson, trapezoid
 
 from levisim.core.constants import kB
 from levisim.core.units import (
@@ -247,11 +247,12 @@ class SpectralDensityEstimate:
         fit_str = ''
         if self.type == 'PSD':
             fit_str = (
-                f'\n    Afit = {self.Afit / Hz**2:.3e} ± {self.Afit_sd / Hz**2:.3e} Hz²'
+                f'\n    Afit = {self.Afit:.3e} ± {self.Afit_sd:.3e} m²/s²'
                 f'\n    Ωfit = {self.Ωfit / kHz:.3f} ± {self.Ωfit_sd / kHz:.3f} kHz'
                 f'\n    Γfit = {self.Γfit / kHz:.3f} ± {self.Γfit_sd / kHz:.3f} kHz'
                 f'\n'
                 f'\n    temperature_via_area = {self.temperature_via_area:.3f} K'
+                f'\n    temperature_via_fit = {self.temperature_via_fit:.3f} K'
                 f'\n'
             )
         print(
@@ -384,8 +385,13 @@ class SpectralDensityEstimate:
 
     @property
     def area(self):
-        """ Area under the curve of the values across the frequency range """
-        return np.trapz(np.real(self.values), self.freq_range)
+        """
+        Area under the curve of the values across the frequency range (trapezoidal rule)
+        NOTE: np.trapz was removed in NumPy 2.4, which made this (and temperature_via_area) raise;
+        scipy.integrate.trapezoid is the same algorithm.
+        [units of the trace]²
+        """
+        return trapezoid(np.real(self.values), self.freq_range)
 
     @property
     def temperature_via_area(self):
@@ -488,9 +494,11 @@ class SpectralDensityEstimate:
 
         self.fit_range = fit_range
 
+        sidedness = 2 if self.one_sided else 1
         if A0 is None:
-            # A = kb*T / (π*m) for a displacement PSD
-            A0 = self.source.trap.A / Hz**2
+            # amplitude in Hz variables: A_Hz = 2 kB T_eff / m / (2π)³, doubled if one-sided (see Trap.A_Hz)
+            trap = self.source.trap
+            A0 = sidedness * trap.A_Hz * trap.T_eff[self.A.axis] / trap.gas.T
         if Γ0 is None:
             Γ0 = self.source.trap.Γj[self.A.axis] / Hz
         if Ω0 is None:
@@ -499,6 +507,8 @@ class SpectralDensityEstimate:
         p0_Hz = (A0, Γ0, Ω0)
 
         freqs, PSD_vals = self.get_plot_points(*fit_range)
+        # a PSD is real; the values are stored as complex (shared with the CSD code path)
+        PSD_vals = np.real(PSD_vals)
         if debug:
             print(f'fit_PSD: range={fit_range}')
             print(f'fit_PSD: min(freqs)={min(freqs)}')
@@ -520,11 +530,28 @@ class SpectralDensityEstimate:
         # fit params are all in Hz, since the PSDs curves x-axis values are in Hz
         A_fit, Γ, Ω = self.fit_params
 
-        # just like we convert FWHM from Hz to rad/s, need to convert A from V²Hz² to V²(rad/s)²
-        self.Afit = A_fit * Hz**2
+        # convert the amplitude to angular variables like Γ and Ω. The Lorentzian Γ/((Ω²-ω²)²+Γ²ω²)
+        # has dimensions time³, so this needs (2π)³ (earlier versions used (2π)², giving A/2π; see Trap.A_rad).
+        # Afit is then directly comparable to 2 kB T_eff / m (Trap.A at T_eff), ×2 if one-sided.
+        self.Afit = A_fit * Hz**3
         self.Γfit = Γ * Hz
         self.Ωfit = Ω * Hz
 
         # the diagonal elements of the covariance matrix are the variances of the fit parameters
         self.fit_params_st_devs = np.sqrt(np.diag(self.fit_params_covariance_matrix))
         self.Afit_sd, self.Γfit_sd, self.Ωfit_sd = self.fit_params_st_devs
+        self.Afit_sd = self.Afit_sd * Hz**3
+        self.Γfit_sd = self.Γfit_sd * Hz
+        self.Ωfit_sd = self.Ωfit_sd * Hz
+
+    @property
+    def temperature_via_fit(self):
+        """
+        Effective temperature from the fitted PSD amplitude
+        Afit = 2 kB T_eff / m (two-sided), 4 kB T_eff / m (one-sided)
+        [K]
+        """
+        if self.type != 'PSD':
+            return None
+        sidedness = 2 if self.one_sided else 1
+        return self.source.trap.bead.m * self.Afit / (2 * sidedness * kB)
