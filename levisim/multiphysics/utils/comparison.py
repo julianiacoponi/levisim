@@ -451,7 +451,7 @@ def assert_arrays_agree_within_threshold(mtrap, array_dict, **kwargs):
         # or warn about some failed points, and pass on later condition
         # NOTE: the failed points do sit on resonances. Measured (Nov 2026) on position PSDs of
         # 2x2 and 3x2 toy systems (off-node and phase-dependent parameters, 1 kHz grid),
-        # numerical/power-series hybridisation vs LAM: 79 of the 81 points whose relative
+        # numerical/power-series hybridisation vs LAM: 89 of the 91 points whose relative
         # difference exceeded 10x the median were within ±1 grid point of a PSD peak, where
         # D = I - R is near-singular. The number of resonances grows with num_dimensions while a
         # percentage allowance does not, so the opt-in kwarg `allowed_failed_points_per_resonance`
