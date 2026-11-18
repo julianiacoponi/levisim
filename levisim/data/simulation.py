@@ -42,6 +42,8 @@ class Simulation:
         detection_floor [0]: one-sided white displacement-noise PSD [m²/Hz] added to the recorded
             traces only (a number, or a dict per axis)
         zero_mean [True]: subtract each trace's mean
+        store_momenta [False]: also store px, py, pz traces [kg·m/s] (self.px etc., traces 'px', ...)
+        store_radial [False]: also store the radial trace r = √(x² + y²) [m] (self.r, traces 'r')
         save, save_dir, save_description, save_fmt: optional pickling of the instance
     """
 
@@ -64,6 +66,8 @@ class Simulation:
         gravity_direction = np.asarray(kwargs.get('gravity_direction', (-1, 0, 0)), dtype=float)
         self.gravity_direction = gravity_direction / np.linalg.norm(gravity_direction)
         self.seed = kwargs.get('seed', None)
+        self.store_momenta = bool(kwargs.get('store_momenta', False))
+        self.store_radial = bool(kwargs.get('store_radial', False))
         self.rng = None if self.seed is None else np.random.default_rng(self.seed)
         self.zero_mean = kwargs.get('zero_mean', True)  # subtract the mean of the time traces from all values
 
@@ -404,6 +408,29 @@ class Simulation:
             'y': self.y,
             'z': self.z,
         }
+
+        if self.store_momenta:
+            # the momenta are the integrated state: no detection floor is added to them
+            self.px, self.py, self.pz = (
+                Trace(
+                    X[:, index],
+                    start, end, Δt,
+                    axis, 'kg·m/s', self,
+                    zero_mean=self.zero_mean,
+                )
+                for index, axis in ((3, 'px'), (4, 'py'), (5, 'pz'))
+            )
+            self.traces.update({'px': self.px, 'py': self.py, 'pz': self.pz})
+
+        if self.store_radial:
+            # radial distance from the beam axis, from the recorded x, y (i.e. including any floor)
+            self.r = Trace(
+                np.hypot(self.position_values['x'], self.position_values['y']),
+                start, end, Δt,
+                'r', units, self,
+                zero_mean=self.zero_mean,
+            )
+            self.traces['r'] = self.r
 
         logger.info('Done!')
 

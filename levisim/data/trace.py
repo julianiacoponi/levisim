@@ -4,7 +4,7 @@ from levisim.core.units import (
     megasamples,
     ms, ns,
 )
-from levisim.core.utils import generate_time_array, calculate_contrast
+from levisim.core.utils import calculate_contrast
 
 
 class Trace:
@@ -111,8 +111,13 @@ class Trace:
 
     @property
     def time_array(self):
-        """ Array of all the time steps in the trace (seconds)"""
-        return generate_time_array(self.start_time, self.end_time, self.num_samples)
+        """
+        Array of the time of each sample in the trace, start_time + n Δt for n = 0, ..., num_samples - 1
+        NOTE: this was generate_time_array(start_time, end_time, num_samples), which has num_samples + 1
+        entries, one more than the values.
+        [s]
+        """
+        return self.start_time + self.Δt * np.arange(self.num_samples)
 
     @property
     def contrast(self):
