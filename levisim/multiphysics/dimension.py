@@ -284,8 +284,14 @@ class Dimension:
         C(φ) = A·cos(φ) + P·sin(φ) = a†·exp(iφ) + a·exp(-iφ)
         [rad]
         """
-        # TODO: why is the sign needed here *and* in the analytic noise vector method functions in self.multitrap?
-        # make this choice at a level that also covers the definition of momentum being i(dag - hat) or i(hat - dag)
+        # NOTE: the sign is applied here and again in G = g·exp(sign·i·φ_coupling) (and, until Nov 2026,
+        # again in the analytic noise-vector functions, which used exp(±sign·i·φ_coupling)), so it always
+        # cancels: G = g·exp(+i(Φ_CS + φ)) for both values of `tweezer_phase_sign_convention`, and every
+        # spectrum is bit-identical for sign = ±1 (checked for LAM and the analytic methods on the 2×2
+        # PHASE_DEPENDENT toy system). The second sign was only ever needed to undo the first. The
+        # analytic functions now use G (or `MultiTrap.coupling_phases`) directly. Choosing the "-1"
+        # (G = g·exp(-iφ)) convention of PRR 8 is equivalent to relabelling φ → -φ (PRR 8's tweezer
+        # phase is Φ_j = -φ_j), i.e. it is a choice of input parameters, not of the equations.
         Φjn_CS = self.linearised_coherent_scattering_coupling_phase
         return self.multitrap.tweezer_phase_sign_convention * float(Φjn_CS + self.φ)
 
