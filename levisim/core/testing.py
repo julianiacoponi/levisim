@@ -1,7 +1,11 @@
 import time
 from datetime import datetime
-# requires pyobjc and pyobjus libaries too
-from plyer import notification
+# NOTE: plyer gives desktop notifications and is purely a convenience, so it is optional.
+# (it requires the pyobjc and pyobjus libraries too)
+try:
+    from plyer import notification
+except ImportError:
+    notification = None
 from pprint import pprint
 from levisim.core.logger import logger
 
@@ -39,11 +43,12 @@ class Test:
             f'\n{self.start_title}: {self.start_message}\n'
             f'____________________________________________________________________________________________________'
         )
-        notification.notify(
-            title=self.start_title,
-            message=self.start_message,
-            timeout=10,
-        )
+        if notification is not None:
+            notification.notify(
+                title=self.start_title,
+                message=self.start_message,
+                timeout=10,
+            )
 
     def notify_end(self):
         """
@@ -81,8 +86,9 @@ class Test:
             logger.error(f'Test "{self.name}" has exceptions: {self.exceptions}')
 
 
-        notification.notify(
-            title=self.end_title,
-            message=self.end_message,
-            timeout=10,
-        )
+        if notification is not None:
+            notification.notify(
+                title=self.end_title,
+                message=self.end_message,
+                timeout=10,
+            )
