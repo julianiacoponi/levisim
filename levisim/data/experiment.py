@@ -13,6 +13,7 @@ from levisim.core.units import (
     ms, ns,
     megaHz,
 )
+from levisim.core.logger import logger
 from levisim.core.utils import generate_time_array
 from levisim.physics.trap import Trap
 from levisim.data.trace import Trace
@@ -110,8 +111,16 @@ class Experiment:
             'bin': self.load_binfile,
         }
         if self.file_extension not in loaders:
-            raise ValueError(f'Unsupported file extension {self.file_extension!r}; expected one of {list(loaders)}')
-        return loaders[self.file_extension]()
+            msg = f'Unsupported file extension {self.file_extension!r}; expected one of {list(loaders)}'
+            logger.error(msg)
+            raise ValueError(msg)
+        logger.info('Loading experiment data from {}', self.data_path)
+        loaders[self.file_extension]()
+        logger.info(
+            'Loaded {} samples per channel at Δt = {:.4g} ns ({:.4g} ms) into traces {}',
+            self.num_samples, self.Δt / ns, self.time_length / ms, list(self.traces),
+        )
+        logger.debug('Channels: {}', self.channel_dict)
 
 
     def load_matfile(self):

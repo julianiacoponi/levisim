@@ -23,7 +23,10 @@ __all__ = [
 
 def timer(enabled, debug=False):
     """
-    A `perf_counter` timer decorator
+    A `perf_counter` timer decorator, which logs the run time of each call at DEBUG
+
+    With `debug` it also logs the call's arguments at DEBUG. Both messages are formatted lazily,
+    so they cost nothing when no sink takes DEBUG.
     """
     def decorator(func):
         @wraps(func)
@@ -35,10 +38,8 @@ def timer(enabled, debug=False):
             result = func(*args, **kwargs)
             end_time = time.perf_counter()
             if debug:
-                msg = f'{args=}, {kwargs=}'
-                print(msg), logger.debug(msg)
-            msg = f'⏱️ Function "{func.__name__}" executed in {end_time - start_time:.4f} seconds'
-            print(msg), logger.info(msg)
+                logger.debug('"{}" called with args={!r}, kwargs={!r}', func.__qualname__, args, kwargs)
+            logger.debug('⏱️ "{}" executed in {:.4f} s', func.__qualname__, end_time - start_time)
             return result
         return wrapper
     return decorator

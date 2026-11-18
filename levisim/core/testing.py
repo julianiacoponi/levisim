@@ -81,14 +81,16 @@ class Test:
             time_taken = f'⏱️ Duration: {minutes:.0f}m {remaining_seconds:.1f}s'
 
         self.end_message += f'\n{time_taken}'
-        logger.info(self.end_message)
+        if self.exceptions:
+            logger.error('{}\nexceptions: {}', self.end_message, self.exceptions)
+        else:
+            logger.success(self.end_message)
         print(
             f'____________________________________________________________________________________________________'
             f'\n{self.end_title}: {self.end_message}'
         )
         if 0 < len(self.exceptions) <= 10:
             print(f'Test "{self.name}" has exceptions: {self.exceptions}')
-            logger.error(f'Test "{self.name}" has exceptions: {self.exceptions}')
 
 
         if notification is not None:
