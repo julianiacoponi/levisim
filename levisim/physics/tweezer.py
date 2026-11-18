@@ -242,7 +242,8 @@ class Tweezer:
         NOTE: The lack of minus sign is due to the choice of convention for wave propagation
         i.e. using the physicists exp i(kz - ωt)
         """
-        return np.arctan2(z / self.zR)
+        # NOTE: this was np.arctan2(z / self.zR), which raises a TypeError (arctan2 needs two arguments)
+        return np.arctan(z / self.zR)
 
     def R(self, z):
         """

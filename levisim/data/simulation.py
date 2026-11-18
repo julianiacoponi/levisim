@@ -33,9 +33,12 @@ class Simulation:
         num_samples [1e6]: number of time steps
         Δt [0.1 μs]: time step [s]
         X0 [zeros]: initial [x, y, z, px, py, pz]
+        (photon recoil is switched on with Trap(photon_recoil=True), see Trap.F_scattering)
         RK_method ['vector_4']: 'vector_4' (Kasdin stochastic RK4) or 'vector_2' (improved Euler)
         seed [None]: None uses numpy's legacy global RandomState (reproducible with np.random.seed);
             an int (or SeedSequence / Generator) uses np.random.default_rng(seed)
+        gravity [False]: add the bead's weight m·g along gravity_direction [(-1, 0, 0), i.e. -x];
+            it shifts the equilibrium by g/Ωj² (≈ 10 pm in x for the defaults)
         detection_floor [0]: one-sided white displacement-noise PSD [m²/Hz] added to the recorded
             traces only (a number, or a dict per axis)
         zero_mean [True]: subtract each trace's mean
@@ -55,6 +58,11 @@ class Simulation:
         self.X0 = kwargs.get('X0', np.array([0, 0, 0, 0, 0, 0]))  # initial conditions of [x, y, z, px, py, pz]
         self.RK_method = kwargs.get('RK_method', 'vector_4')
         self.detection_floor = kwargs.get('detection_floor', 0)  # one-sided PSD, m²/Hz
+        # gravity, off by default; when on, it points along gravity_direction (default -x: in the
+        # experiment the tweezer axis is horizontal and, per Antonio, gravity is along negative x)
+        self.gravity = bool(kwargs.get('gravity', False))
+        gravity_direction = np.asarray(kwargs.get('gravity_direction', (-1, 0, 0)), dtype=float)
+        self.gravity_direction = gravity_direction / np.linalg.norm(gravity_direction)
         self.seed = kwargs.get('seed', None)
         self.rng = None if self.seed is None else np.random.default_rng(self.seed)
         self.zero_mean = kwargs.get('zero_mean', True)  # subtract the mean of the time traces from all values
@@ -143,8 +151,6 @@ class Simulation:
         else:
             Ftwx, Ftwy, Ftwz = self.trap.Ftw(x, y, z)
 
-        # F_photon_recoil = self.trap.F_photon_recoil
-
         F_kick_x, F_kick_y = 0, 0
         for kick in self.trap.kicks:
             if kick.start <= t < kick.end:
@@ -163,20 +169,24 @@ class Simulation:
                 kick.Fx = F_kick_x
                 kick.Fy = F_kick_y
 
-        return np.array([
+        dynamics = np.array([
             px / m,
             py / m,
             pz / m,
             Ftwx - Γx*px + F_kick_x,
             Ftwy - Γy*py + F_kick_y,
-            # photon recoil goes in -z direction!
-            # Ftwz - Γz*pz - F_photon_recoil(x, y, z),
             Ftwz - Γz*pz,
         ])
 
-        # TODO: could add gravity somewhere, it is roughly 10 aN for a 1fg mass!
-        # - m*g,
-        # Antonio says it's in the direction of negative x
+        # opt-in forces, added only when enabled so that the default arithmetic is unchanged
+        if self.trap.photon_recoil:
+            # scattering force along the beam propagation axis, +z (see Trap.F_scattering)
+            dynamics[5] += self.trap.F_photon_recoil(x, y, z)
+        if self.gravity:
+            # m g ≈ 16.5 aN for the default 1.68 fg bead, along gravity_direction (default -x)
+            dynamics[3:] += self.F_gravity
+
+        return dynamics
 
     def noise_matrix_RK4(self, t, X):
         """
@@ -422,6 +432,14 @@ class Simulation:
             return values
         σ_floor = np.sqrt(G_floor / (2 * self.Δt))
         return values + σ_floor * self.standard_normals(values.shape)
+
+    @property
+    def F_gravity(self):
+        """
+        Weight of the bead along gravity_direction
+        [N]
+        """
+        return self.trap.bead.weight * self.gravity_direction
 
     @property
     def time_length(self):

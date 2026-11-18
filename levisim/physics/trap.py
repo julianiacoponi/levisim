@@ -1,5 +1,6 @@
 import numpy as np
 from functools import cached_property
+from scipy.optimize import brentq
 
 from levisim.core.constants import π, ħ, c, kB, ε0
 from levisim.core.units import (
@@ -71,9 +72,10 @@ class Trap:
         self.ψ = float(kwargs.get('ψ', 45*degrees))
 
         # ------------------------------------------------------------------------------------------
-        # Whether or not to use photon recoil force
-        # (Tania doesn't use it)
-        self.photon_recoil = kwargs.get('photon_recoil', False)
+        # Whether or not to include the photon recoil (scattering) force along the beam axis in
+        # Simulation, see F_scattering (Tania doesn't use it)
+        # [bool]
+        self.photon_recoil = bool(kwargs.get('photon_recoil', False))
 
         # ------------------------------------------------------------------------------------------
         # Override resonant frequencies (that ignore Tweezer properties)
@@ -527,7 +529,46 @@ class Trap:
     # ----------------------------------------------------------------------------------------------
     # STANDARD QUANTUM LIMITS
     # ----------------------------------------------------------------------------------------------
-    # TODO: find source for this (cavity optomechanics review?)
+    # NOTE: answer to "find source for this": x_SQL = √(ħ/(mΩ)) = √2 x_zpf, where x_zpf = √(ħ/(2mΩ))
+    # is the ground-state (zero-point) rms displacement (see j_zpf). The spectral standard quantum
+    # limit of continuous displacement detection is the minimum *added* noise, imprecision plus
+    # backaction, S_xx^SQL(ω) = ħ|χ(ω)|, i.e. ħ/(mΓΩ) on resonance (Clerk et al., Rev. Mod. Phys. 82,
+    # 1155 (2010); Mason et al., Nat. Phys. 15, 745 (2019), arXiv:1809.10629). It is therefore a PSD,
+    # not a displacement; x_SQL² = 2 x_zpf² is the variance of zero-point motion plus an equal amount
+    # of added noise, which is the sense in which √(ħ/mΩ) is often quoted. Likewise Fj_SQL² =
+    # 2ħmΓΩ = 2ħ/|χ(Ω)| is a one-sided force PSD on resonance, so its units are N/√Hz (not N).
+    @cached_property
+    def x_zpf(self):
+        """
+        Zero-point fluctuation (ground-state rms displacement) of the x-motion, √(ħ/(2mΩx))
+        [m]
+        """
+        return np.sqrt(ħ / (2 * self.bead.m * self.Ωx))
+
+    @cached_property
+    def y_zpf(self):
+        """
+        Zero-point fluctuation (ground-state rms displacement) of the y-motion, √(ħ/(2mΩy))
+        [m]
+        """
+        return np.sqrt(ħ / (2 * self.bead.m * self.Ωy))
+
+    @cached_property
+    def z_zpf(self):
+        """
+        Zero-point fluctuation (ground-state rms displacement) of the z-motion, √(ħ/(2mΩz))
+        [m]
+        """
+        return np.sqrt(ħ / (2 * self.bead.m * self.Ωz))
+
+    @cached_property
+    def j_zpf(self):
+        """
+        Dict of zero-point fluctuations of the (x, y, z)-motions
+        [m]
+        """
+        return {'x': self.x_zpf, 'y': self.y_zpf, 'z': self.z_zpf}
+
     @cached_property
     def x_SQL(self):
         """
@@ -568,7 +609,8 @@ class Trap:
     def Fx_SQL(self):
         """
         Standard Quantum Limit forces in x-axis
-        [N]
+        (one-sided force noise on resonance, see the NOTE above x_zpf)
+        [N/√Hz]
         """
         return np.sqrt(2 * ħ * self.bead.m * self.Γx * self.Ωx)
 
@@ -576,7 +618,8 @@ class Trap:
     def Fy_SQL(self):
         """
         Standard Quantum Limit forces in y-axis
-        [N]
+        (one-sided force noise on resonance, see the NOTE above x_zpf)
+        [N/√Hz]
         """
         return np.sqrt(2 * ħ * self.bead.m * self.Γy * self.Ωy)
 
@@ -584,7 +627,8 @@ class Trap:
     def Fz_SQL(self):
         """
         Standard Quantum Limit forces in z-axis
-        [N]
+        (one-sided force noise on resonance, see the NOTE above x_zpf)
+        [N/√Hz]
         """
         return np.sqrt(2 * ħ * self.bead.m * self.Γz * self.Ωz)
 
@@ -710,8 +754,17 @@ class Trap:
     @cached_property
     def z_eq(self):
         """
-        Equilibrium point between optical gradient and scattering forces
+        Equilibrium point between optical gradient and scattering forces, linearised in z/zR
         [m]
+
+        Balancing F_scattering (on axis, ∝ |E|² (k - 1/zR) at z = 0, the 1/zR being the Gouy-phase
+        gradient) against the linearised gradient force -(Re α/2) E0² z / zR² gives
+        z_eq = (Im α / Re α) k (zR² - zR/k).
+        This agrees with Eq. (A4) of Toroš et al., arXiv:2012.15822, z0 = (εr-1)/(εr+2) (2k⁴zR²/3) R³,
+        to leading order in the particle size (Im α ≈ k³|α|²/6πε0), apart from the factor (1 - 1/(k zR)),
+        because Eq. (A2) uses the plane-wave scattering force without the Gouy phase. Since
+        z_eq/zR is not tiny for 100 nm-scale beads (≈ 0.12 for the defaults), see z_eq_exact for the
+        root of the full on-axis force.
         """
         γ0 = self.tweezer.zR**2 - self.tweezer.zR / self.tweezer.k
         return (np.imag(self.α_eff) / np.real(self.α_eff)) * self.tweezer.k * γ0
@@ -876,30 +929,77 @@ class Trap:
             0.5 * (4 * z / wz**2) * U * (1 - 2 * ellipse),
         )
 
-    # TODO: fix photon recoil!
-    # @cached_property
-    # def σR(self):
-    #     """ Effective Rayleigh scattering cross section """
-    #     λ = self.tweezer.λ
-    #     V, εr = self.bead.V, self.bead.εr
+    @cached_property
+    def σ_Rayleigh(self):
+        """
+        Rayleigh scattering cross section of a small dielectric sphere (no radiation reaction)
+        σR = (8π/3) k⁴ (α/(4πε0))² = (8π/3) (π²V²/λ⁴) χ0², χ0 = 3(εr - 1)/(εr + 2)
+        To leading order in the size it equals σ_scattering = k Im(α_eff)/ε0, which is what
+        F_scattering uses.
+        [m²]
+        """
+        λ = self.tweezer.λ
+        V, εr = self.bead.V, self.bead.εr
 
-    #     # equivalent to α / V.ε0
-    #     χ0 = 3 * (εr - 1) / (εr + 2)
-    #     return (8*π/3) * (π**2 * V**2 / λ**4) * χ0**2
+        # equivalent to α / V.ε0
+        χ0 = 3 * (εr - 1) / (εr + 2)
+        return (8*π/3) * (π**2 * V**2 / λ**4) * χ0**2
 
-    # def F_photon_recoil(self, x, y, z):
-    #     """
-    #     Force due to photon recoil
-    #     Taken from Marko's ro-translational manuscript, Eq. 37 etc.
-    #     This is the effect of the interaction between the tweezer field and the free field
-    #     i.e. -α.Etw.Efree
-    #     """
-    #     if not self.photon_recoil:
-    #         return 0
-    #     P, w0 = self.tweezer.Power, self.tweezer.w0
-    #     σL = π * w0**2  # effective laser cross section - could use wx0*wy0 here?
-    #     return (self.σR / σL) * (2*P / c) * np.abs(self.tweezer.u(x, y, z))**2
+    def F_scattering(self, x, y, z):
+        """
+        Scattering (photon recoil, radiation pressure) force along the beam axis
+        F_scat,z = (Im α_eff / 2) |E(r)|² ∂z[kz - arctan(z/zR)]
+                 = σ_scattering I(r) / c × (1 - zR/(k(zR² + z²)))
+        with |E(r)|² = E_field_amplitude(x, y, z)², I = ε0 c |E|²/2 the local intensity, and the
+        Gouy-phase gradient reducing the effective wavenumber near the focus.
+        The tweezer light is taken to propagate along +z, so the force pushes the bead towards +z,
+        consistent with z_eq > 0.
 
-    # TODO: find the real z equilibrium point (when recoil is included)... Some function of the scattering areas!
-    # Appendix A of https://arxiv.org/pdf/2012.15822.pdf (not in https://journals.aps.org/prresearch/pdf/10.1103/PhysRevResearch.3.023071 ) !!!
-    # Derive these for z0 ≠ 0 i.e. the real equilibrium point after photon recoil
+        This is the dipole force's dissipative part, in the same time-averaged convention as
+        Utw/Ftwj (|E| is the complex amplitude, F_grad = (Re α/4)∇|E|²). It equals Marko Toroš's
+        F = (σR/σL)(2P/c)|u|² (σL = πw0², in the commented code it replaces) up to the Gouy factor
+        and σR ≈ σ_scattering. Its transverse components (from the wavefront curvature, ∝ x/R(z))
+        and the associated recoil heating (momentum diffusion) are NOT included.
+        [N]
+        """
+        zR, k = self.tweezer.zR, self.tweezer.k
+        phase_gradient = k - zR / (zR**2 + z**2)
+        return 0.5 * np.imag(self.α_eff) * self.tweezer.E_field_amplitude(x, y, z)**2 * phase_gradient
+
+    def F_photon_recoil(self, x, y, z):
+        """
+        Photon recoil force used by Simulation: F_scattering if photon_recoil is enabled, else 0
+        [N]
+        """
+        if not self.photon_recoil:
+            return 0
+        return self.F_scattering(x, y, z)
+
+    @cached_property
+    def z_eq_exact(self):
+        """
+        On-axis equilibrium point of the gradient + scattering forces, Ftw,z(0, 0, z) + F_scat(0, 0, z) = 0,
+        found numerically in (0, zR) (no z/zR ≪ 1 assumption; compare z_eq)
+        [m]
+        """
+        def total_Fz(z):
+            return self.Ftwz(0, 0, z) + self.F_scattering(0, 0, z)
+        return brentq(total_Fz, 0, self.tweezer.zR, xtol=1e-16, rtol=1e-14)
+
+    @cached_property
+    def Ωj_at_z_eq(self):
+        """
+        Dict of harmonic frequencies about the shifted equilibrium (0, 0, z_eq_exact), from central
+        differences of the total force: Ωj² = -∂Fj/∂j / m (including ∂F_scat/∂z for z).
+        The default Ωj are evaluated at the focus; at z_eq_exact the beam is wider, so Ωx, Ωy are lower.
+        [2π·Hz]
+        """
+        z0, m = self.z_eq_exact, self.bead.m
+        h = 1e-4 * self.tweezer.w0
+        kx = -(self.Ftwx(h, 0, z0) - self.Ftwx(-h, 0, z0)) / (2*h)
+        ky = -(self.Ftwy(0, h, z0) - self.Ftwy(0, -h, z0)) / (2*h)
+
+        def total_Fz(z):
+            return self.Ftwz(0, 0, z) + self.F_scattering(0, 0, z)
+        kz = -(total_Fz(z0 + h) - total_Fz(z0 - h)) / (2*h)
+        return {axis: np.sqrt(k / m) for axis, k in (('x', kx), ('y', ky), ('z', kz))}
