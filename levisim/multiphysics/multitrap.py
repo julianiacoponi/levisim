@@ -776,8 +776,8 @@ class MultiTrap:
 
         A ≡ 'drift' matrix of couplings between them
         """
-        self.identity_matrix = np.matrix(np.eye(self.num_operators))
-        self.drift_matrix = np.matrix(np.zeros((self.num_operators, self.num_operators), dtype=np.complex128))
+        self.identity_matrix = np.eye(self.num_operators)
+        self.drift_matrix = np.zeros((self.num_operators, self.num_operators), dtype=np.complex128)
 
         Δ, κ = self.cavity.Δ, self.cavity.κ
 
@@ -931,7 +931,7 @@ class MultiTrap:
         #   )
         # nc ≡ photons due to optical noise inside cavity = 0 for shot noise
         # njn ≡ phonons due to jn degree of freedom ~ kB·T/ħ·Ωjn (Bose-Einstein distribution)
-        self.noise_matrix = np.matrix(np.diag(self.γ * self.quantum_factor_per_noise_operator))
+        self.noise_matrix = np.diag(self.γ * self.quantum_factor_per_noise_operator)
 
     ################################################################################################
     # FUNCTIONS OF ONLY FREQUENCY
@@ -991,7 +991,7 @@ class MultiTrap:
         Invert it to solve the fully hybridised position vector using the 1D noise vectors
         x = D⁻¹ @ x1D
         """
-        D_matrix = np.matrix(np.eye(self.num_dimensions), dtype=np.complex128)
+        D_matrix = np.eye(self.num_dimensions, dtype=np.complex128)
         for jj, label_jn in enumerate(self.labels):
             for kk, label_km in enumerate(self.labels):
                 if jj == kk:
@@ -1017,7 +1017,9 @@ class MultiTrap:
         """
         value = 0
         if ω == 300*kHz:
-            print(f'{self.deranged_adjugate_by_order[self.evaluation_order]=}')
+            # NOTE: this dumps the entire adjugate dictionary - 104 kB of stdout for a 2x2
+            # system - so it is behind logger.trace rather than an unconditional print
+            logger.trace(f'{self.deranged_adjugate_by_order[self.evaluation_order]=}')
         for term in self.deranged_adjugate_by_order[self.evaluation_order][ij]:
             value += self.hybridisation_term_value(term, ω)
         return value
@@ -1689,7 +1691,7 @@ class MultiTrap:
             # off-diagonal entry adj(D)ij = power series of 'path-cycles' ρ
             # adj(D)ij = Rij + ∑ R²ρ + ∑ R³ρ + ...
 
-            deranged_adjugate_matrix = np.matrix(np.eye(self.num_dimensions), dtype=np.complex128)
+            deranged_adjugate_matrix = np.eye(self.num_dimensions, dtype=np.complex128)
             for jj, label_jn in enumerate(self.labels):
                 for kk, label_km in enumerate(self.labels):
                     deranged_adjugate_matrix[jj, kk] = self.deranged_adjugate_matrix_entry(label_jn + label_km, ω)
@@ -2002,7 +2004,7 @@ class MultiTrap:
         Scc_array = np.zeros((len(self.ω_range), N_ops, N_ops), dtype=np.complex128)
         for ii, ω in enumerate(self.ω_range):
             T = self.T_matrix(ω)
-            Scc_array[ii] = T @ self.noise_matrix @ T.H
+            Scc_array[ii] = T @ self.noise_matrix @ T.conj().T
         return Scc_array
 
     @cached_property
