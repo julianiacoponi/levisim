@@ -17,9 +17,9 @@ class SpectralDensityTheory:
     Notably, for the harmonic oscillator's susceptibility (a.k.a. response) functions:
     χ*(-ω) = χ(ω)
 
-    There are two force noises (units, N/√Hz), thermal and directed, whose magntiude we relate by β:
-    Fx = fthx + fdx = fth(1 + β cos(ψ))
-    Fy = fthy + fdy = fth(1 + β sin(ψ))
+    There are two force noises (units, N/√Hz), thermal and directed, whose magnitude we relate by β.
+    The total stochastic forces are sums of independent random forces (not of their noise amplitudes):
+    Fx(t) = fthx(t) + fdx(t),  Fy(t) = fthy(t) + fdy(t)
     fthx = fthy = fth
     fd = β fth
 
@@ -40,8 +40,23 @@ class SpectralDensityTheory:
     〈fdy²〉= Sdiry = Sdir.sin²(ψ)
     Sdir = β² Sth
 
-    # TODO: clarify the difference between forces and force noises, to clarify how 〈.〉turns a force / force noise, into a force spectrum.
-    This probably requires a good description Wiener-Khinchin theorem, and Langevin forces from Brownian motion
+    NOTE: forces vs. force noises, and how 〈.〉 turns a force into a force spectrum.
+    A stochastic force F(t) [N] (thermal: the Langevin force of the gas; directed: the applied
+    noise) is a random function of time: each realisation differs, and only its statistics are
+    meaningful. 〈.〉 is the ensemble average over realisations. For a stationary force the
+    autocorrelation 〈F(t + τ) F(t)〉 depends only on τ, and the Wiener-Khinchin theorem says its
+    Fourier transform is the force PSD,
+        S_FF(ω) = ∫ 〈F(t + τ) F(t)〉 e^{iωτ} dτ     [N²/Hz],
+    equivalently 〈F*(ω) F(ω')〉 = 2π S_FF(ω) δ(ω - ω') for the Fourier components. A white
+    ('delta-correlated') force, 〈F(t) F(t')〉 = S δ(t - t'), therefore has a flat PSD S_FF = S.
+    The 'force noise' f = √S [N/√Hz] is just the square root of that flat PSD: an amplitude
+    spectral density, not a force. For the thermal force the fluctuation-dissipation theorem fixes
+    S = Sth = 2 m kB T Γth (two-sided), the Langevin result for Brownian motion. Since the
+    displacement is linear in the force, x(ω) = χ(ω) F(ω), the same averaging gives
+    Sxx(ω) = |χ(ω)|² S_FF(ω), and for two forces 〈f1 f2〉 = 0 unless they are correlated - which is
+    why the PSDs below add the *spectral densities* (quadrature sum of the force noises), and why
+    only the shared directed force survives in Sxy. Simulation draws exactly such forces: for a time
+    step Δt, a force held constant over the step with variance S/Δt has 〈F F〉 → S δ(t - t').
 
 
     --- CROSS-CORRELATIONS ---
@@ -81,7 +96,7 @@ class SpectralDensityTheory:
 
     |χ(ω)|² = 1 / (m²((Ω²-ω²)² + Γ²ω²))
 
-    NOTE: This means that the force noise deduced from the PSD Fx = √(Sxx(ω))/|χx(ω)| = √(Sth.(1 + β² sin²(ψ)))
+    NOTE: This means that the force noise deduced from the PSD Fx = √(Sxx(ω))/|χx(ω)| = √(Sth.(1 + β² cos²(ψ)))
     does *not* equal the linear sum of fthx + fdx, but rather the quadrature sum √(fthx² + fdx²).
 
 

@@ -92,6 +92,14 @@ def time_slice(array, start_time, end_time, Δt):
 # signal processing
 # --------------------------------------------------------------------------------------------------
 def apply_filter(signal, Nyquist_freq, centre_freq, filter_type, bandwidth, plot=True):
+    """
+    Zero-phase (forward-backward) band-pass filtering of a signal
+    filter_type: 'butter' (5th-order Butterworth band-pass of the given bandwidth) or 'iirpeak'
+    (2nd-order IIR peak of quality factor centre_freq / bandwidth)
+    The filter is applied as second-order sections (scipy.signal.sosfiltfilt), which avoids the
+    round-off problems of the transfer-function (b, a) form for high orders or narrow bands.
+    [units of signal]
+    """
     logger.info(f'Signal has {len(signal)} samples and Nyquist frequency={Nyquist_freq / megaHz} MHz')
 
     if filter_type == 'butter':
@@ -100,16 +108,17 @@ def apply_filter(signal, Nyquist_freq, centre_freq, filter_type, bandwidth, plot
         lowcut = centre_freq - bandwidth / 2
         highcut = centre_freq + bandwidth / 2
         low, high = lowcut / Nyquist_freq, highcut / Nyquist_freq
-        b, a = scipy.signal.butter(order, [low, high], btype='band')
+        sos = scipy.signal.butter(order, [low, high], btype='band', output='sos')
 
     elif filter_type == 'iirpeak':
         Q_factor = centre_freq / bandwidth
         logger.info(f'Making a {bandwidth / kiloHz}kHz linewidth IIR peak filter, centred @ {centre_freq / kiloHz}kHz (Q={Q_factor})')
         b, a = scipy.signal.iirpeak(centre_freq, Q_factor, fs=2*Nyquist_freq)
+        sos = scipy.signal.tf2sos(b, a)
 
     if plot:
         # https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.iirpeak.html#scipy.signal.iirpeak
-        freq, h = scipy.signal.freqz(b, a, fs=2*Nyquist_freq)
+        freq, h = scipy.signal.sosfreqz(sos, fs=2*Nyquist_freq)
         _, ax = plt.subplots(2, 1, figsize=(8, 6))
         ax[0].plot(freq, 20*np.log10(np.maximum(abs(h), 1e-5)), '.-', color='blue')
         ax[0].set_title('Frequency Response')
@@ -121,8 +130,10 @@ def apply_filter(signal, Nyquist_freq, centre_freq, filter_type, bandwidth, plot
         ax[1].grid(True)
         plt.show()
 
-    # TODO: implement sosfilt ?
-    return scipy.signal.filtfilt(b, a, signal)
+    # NOTE: implemented sosfilt (as sosfiltfilt, keeping the zero-phase forward-backward filtering of
+    # the earlier filtfilt(b, a)). Away from the edges the outputs agree to round-off (see
+    # tests/test_simulation_data_utils.py); the default edge padding differs slightly between the two.
+    return scipy.signal.sosfiltfilt(sos, signal)
 
 
 def calculate_contrast(data):
@@ -171,6 +182,18 @@ def kick_data_path(gain, run_choice):
     return folder_path_per_gain[gain] + file_name_root_per_gain[gain] + run_choice + '.bin'
 
 
+def _per_kick_values(values, num_kicks, name):
+    """
+    Returns `values` as a list of length num_kicks: a scalar (int, float or numpy scalar) is repeated,
+    a sequence must already have num_kicks entries
+    """
+    if np.ndim(values) == 0:
+        return [values for _ in range(num_kicks)]
+    values = list(values)
+    assert len(values) == num_kicks, f'{name} has {len(values)} entries, expected {num_kicks}'
+    return values
+
+
 def generate_kick_list(
     num_kicks=None,
     starts=None,
@@ -187,32 +210,12 @@ def generate_kick_list(
 
     # if any of the variables are single values and not indexable arrays / lists, make them so
     # and apply their value to every kick
-    if type(starts) in [float, int]:
-        starts = [starts for _ in range(num_kicks)]
-    else:
-        assert len(starts) == num_kicks
-
-    if type(durations) in [float, int]:
-        durations = [durations for _ in range(num_kicks)]
-    else:
-        assert len(durations) == num_kicks
-
-    if type(strengths) in [float, int]:
-        strengths = [strengths for _ in range(num_kicks)]
-    else:
-        assert len(strengths) == num_kicks
-
-    if type(angles) in [float, int]:
-        angles = [angles for _ in range(num_kicks)]
-    else:
-        assert len(angles) == num_kicks
-
-    # TODO: see if this works
-    # for var in [starts, durations, strengths, angles]:
-    #     if type(var) in [float, int]:
-    #         var = [var for _ in range(num_kicks)]
-    #     else:
-    #         assert len(var) == num_kicks
+    # NOTE: replaces a commented loop `for var in [...]: var = [...]`, which could not work: rebinding
+    # the loop variable does not change the list entries (or starts, durations, ...)
+    starts = _per_kick_values(starts, num_kicks, 'starts')
+    durations = _per_kick_values(durations, num_kicks, 'durations')
+    strengths = _per_kick_values(strengths, num_kicks, 'strengths')
+    angles = _per_kick_values(angles, num_kicks, 'angles')
 
     return [
         Kick(
@@ -225,11 +228,33 @@ def generate_kick_list(
     ]
 
 
+def cross_check_kick_indices(indices_a, indices_b, tolerance=10):
+    """
+    Indices of indices_a that have a partner in indices_b within ±tolerance samples (sorted)
+    Used by find_kicks to flag detections that only one of its two methods finds.
+    [samples]
+    """
+    indices_b = np.sort(np.asarray(indices_b))
+    confirmed = [
+        i for i in np.sort(np.asarray(indices_a))
+        if len(indices_b) and np.min(np.abs(indices_b - i)) <= tolerance
+    ]
+    return np.array(confirmed, dtype=int)
+
+
 def find_kicks(
     kick_trace,
     number_of_kicks_to_look_for,
     plot=True,
+    tolerance=10,
 ):
+    """
+    Finds the times of the n largest kicks in a kick-monitor trace, by two methods:
+    1. the n largest values, and 2. the n steepest rises (largest positive sample-to-sample steps)
+    and logs a warning if the two disagree (see cross_check_kick_indices, ±tolerance samples).
+    Returns (kick_times, kick_times_2, kick_voltages) for methods 1 and 2.
+    [s, s, units of the trace]
+    """
     n = number_of_kicks_to_look_for
 
     # arg partition sorts lowest to highest by default so make all the values negative
@@ -238,9 +263,14 @@ def find_kicks(
     # doing the diff means even if the voltage kick is negative, it should be picked out by this sorting
     kick_indices_2 = np.argpartition(np.diff(-kick_trace.values), n)[:n]
 
-    # TODO: some sort of cross of the two above should rule out any spurious detections...
-    # aa = set(kick_indices) & set(kick_indices_2)
-    # bb = np.array(kick_indices) - np.array(kick_indices_2)
+    # cross-check the two index sets: a real kick should be found by both methods within a few samples
+    # (the steepest rise sits just before the maximum); detections found by only one are suspect
+    confirmed = cross_check_kick_indices(kick_indices, kick_indices_2, tolerance)
+    if len(confirmed) < n:
+        logger.warning(
+            f'find_kicks: only {len(confirmed)} of {n} kicks were found by both the max and the steepest-rise '
+            f'sorting (within {tolerance} samples); the others may be spurious'
+        )
 
     kick_times = kick_trace.time_array[kick_indices]
     kick_times_2 = kick_trace.time_array[kick_indices_2]
