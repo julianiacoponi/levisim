@@ -402,8 +402,7 @@ def generate_all_hybridisation_functions(labels, sign=1):
 
 @timer(TIMER)
 @profiler(PROFILER)
-# TODO: fix progress_bar for this
-# @progress_bar(loop_variable_path='labels', enabled=PROGRESS_BAR)
+@progress_bar(loop_variable_path='labels', enabled=PROGRESS_BAR)
 def generate_determinant_and_adjugate_by_order(n, labels, max_order=None):
     """
     Generate the determinant and adjugate terms for the hybridisation matrix, by order
