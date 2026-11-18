@@ -20,3 +20,10 @@ Issues = "https://github.com/julianiacoponi/levisim/issues"
 [tool.setuptools]
 packages = ["levisim"]  # Explicitly specify the package(s) to include
 include-package-data = true  # If you have a MANIFEST.in for non-code files
+
+[tool.pytest.ini_options]
+# run from the repo root with plain `pytest` - no PYTHONPATH needed, and the suite also works
+# without `pip install -e .` (the `slow` and `needs_power_series` markers are registered in
+# tests/conftest.py)
+pythonpath = ["."]
+testpaths = ["tests"]
