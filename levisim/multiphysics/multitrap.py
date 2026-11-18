@@ -1160,22 +1160,144 @@ class MultiTrap:
     # ----------------------------------------------------------------------------------------------
     # for analytic methods
     # ----------------------------------------------------------------------------------------------
+    @cached_property
+    def coupling_phases(self):
+        """
+        Phase θjn of each dimension's complex light-mech coupling, Gjn = gjn·exp(iθjn)
+
+        θjn = Φjn_CS + φn, where Φjn_CS = 0 for x, y (amplitude quadrature) and π/2 for z (phase
+        quadrature), and φn is the phase of the tweezer trapping bead n. This does not depend on
+        `tweezer_phase_sign_convention`: that sign multiplies `Dimension.φ_coupling` and multiplies
+        it again inside Gjn = gjn·exp(sign·i·φ_coupling), so it cancels (see `Dimension.φ_coupling`).
+        Ordered as `self.labels`.
+        [rad]
+        """
+        return np.array([
+            self.tweezer_phase_sign_convention * dim.φ_coupling
+            for dim in self.dimensions.values()
+        ])
+
+    @cached_property
+    def coupling_quadrature_overlap_matrix(self):
+        """
+        Real antisymmetric matrix I_lp = Im(Gl*·Gp) = gl·gp·sin(θp - θl) over all pairs of dimensions
+
+        It measures how far apart (in quadrature angle) two dimensions couple to the cavity light,
+        and is the only way the coupling phases enter the cavity-mediated terms that can cancel
+        (P and the thermal transduction coefficients). It is evaluated from the phase difference
+        so that it is EXACTLY zero for pairs that couple to the same quadrature (equal tweezer
+        phases, or x and y on the same bead) - which is what keeps those terms free of
+        catastrophic cancellation when one dimension is driven on resonance.
+        Ordered as `self.labels` on both axes.
+        [(2π·Hz)²]
+        """
+        θ = self.coupling_phases
+        g = np.array([dim.g for dim in self.dimensions.values()])
+        return np.outer(g, g) * np.sin(θ[np.newaxis, :] - θ[:, np.newaxis])
+
+    @cached_property
+    def trap_dimension_indices(self):
+        """
+        For each trap (in order), the indices into `self.labels` of the dimensions of its bead
+        [list of int arrays]
+        """
+        trap_indices = [dim.trap_index for dim in self.dimensions.values()]
+        return [
+            np.flatnonzero(np.array(trap_indices) == trap_index)
+            for trap_index in sorted(set(trap_indices))
+        ]
+
+    def analytic_kernel(self, ω):
+        """
+        Frequency-dependent building blocks shared by every analytic-method function at ω
+
+        Eliminating the cavity field from the quantum Langevin equations
+            a(ω)   = χC(ω)·[ i·Σ Gjn·qjn(ω) + √κ·a_in]
+            a†(ω)  = χC*(-ω)·[-i·Σ Gjn*·qjn(ω) + √κ·a_in†]
+            qjn(ω) = μjn(ω)·[i(Gjn*·a + Gjn·a†) + ...] + √Γjn·Q_THERMjn(ω)
+        leaves, for the positions q (ordered as `self.labels`),
+            (W⁻¹ - iC)·q = sources,   C = iχC·G*Gᵀ - iχC*·GG†  (rank 2: the two light channels)
+        where W is the mechanical response matrix, block diagonal per bead (W = diag(μjn),
+        μjn = χjn(ω) - χjn*(-ω), when the dimensions of a bead are not coupled to each other).
+        Because C has rank 2, the cavity field only ever sees three collective response sums
+            D(0) = Gᵀ·W·G*,   D(2) = Gᵀ·W·G,   D(-2) = G*ᵀ·W·G*
+        and the determinant of the remaining 2×2 light-only problem is the normalisation
+            M_norm = 1 + ηm·D(0) - ξC·P,   P = D(0)² - D(2)·D(-2).
+
+        NOTE: P is NOT evaluated as D(0)² - D(2)·D(-2). When the frequency grid hits a mechanical
+        resonance exactly, |gjn²·μjn| ~ 1e13 rad/s for the toy parameters, and that subtraction
+        loses ~ε·|D(0)|², i.e. ~1e-9 of P. With unequal tweezer phases this error was then
+        amplified ~|Mjn| ~ 1e7 in the resonant dimension's position (where the thermal drive and
+        the cavity backaction nearly cancel), which was the 0.2-0.6% disagreement of the analytic
+        position PSDs with LAM. The identity
+            P = 2i·hᵀ·I·h̃,   h = W·G,   h̃ = W·G*,   I = `coupling_quadrature_overlap_matrix`
+        involves no such subtraction, since I is exactly zero between dimensions coupling to the
+        same quadrature. The same identity gives the brackets multiplying each dimension's
+        thermal noise in a and a† without cancellation:
+            F_Q·Gjn + F_Q†·Gjn*     = [G  - 2i·χC*(-ω)·Iᵀ·h ]jn
+            FF_Q·Gjn + FF_Q†·Gjn*   = [G* - 2i·χC(ω)·Iᵀ·h̃]jn
+
+        The result for the last ω requested is cached, since the analytic noise vectors call
+        D, P and M_norm several times per frequency.
+        [dict of complex arrays and scalars]
+        """
+        cached = getattr(self, '_analytic_kernel_cache', None)
+        if cached is not None and cached[0] == ω:
+            return cached[1]
+
+        χC, χC_star = self.cavity.χC(ω), np.conjugate(self.cavity.χC(-ω))
+        G = self.G_array
+        G_star = np.conjugate(G)
+        μ = np.array([dim.μm(ω) for dim in self.dimensions.values()])
+        I = self.coupling_quadrature_overlap_matrix
+
+        # W⁻¹ per bead, and its inverse W (diagonal: no coupling between the dimensions of a bead)
+        W_inv_blocks = [np.diag(1 / μ[indices]) for indices in self.trap_dimension_indices]
+        W = np.diag(μ)
+
+        h, h_tilde = W @ G, W @ G_star
+        D0 = G @ h_tilde
+        D2 = G @ h
+        Dm2 = G_star @ h_tilde
+        P = 2j * h @ I @ h_tilde
+
+        kernel = dict(
+            μ=μ,
+            W=W,
+            W_inv_blocks=W_inv_blocks,
+            h=h,
+            h_tilde=h_tilde,
+            D={0: D0, 2: D2, -2: Dm2},
+            P=P,
+            M_norm=1 + self.cavity.ηm(ω) * D0 - self.cavity.ξC(ω) * P,
+            # brackets multiplying each dimension's thermal noise in a and in a†
+            thermal_a=G - 2j * χC_star * (I.T @ h),
+            thermal_a_dag=G_star - 2j * χC * (I.T @ h_tilde),
+        )
+        self._analytic_kernel_cache = (ω, kernel)
+        return kernel
+
     def D(self, n, ω):
         """
         Phase-dependent collective coupling and mechanical susceptibility rate
+
+        D(0) = Σ |Gjn|²·μjn,   D(±2) = Σ Gjn^(±2)·μjn = Σ gjn²·μjn·exp(±2iθjn)
+        (see `analytic_kernel`; only n = 0, ±2 appear in the closed form)
         [complex 2π·Hz]
         """
-        return np.sum([
-            dim.g**2 * dim.μm(ω) * np.exp(self.tweezer_phase_sign_convention * 1j * n * dim.φ_coupling)
-            for dim in self.dimensions.values()
-        ])
+        if n not in (0, 2, -2):
+            raise ValueError(f'D(n) is only defined for n = 0, ±2, not {n=}')
+        return self.analytic_kernel(ω)['D'][n]
 
     def P(self, ω):
         """
         Phase-dependent function that equals zero when all phases are equal
+
+        P = D(0)² - D(2)·D(-2), evaluated in the cancellation-free form 2i·hᵀ·I·h̃ (see
+        `analytic_kernel`) which equals 4·Σ_(j<k) gj²·μj·gk²·μk·sin²(θj - θk) here.
         [complex (2π·Hz)²]
         """
-        return self.D(0, ω)**2 - self.D(2, ω) * self.D(-2, ω)
+        return self.analytic_kernel(ω)['P']
 
     def P_via_Pj(self, ω):
         """
@@ -1200,13 +1322,17 @@ class MultiTrap:
     def P_via_Pjk(self, ω):
         """
         Alternative definition of P as a sum of contributions from each pair of dimensions
+
+        Only pairs coupling to different quadratures contribute: pairs with equal coupling
+        phases θ (x and y on the same bead, or any two x/y dimensions in tweezers of equal phase)
+        give sin²(0) = 0 exactly and are skipped. Pairs on the SAME bead still contribute when
+        one of them is z, since z couples to the phase quadrature (θz - θx = π/2).
         [complex (2π·Hz)²]
         """
-        # TODO: could try and streamline this to take account of the fact that dimensions on the
-        # same particle will not contribute anything i.e. when n=m, φn-φm = 0
         return np.sum([
             self.Pjk(dim_pair, ω)
             for dim_pair in itertools.combinations(self.dimensions.values(), 2)
+            if dim_pair[0].φ_coupling != dim_pair[1].φ_coupling
         ])
 
     def Pjk(self, dim_pair, ω):
@@ -1226,12 +1352,17 @@ class MultiTrap:
     def M_norm(self, ω):
         """
         Normalisation function for transducing all input noises into the collective modes Q, Q†
+
+        M_norm = 1 + ηm·D(0) - ξC·P, i.e. the determinant of the 2×2 light-only problem.
+        NOTE: this used to show a larger relative difference than the alternative forms below
+        because P was evaluated as D(0)² - D(2)·D(-2), which cancels catastrophically on a
+        mechanical resonance (e.g. 7.8e-10 relative error at ω = Ωy2 for the 2×2
+        PHASE_DEPENDENT toy system). The alternative forms sum K(ω), which is already built from
+        sin² of phase differences. With P from `analytic_kernel` the error is at machine
+        precision.
         [complex]
         """
-        # TODO: why does this have larger relative difference to all other forms of M_norm?
-        # perhaps this is the cause of analytic methods failing on resonance...
-        # but switching it with M_norm_2 did not change the relative differences noticibly...
-        return 1 + self.cavity.ηm(ω) * self.D(0, ω) - self.cavity.ξC(ω) * self.P(ω)
+        return self.analytic_kernel(ω)['M_norm']
 
     def M_norm_2(self, ω):
         """
@@ -1429,7 +1560,6 @@ class MultiTrap:
         [complex 1/√(2π·Hz)]
         """
         iκg = 1j * np.sqrt(self.cavity.κ) / self.gbar
-        # return iκg * np.conjugate(self.cavity.χC(-ω)) * self.D(self.tweezer_phase_sign_convention * 2, ω)
         return iκg * np.conjugate(self.cavity.χC(-ω)) * self.D(2, ω)
 
     def FFa(self, ω):
@@ -1440,7 +1570,6 @@ class MultiTrap:
         [complex 1/√(2π·Hz)]
         """
         iκg = 1j * np.sqrt(self.cavity.κ) / self.gbar
-        # return iκg * self.cavity.χC(ω) * self.D(-self.tweezer_phase_sign_convention * 2, ω)
         return iκg * self.cavity.χC(ω) * self.D(-2, ω)
 
     def FQ(self, ω):
@@ -1459,7 +1588,6 @@ class MultiTrap:
         Q ∝ FQ_dag·Q_TOT†
         [complex]
         """
-        # return np.conjugate(self.cavity.χC(-ω)) * self.D(self.tweezer_phase_sign_convention * 2, ω)
         return np.conjugate(self.cavity.χC(-ω)) * self.D(2, ω)
 
     def FFQ(self, ω):
@@ -1469,7 +1597,6 @@ class MultiTrap:
         Q† ∝ FFQ·Q_TOT
         [complex]
         """
-        # return -self.cavity.χC(ω) * self.D(-self.tweezer_phase_sign_convention * 2, ω)
         return -self.cavity.χC(ω) * self.D(-2, ω)
 
     def FFQ_dag(self, ω):
@@ -1480,6 +1607,21 @@ class MultiTrap:
         [complex]
         """
         return 1 + self.cavity.χC(ω) * self.D(0, ω)
+
+    def analytic_thermal_noise_vector(self, coefficients, ω):
+        """
+        Noise vector Σ cjn·√Γjn·(χjn(ω)·bjn_in + χjn*(-ω)·bjn_in†) for per-dimension coefficients cjn
+
+        `coefficients` is ordered as `self.labels`; the light-noise entries (a_in, a_in†) are
+        left at zero for the caller to fill.
+        [complex 1/√(2π·Hz) × units of the coefficients]
+        """
+        noise_vector = np.zeros(self.num_operators, dtype=np.complex128)
+        for coefficient, dim in zip(coefficients, self.dimensions.values()):
+            index = dim.noise_index
+            noise_vector[index] = coefficient * np.sqrt(dim.Γ) * dim.χ(ω)
+            noise_vector[index + 1] = coefficient * np.sqrt(dim.Γ) * np.conjugate(dim.χ(-ω))
+        return noise_vector
 
     ################################################################################################
     # FUNCTIONS OF METHOD AND FREQUENCY
@@ -1498,51 +1640,20 @@ class MultiTrap:
             return a_hat, a_dag
 
         if method == QuantumLinearTheoryMethod.ANALYTIC_INSIDE_CAVITY:
-            sign = self.tweezer_phase_sign_convention
             gbar, κ = self.gbar, self.cavity.κ
             χC, χC_star = self.cavity.χC(ω), np.conjugate(self.cavity.χC(-ω))
-            ξC = χC * χC_star
             M_norm_m1 = self.M_norm(ω)**(-1)
-            F_Q, F_Q_dag = self.FQ(ω), self.FQ_dag(ω)
-            FF_Q, FF_Q_dag = self.FFQ(ω), self.FFQ_dag(ω)
+            kernel = self.analytic_kernel(ω)
 
-            a_hat = χC * np.array([
-                # a_in, a_in†
-                1j * gbar * M_norm_m1 * self.Fa(ω) + np.sqrt(κ),
-                1j * gbar * M_norm_m1 * self.Fa_dag(ω),
-                # https://stackoverflow.com/questions/37279653/unpacking-tuples-in-a-python-list-comprehension-cannot-use-the-operator
-                *list(itertools.chain.from_iterable(
-                    (
-                        # bjn_in
-                        1j * dim.g * np.sqrt(dim.Γ) * dim.χ(ω) * M_norm_m1
-                        *
-                        (F_Q * np.exp(sign * 1j * dim.φ_coupling) + F_Q_dag * np.exp(-sign * 1j * dim.φ_coupling)),
-                        # bjn_in†
-                        1j * dim.g * np.sqrt(dim.Γ) * np.conjugate(dim.χ(-ω)) * M_norm_m1
-                        *
-                        (F_Q * np.exp(sign * 1j * dim.φ_coupling) + F_Q_dag * np.exp(-sign * 1j * dim.φ_coupling)),
-                    )
-                    for dim in self.dimensions.values()
-                ))
-            ])
-            a_dag = χC_star * np.array([
-                # a_in, a_in†
-                -1j * gbar * M_norm_m1 * self.FFa(ω),
-                -1j * gbar * M_norm_m1 * self.FFa_dag(ω) + np.sqrt(κ),
-                *list(itertools.chain.from_iterable(
-                    (
-                        # bjn_in
-                        -1j * dim.g * np.sqrt(dim.Γ) * dim.χ(ω) * M_norm_m1
-                        *
-                        (FF_Q * np.exp(sign * 1j * dim.φ_coupling) + FF_Q_dag * np.exp(-sign * 1j * dim.φ_coupling)),
-                        # bjn_in†
-                        -1j * dim.g * np.sqrt(dim.Γ) * np.conjugate(dim.χ(-ω)) * M_norm_m1
-                        *
-                        (FF_Q * np.exp(sign * 1j * dim.φ_coupling) + FF_Q_dag * np.exp(-sign * 1j * dim.φ_coupling)),
-                    )
-                    for dim in self.dimensions.values()
-                ))
-            ])
+            # a ∝ χC·[F_Q·Gjn + F_Q†·Gjn*]·√Γjn·(χjn·bjn_in + χjn*·bjn_in†), etc. - with the bracket
+            # evaluated in the cancellation-free form of `analytic_kernel`
+            a_hat = self.analytic_thermal_noise_vector(1j * χC * M_norm_m1 * kernel['thermal_a'], ω)
+            a_hat[0] = χC * (1j * gbar * M_norm_m1 * self.Fa(ω) + np.sqrt(κ))
+            a_hat[1] = χC * 1j * gbar * M_norm_m1 * self.Fa_dag(ω)
+
+            a_dag = self.analytic_thermal_noise_vector(-1j * χC_star * M_norm_m1 * kernel['thermal_a_dag'], ω)
+            a_dag[0] = χC_star * -1j * gbar * M_norm_m1 * self.FFa(ω)
+            a_dag[1] = χC_star * (-1j * gbar * M_norm_m1 * self.FFa_dag(ω) + np.sqrt(κ))
             return a_hat, a_dag
 
         if method == QuantumLinearTheoryMethod.ANALYTIC_CAVITY_OUTPUT:
@@ -1595,61 +1706,22 @@ class MultiTrap:
         a_out†(ω) = -√κ·a†(ω) + a_in†(ω)
         """
         if method == QuantumLinearTheoryMethod.ANALYTIC_CAVITY_OUTPUT:
-            sign = self.tweezer_phase_sign_convention
             gbar, κ = self.gbar, self.cavity.κ
             χC, χC_star = self.cavity.χC(ω), np.conjugate(self.cavity.χC(-ω))
             M_norm_m1 = self.M_norm(ω)**(-1)
-            F_Q, F_Q_dag = self.FQ(ω), self.FQ_dag(ω)
-            FF_Q, FF_Q_dag = self.FFQ(ω), self.FFQ_dag(ω)
+            kernel = self.analytic_kernel(ω)
 
-            a_out_hat = np.array([
-                # a_in, a_in†
-                # 1 - κ * χC - 1j * gbar * np.sqrt(κ) * χC * M_norm_m1 * self.Fa(ω),
-                -1j * gbar * np.sqrt(κ) * χC * M_norm_m1 * self.Fa(ω) + 1 - κ * χC,
-                -1j * gbar * np.sqrt(κ) * χC * M_norm_m1 * self.Fa_dag(ω),
-                # https://stackoverflow.com/questions/37279653/unpacking-tuples-in-a-python-list-comprehension-cannot-use-the-operator
-                *list(itertools.chain.from_iterable(
-                    (
-                        # bjn_in
-                        -1j * np.sqrt(κ) * χC * M_norm_m1
-                        *
-                        (F_Q * np.exp(sign * 1j * dim.φ_coupling) + F_Q_dag * np.exp(-sign * 1j * dim.φ_coupling))
-                        *
-                        np.sqrt(dim.Γ) * dim.g * dim.χ(ω),
-                        # bjn_in†
-                        -1j * np.sqrt(κ) * χC * M_norm_m1
-                        *
-                        (F_Q * np.exp(sign * 1j * dim.φ_coupling) + F_Q_dag * np.exp(-sign * 1j * dim.φ_coupling))
-                        *
-                        np.sqrt(dim.Γ) * dim.g * np.conjugate(dim.χ(-ω)),
-                    )
-                    for dim in self.dimensions.values()
-                ))
-            ])
+            a_out_hat = self.analytic_thermal_noise_vector(
+                -1j * np.sqrt(κ) * χC * M_norm_m1 * kernel['thermal_a'], ω
+            )
+            a_out_hat[0] = -1j * gbar * np.sqrt(κ) * χC * M_norm_m1 * self.Fa(ω) + 1 - κ * χC
+            a_out_hat[1] = -1j * gbar * np.sqrt(κ) * χC * M_norm_m1 * self.Fa_dag(ω)
 
-            a_out_dag = np.array([
-                # a_in, a_in†
-                1j * gbar * np.sqrt(κ) * χC_star * M_norm_m1 * self.FFa(ω),
-                1j * gbar * np.sqrt(κ) * χC_star * M_norm_m1 * self.FFa_dag(ω) + 1 - κ * χC_star,
-                # 1 - κ * χC_star + 1j * gbar * np.sqrt(κ) * χC_star * M_norm_m1 * self.FFa_dag(ω),
-                *list(itertools.chain.from_iterable(
-                    (
-                        # bjn_in
-                        1j * np.sqrt(κ) * χC_star * M_norm_m1
-                        *
-                        (FF_Q * np.exp(sign * 1j * dim.φ_coupling) + FF_Q_dag * np.exp(-sign * 1j * dim.φ_coupling))
-                        *
-                        np.sqrt(dim.Γ) * dim.g * dim.χ(ω),
-                        # bjn_in†
-                        1j * np.sqrt(κ) * χC_star * M_norm_m1
-                        *
-                        (FF_Q * np.exp(sign * 1j * dim.φ_coupling) + FF_Q_dag * np.exp(-sign * 1j * dim.φ_coupling))
-                        *
-                        np.sqrt(dim.Γ) * dim.g * np.conjugate(dim.χ(-ω)),
-                    )
-                    for dim in self.dimensions.values()
-                ))
-            ])
+            a_out_dag = self.analytic_thermal_noise_vector(
+                1j * np.sqrt(κ) * χC_star * M_norm_m1 * kernel['thermal_a_dag'], ω
+            )
+            a_out_dag[0] = 1j * gbar * np.sqrt(κ) * χC_star * M_norm_m1 * self.FFa(ω)
+            a_out_dag[1] = 1j * gbar * np.sqrt(κ) * χC_star * M_norm_m1 * self.FFa_dag(ω) + 1 - κ * χC_star
             return a_out_hat, a_out_dag
 
         a_hat, a_dag = self.light_noise_vectors(method, ω)
@@ -1724,9 +1796,7 @@ class MultiTrap:
             return np.squeeze(np.asarray(hybrid_positions))
 
         if method.is_analytic:
-            for ii, label in enumerate(self.labels):
-                hybrid_positions[ii] = self.hybridised_position_noise_vector(label, method, ω)
-            return hybrid_positions
+            return self.analytic_hybridised_positions(method, ω)
 
     ################################################################################################
     # NOISE VECTORS FOR CALCULATING SPECTRA
@@ -1789,17 +1859,80 @@ class MultiTrap:
         heterodyne = a_out_hat
         return homodyne, heterodyne
 
+    def analytic_hybridised_positions(self, method, ω):
+        """
+        All hybridised position noise vectors from the analytic closed form
+
+        With H ≡ (W⁻¹ - iC)⁻¹ (see `analytic_kernel`), each dimension's thermal noise reaches the
+        positions through H·diag(1/μ), and the cavity input noise through the light force
+        i(Gjn*·a + Gjn·a†). The off-bead blocks of H follow from the Woodbury identity
+            H = W + W·Φ·W / M_norm,   Φ = iC - 4ξC·I·W·I
+        but on a bead's own block that sum cancels almost completely when one of its dimensions
+        is driven on resonance (|W| ~ |μ| is then ~1e7 times larger than the result). The
+        on-bead blocks are therefore taken from the Schur complement instead,
+            H_nn = (W_n⁻¹ - Φ_nn^(¬n) / M_norm^(¬n))⁻¹
+        where ^(¬n) means the same quantity built from all the OTHER beads only (with
+        Φ_nn^(¬n) = iC_nn - 4ξC·I_n,¬n·W_¬n·I_¬n,n). This is a small (axes × axes) inverse per
+        bead, so the closed form still never inverts an N×N matrix. For a single dimension
+        it reduces to H_jj = μj·M_norm^(¬j)/M_norm: the thermal response of a dimension is its
+        susceptibility, renormalised by the cavity with and without it.
+
+        The positions are the same for both analytic methods (ANALYTIC_INSIDE_CAVITY and
+        ANALYTIC_CAVITY_OUTPUT share this closed form). Rows are ordered as `self.labels`.
+        [complex 1/√(2π·Hz)]
+        """
+        kernel = self.analytic_kernel(ω)
+        κ = self.cavity.κ
+        χC, χC_star = self.cavity.χC(ω), np.conjugate(self.cavity.χC(-ω))
+        ηm, ξC = self.cavity.ηm(ω), self.cavity.ξC(ω)
+        G, G_star = self.G_array, np.conjugate(self.G_array)
+        I = self.coupling_quadrature_overlap_matrix
+        μ, W, M_norm = kernel['μ'], kernel['W'], kernel['M_norm']
+        h, h_tilde = kernel['h'], kernel['h_tilde']
+
+        positions = np.zeros((self.num_dimensions, self.num_operators), dtype=np.complex128)
+
+        # cavity input noise: light force i(G*·a + G·a†) per unit a_in and a_in†, simplified so that
+        # the resonant terms of D(0) and D(±2) do not have to cancel numerically
+        positions[:, 0] = W @ (1j * χC * np.sqrt(κ) / M_norm * (G_star + 2j * χC_star * (I.T @ h_tilde)))
+        positions[:, 1] = W @ (1j * χC_star * np.sqrt(κ) / M_norm * (G + 2j * χC * (I.T @ h)))
+
+        # thermal noise: H = (W⁻¹ - iC)⁻¹
+        C = 1j * χC * np.outer(G_star, G) - 1j * χC_star * np.outer(G, G_star)
+        Φ = 1j * C - 4 * ξC * (I @ W @ I)
+        H = W + W @ Φ @ W / M_norm
+
+        traps = self.trap_dimension_indices
+        D0_per_trap = np.array([G[n] @ h_tilde[n] for n in traps])
+        P_per_trap_pair = np.array([[2j * h[n] @ I[np.ix_(n, m)] @ h_tilde[m] for m in traps] for n in traps])
+        for ii, n in enumerate(traps):
+            others = np.concatenate([np.zeros(0, dtype=int)] + [m for jj, m in enumerate(traps) if jj != ii])
+            other_traps = [jj for jj in range(len(traps)) if jj != ii]
+            M_norm_without_n = (
+                1
+                + ηm * np.sum(D0_per_trap[other_traps])
+                - ξC * np.sum(P_per_trap_pair[np.ix_(other_traps, other_traps)])
+            )
+            Φ_nn_without_n = (
+                1j * C[np.ix_(n, n)]
+                - 4 * ξC * I[np.ix_(n, others)] @ W[np.ix_(others, others)] @ I[np.ix_(others, n)]
+            )
+            H[np.ix_(n, n)] = np.linalg.inv(kernel['W_inv_blocks'][ii] - Φ_nn_without_n / M_norm_without_n)
+
+        thermal_response = H / μ[np.newaxis, :]
+        for kk, dim in enumerate(self.dimensions.values()):
+            index = dim.noise_index
+            positions[:, index] = thermal_response[:, kk] * np.sqrt(dim.Γ) * dim.χ(ω)
+            positions[:, index + 1] = thermal_response[:, kk] * np.sqrt(dim.Γ) * np.conjugate(dim.χ(-ω))
+        return positions
+
     def hybridised_position_noise_vector(self, label, method, ω):
         """
         The noise vector for the specific hybridised position operator qjn
         qjn(ω) = bjn(ω) + bjn†(ω)
         """
         if method.is_analytic:
-            dim = self.dimensions[label]
-            sign = self.tweezer_phase_sign_convention
-            a_hat, a_dag = self.light_noise_vectors(method, ω)
-            An = a_hat * np.exp(-sign * 1j * dim.φ_coupling) + a_dag * np.exp(sign * 1j * dim.φ_coupling)
-            return 1j * dim.g * dim.μm(ω) * An + np.sqrt(dim.Γ) * dim.Q_THERM(ω)
+            return self.analytic_hybridised_positions(method, ω)[self.label_to_index[label]]
 
         if method == QuantumLinearTheoryMethod.POWER_SERIES_HYBRIDISATION:
             # NOTE: only fill out the adjugate row desired, ignoring the rest of the matrix
