@@ -19,3 +19,14 @@ __pycache__/
 notebooks/
 # NOTE: the three small power-series pickles the test suite needs are force-added
 # (`git add -f`) and so remain tracked despite the rule above - together they are 270 KB
+
+# fortran build artefacts
+fortran/build/
+*.o
+*.mod
+a.out
+*.x
+# the fortran folder also held a scratch notebook and compiled binaries locally
+fortran/*.ipynb
+fortran/symmetric_group
+fortran/symmetric_group_iterative
