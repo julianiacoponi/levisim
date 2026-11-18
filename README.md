@@ -46,6 +46,7 @@ S_hh = mtrap.homodyne_spectrum(QuantumLinearTheoryMethod.LINEAR_AMPLIFIER_MODEL)
 
 fig, ax = plt.subplots()
 ax.semilogy(mtrap.ω_range / kHz, S_hh)
+ax.margins(x=0)
 ax.set_xlabel(r'$\omega / 2\pi$ (kHz)')
 ax.set_ylabel(r'$S_{hh}(\omega)$ (shot-noise units)')
 fig.savefig('quickstart_homodyne.png')
