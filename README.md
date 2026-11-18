@@ -104,6 +104,65 @@ then open `docs/_build/html/index.html`. The pages are Markdown (MyST) under `do
 | (6) | `ANALYTIC_INSIDE_CAVITY` | closed form in the phase-dependent collective modes, intracavity field first | all |
 | (7) | `ANALYTIC_CAVITY_OUTPUT` | as (6), output field first | all |
 
+<!-- QLT-FLOWCHART-START -->
+How each method gets from the physical inputs to the spectra (names in `code` font are `MultiTrap` methods and properties; $`j`$ labels a motion, $`n`$ its particle, and $`2N+2`$ counts the input noises):
+
+```mermaid
+flowchart TD
+    IN["Tweezer, Bead, Gas, Cavity"] --> DIMS["MultiTrap: one Dimension per motion j_n<br/>coupling G_j = g_j e^(iφ_n), susceptibility χ_j(ω), damping Γ_j<br/>cavity: κ, Δ, χ_c(ω)"]
+
+    subgraph LAM["Linear amplifier model: (1) (2) (3)"]
+        A["drift_matrix A<br/>all 2N+2 operators"] --> T["T_matrix<br/>T(ω) = (−iωI − A)⁻¹"]
+        T --> C["c_noise_vector<br/>ĉ = T ĉ_in"]
+        T --> TNT["(3) TNT<br/>S_cc† = T N T†<br/>position PSDs only"]
+        C --> L1["(1) LAM<br/>q̂_j and â, â† sliced from ĉ"]
+        C --> L2["(2) Hybrid LAM<br/>q̂_j sliced from ĉ"]
+    end
+
+    subgraph HYB["Hybridisation: (4) (5)"]
+        R["R_jk(ω)<br/>light traced out"] --> D["derangement_matrix<br/>D = I − R"]
+        D --> H4["(4) Numerical<br/>H = D⁻¹"]
+        D --> H5["(5) Power series<br/>H = adj D / det D<br/>sums over derangement cycles"]
+        X1D["x1D_noise_vector<br/>q̂_j,1D: each motion alone"] --> QH
+        H4 --> QH["hybridised_positions<br/>x̂ = H x̂_1D"]
+        H5 --> QH
+    end
+
+    subgraph ANA["Analytic: (6) (7)"]
+        AN["gbar ḡ, M_norm<br/>transduction functions F, F̄"] --> QP["collective modes Q̂_φ, Q̂_φ†<br/>closed form"]
+        QP --> A6["(6) inside cavity<br/>â, â† first"]
+        QP --> A7["(7) cavity output<br/>â_out, â_out† first<br/>â recovered by reversing input–output"]
+        A6 --> QA["q̂_j = i g_j μ_j(ω) Ĉ(φ_n) + √Γ_j Q̃_therm"]
+        A7 --> QA
+    end
+
+    DIMS --> A
+    DIMS --> R
+    DIMS --> X1D
+    DIMS --> AN
+
+    L2 --> LREB["light_noise_vectors from positions<br/>â = χ_c(ω) [i Σ G_j q̂_j + √κ ã_in]<br/>â† = χ_c*(−ω) [−i Σ G_j* q̂_j + √κ ã_in†]"]
+    QH --> LREB
+
+    L1 --> OUT["output_light_noise_vectors<br/>â_out = −√κ â + ã_in"]
+    LREB --> OUT
+    A6 --> OUT
+    A7 --> OUT
+    OUT --> HN["homodyne_noise_vector: â_out† e^(iθ) + â_out e^(−iθ)<br/>heterodyne_noise_vector: â_out"]
+
+    L1 --> QPOS["position noise vectors q̂_j"]
+    L2 --> QPOS
+    QH --> QPOS
+    QA --> QPOS
+
+    HN --> S["noise_vector_to_power_spectrum, noise_vectors_to_cross_spectrum<br/>Σ over the 2N+2 inputs, weighted by quantum_factor_per_noise_operator"]
+    QPOS --> S
+    S --> SO["homodyne_spectrum, heterodyne_spectrum"]
+    S --> SQ["position PSDs and CSDs<br/>all_position_power_spectra, position_power_spectrum, position_cross_spectrum"]
+    TNT --> SQ
+```
+<!-- QLT-FLOWCHART-END -->
+
 The code pathway of each - which function computes which mathematical object, for each kind of spectrum and noise vector - used to be the body of this README. It now lives, in full, on the documentation's [*Calculation methods*](https://julianiacoponi.github.io/levisim/concepts/calculation_methods.html) page (source: [`docs/concepts/calculation_methods.md`](docs/concepts/calculation_methods.md)), together with which method to use when and how closely they agree. The conventions (detuning sign, Fourier convention, units, spectral-density normalisation) are on the [*Conventions*](docs/concepts/conventions.md) page.
 
 # Stochastic simulations of a bead in a free-space tweezer
