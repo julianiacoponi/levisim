@@ -86,7 +86,15 @@ class Gas:
         # "Root-mean square" (rms) value has factor = 3
         # "Most probable" (peak of Maxwell-Boltzmann) has a factor = 2
         # Expected value i.e. 〈.〉 has a factor = 8/π
-        # TODO: why do we use the expected value and not the other options?
+        # NOTE: answer to "why the expected value and not the other options?": it is not a free choice.
+        # The gas damping (Trap.Γth) is the Epstein (Phys. Rev. 23, 710 (1924)) free-molecular drag,
+        # as used by Cavalleri et al. (Phys. Lett. A 374, 3365 (2010)): the momentum delivered to the
+        # bead is set by the molecular flux onto its surface, n〈v〉/4 per unit area, and integrating
+        # over the Maxwell-Boltzmann distribution produces the mean speed 〈v〉 = √(8kBT/πm) itself.
+        # Indeed Γth = (1 + π/8) m_gas 〈v〉 P / (kB T ρ r) is exactly the Epstein drag force per unit
+        # momentum, F/(M v) = (1 + π/8)(4π/3) r² n m_gas 〈v〉 / M, for diffuse reflection with full
+        # accommodation. Using v_rms (factor 3) or v_p (factor 2) would mis-scale Γth by
+        # √(3π/8) = 1.085 or √(π/4) = 0.886.
         factor = 8 / π
         return np.sqrt(factor * kB * self.T / self.m)
 
