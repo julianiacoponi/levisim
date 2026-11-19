@@ -2,26 +2,19 @@
 
 `levisim` simulates levitated optomechanics. Its core is the quantum linear theory (QLT) of several optically levitated nanoparticles coupled by coherent scattering to one shared cavity mode: given the tweezers, the beads, the gas and the cavity, `MultiTrap` calculates the homodyne and heterodyne spectra of the cavity output and the power and cross spectral densities of every particle's motion, by any of seven calculation methods that can be checked against each other. Around that core are a stochastic (Runge-Kutta) simulator of a bead in a free-space tweezer, covariance-matrix tools for steady-state entanglement under a two-tone drive, and a Fortran reference implementation that the Python spectra are tested against.
 
-**Documentation:** <https://julianiacoponi.github.io/levisim/> - a user guide, the calculation methods in full, and an API reference generated from the docstrings. The site is built from `docs/` by GitHub Actions and goes live once GitHub Pages is enabled for the repository (*Settings → Pages → Source: GitHub Actions*); until then, build it locally as described [below](#building-the-docs).
+**Documentation:** <https://julianiacoponi.github.io/levisim/> - a user guide, the calculation methods in full, and an API reference generated from the docstrings.
 
 ## Installation
 
 ```sh
 git clone https://github.com/julianiacoponi/levisim.git
 cd levisim
-pip install numpy scipy matplotlib sympy loguru tqdm   # runtime dependencies
-pip install -e .                                       # editable install
+pip install .        # or `pip install -e .` to work on the code in place
 ```
 
-For now, use the **editable** install: `pyproject.toml` names only the top-level package, so a regular `pip install .` ships `levisim/__init__.py` without its subpackages and `import levisim` fails with `ModuleNotFoundError: No module named 'levisim.core'`. The packaging pull requests (#3, then #6) fix that and declare the dependencies, after which `pip install .` does both in one step. Alternatively, skip installing and put the repo root on `PYTHONPATH`.
+This needs Python 3.10 or newer and installs the runtime dependencies (numpy, scipy, matplotlib, sympy, loguru, tqdm). Four optional extras add conveniences that nothing in the physics needs: `elk` (the Elasticsearch client, see [Logging](#logging)), `notify` (desktop notifications when a long test run starts and finishes), `video` (OpenCV, for the image-comparison helpers) and `dev` (pytest and ruff), e.g. `pip install ".[elk,dev]"`.
 
-There are 2 layers of `levisim` directory because:
-- The git repo is called `levisim`
-- The python package inside the git repo is also called `levisim`
-
-### Note on importing from `levisim` into Python environments
-
-Importing `levisim` into a Python session (this could be a Python file, a Jupyter notebook, or the Python [REPL](https://en.wikipedia.org/wiki/Read–eval–print_loop) itself) whose 'current working directory' (`os.cwd()`) has inside it also a directory called `levisim` results in an empty import due to "[name shadowing](https://en.wikipedia.org/wiki/Variable_shadowing)". This provides a good reason to keep notebooks in a local `notebooks/` directory!
+**Name shadowing.** Do not start Python or Jupyter in the directory that *contains* your clone. There the repository folder `levisim/`, which has no `__init__.py`, shadows the package, and `import levisim` silently gives an empty namespace package. The repo root itself, or `notebooks/`, is fine.
 
 
 ## Quickstart
@@ -53,6 +46,7 @@ S_hh = mtrap.homodyne_spectrum(QuantumLinearTheoryMethod.LINEAR_AMPLIFIER_MODEL)
 
 fig, ax = plt.subplots()
 ax.semilogy(mtrap.ω_range / kHz, S_hh)
+ax.margins(x=0)
 ax.set_xlabel(r'$\omega / 2\pi$ (kHz)')
 ax.set_ylabel(r'$S_{hh}(\omega)$ (shot-noise units)')
 fig.savefig('quickstart_homodyne.png')
@@ -110,6 +104,65 @@ then open `docs/_build/html/index.html`. The pages are Markdown (MyST) under `do
 | (5) | `POWER_SERIES_HYBRIDISATION` | as (4), with $`\mathbf{D}^{-1}`$ written out as sums over derangement cycles | all |
 | (6) | `ANALYTIC_INSIDE_CAVITY` | closed form in the phase-dependent collective modes, intracavity field first | all |
 | (7) | `ANALYTIC_CAVITY_OUTPUT` | as (6), output field first | all |
+
+<!-- QLT-FLOWCHART-START -->
+How each method gets from the physical inputs to the spectra (names in `code` font are `MultiTrap` methods and properties; $`j`$ labels a motion, $`n`$ its particle, and $`2N+2`$ counts the input noises):
+
+```mermaid
+flowchart TD
+    IN["Tweezer, Bead, Gas, Cavity"] --> DIMS["MultiTrap: one Dimension per motion j_n<br/>coupling G_j = g_j e^(iφ_n), susceptibility χ_j(ω), damping Γ_j<br/>cavity: κ, Δ, χ_c(ω)"]
+
+    subgraph LAM["Linear amplifier model: (1) (2) (3)"]
+        A["drift_matrix A<br/>all 2N+2 operators"] --> T["T_matrix<br/>T(ω) = (−iωI − A)⁻¹"]
+        T --> C["c_noise_vector<br/>ĉ = T ĉ_in"]
+        T --> TNT["(3) TNT<br/>S_cc† = T N T†<br/>position PSDs only"]
+        C --> L1["(1) LAM<br/>q̂_j and â, â† sliced from ĉ"]
+        C --> L2["(2) Hybrid LAM<br/>q̂_j sliced from ĉ"]
+    end
+
+    subgraph HYB["Hybridisation: (4) (5)"]
+        R["R_jk(ω)<br/>light traced out"] --> D["derangement_matrix<br/>D = I − R"]
+        D --> H4["(4) Numerical<br/>H = D⁻¹"]
+        D --> H5["(5) Power series<br/>H = adj D / det D<br/>sums over derangement cycles"]
+        X1D["x1D_noise_vector<br/>q̂_j,1D: each motion alone"] --> QH
+        H4 --> QH["hybridised_positions<br/>x̂ = H x̂_1D"]
+        H5 --> QH
+    end
+
+    subgraph ANA["Analytic: (6) (7)"]
+        AN["gbar ḡ, M_norm<br/>transduction functions F, F̄"] --> QP["collective modes Q̂_φ, Q̂_φ†<br/>closed form"]
+        QP --> A6["(6) inside cavity<br/>â, â† first"]
+        QP --> A7["(7) cavity output<br/>â_out, â_out† first<br/>â recovered by reversing input–output"]
+        A6 --> QA["q̂_j = i g_j μ_j(ω) Ĉ(φ_n) + √Γ_j Q̃_therm"]
+        A7 --> QA
+    end
+
+    DIMS --> A
+    DIMS --> R
+    DIMS --> X1D
+    DIMS --> AN
+
+    L2 --> LREB["light_noise_vectors from positions<br/>â = χ_c(ω) [i Σ G_j q̂_j + √κ ã_in]<br/>â† = χ_c*(−ω) [−i Σ G_j* q̂_j + √κ ã_in†]"]
+    QH --> LREB
+
+    L1 --> OUT["output_light_noise_vectors<br/>â_out = −√κ â + ã_in"]
+    LREB --> OUT
+    A6 --> OUT
+    A7 --> OUT
+    OUT --> HN["homodyne_noise_vector: â_out e^(iθ) + â_out† e^(−iθ)<br/>heterodyne_noise_vector: â_out"]
+
+    L1 --> QPOS["position noise vectors q̂_j"]
+    L2 --> QPOS
+    QH --> QPOS
+    QA --> QPOS
+
+    HN --> S["noise_vector_to_power_spectrum, noise_vectors_to_cross_spectrum<br/>Σ over the 2N+2 inputs, weighted by quantum_factor_per_noise_operator"]
+    QPOS --> S
+    S --> SO["homodyne_spectrum, heterodyne_spectrum"]
+    S --> SQ["position PSDs and CSDs<br/>all_position_power_spectra, position_power_spectrum, position_cross_spectrum"]
+    TNT --> SQ
+```
+<!-- QLT-FLOWCHART-END -->
 
 The code pathway of each - which function computes which mathematical object, for each kind of spectrum and noise vector - used to be the body of this README. It now lives, in full, on the documentation's [*Calculation methods*](https://julianiacoponi.github.io/levisim/concepts/calculation_methods.html) page (source: [`docs/concepts/calculation_methods.md`](docs/concepts/calculation_methods.md)), together with which method to use when and how closely they agree. The conventions (detuning sign, Fourier convention, units, spectral-density normalisation) are on the [*Conventions*](docs/concepts/conventions.md) page.
 
@@ -204,6 +257,22 @@ Two more modules build such traps from the actual tweezer geometry:
 - A static mech-mech coupling does not help, and neither does leaving the node.
 - A second particle in the same cavity needs its sidebands kept apart. It is more useful as the other half of an inter-particle pair, with one tone per tweezer.
 
+# Logging
+
+`levisim` logs with [loguru](https://loguru.readthedocs.io). The console (stderr) shows WARNING and above: set `LEVISIM_LOG_LEVEL=INFO` (or `DEBUG`, `TRACE`, `OFF`) before importing `levisim`, or call `set_console_level('INFO')`, imported from `levisim.core.logger`, at any time. Every record from DEBUG up also goes to a rotating JSON-lines file, `~/.levisim/logs/levisim.jsonl` (`LEVISIM_LOG_DIR` moves it, `LEVISIM_LOG_FILE=0` turns it off), which `jq` reads directly.
+
+To browse the logs in Kibana without Docker, on an Apple-silicon Mac or on Linux:
+
+```sh
+levisim-logs install     # Elasticsearch + Kibana 9.5.6 into ~/.levisim/elk/, SHA-512 checked
+levisim-logs up          # start both, load the log file, create the Kibana data view
+levisim-logs open        # the Kibana Discover URL
+levisim-logs down        # stop both
+pip install ".[elk]"     # optional: also send each record to Elasticsearch as it is made
+```
+
+On an Intel Mac or on Windows, start the same stack with `docker compose up -d` (see [`docker-compose.yaml`](docker-compose.yaml)) and use `levisim-logs ingest` and `levisim-logs open` with it. The documentation's [*Logging*](docs/guide/logging.md) page covers both setups in full, the level each kind of message uses, and the file's fields.
+
 <!-- MIXINS-START -->
 # Planned refactor: mixins for `multitrap`
 
@@ -217,45 +286,10 @@ Two more modules build such traps from the actual tweezer geometry:
 The one real obstacle is that `hybridised_position_noise_vector` and `light_noise_vectors` are mutually recursive across mixins for the analytic methods - a position needs the light operators, which for Analytic Cavity Output come from the output operators, which need the collective modes. So the dispatch has to live on the base class rather than inside any one mixin.
 <!-- MIXINS-END -->
 
-<!-- LLM-DISCLAIMER-START -->
-# Disclaimer regarding use of LLMs
+# Use of LLMs
 
-While in early 2025 I dabbled with using ChatGPT and DeepSeek to give me starting points for certain more generic parts of this code (help with wrappers etc.) the only thing that remains of legitimate value that I gained from using those tools is the first attempt at the `docker-compose.yaml`, which I otherwise would have likely laboured a bit harder to do. Otherwise this code was proudly written without any LLM generated code :-)
+Parts of this repository were written by Claude (Anthropic) at the owner's request; [`DISCLAIMER.md`](DISCLAIMER.md) records which parts, and the owner's own statement.
 
-## October 2026 update
+# License
 
-That remains true of every commit on `main`. In one session I pointed Claude (Anthropic) at this repository, the untracked `notebooks/` folder and the `fortran/` folder, and asked it to propose fixes as pull requests. It opened a stack of them, and **this paragraph and the two sections above it are themselves part of that work** - so the claim above no longer covers the whole repository if any of those branches are merged. Each pull request description carries the same note.
-
-For the record, the things it found that I had not:
-
-- `pyproject.toml` shipped no subpackages, so `pip install levisim` produced a package that raised `ModuleNotFoundError: No module named 'levisim.core'` on import. Working from the repo root hid it completely.
-- `import levisim` could not succeed on a fresh clone at all: `shelf.py` built 17 `MultiTrap` instances at import time, several of which read power-series pickles from the untracked `notebooks/`.
-- Three latent `NameError`s - `Megasamples` for `megasamples`, a missing `colours_50` import, and a bare `k` where `self.k` was meant - each making its enclosing function raise on any call. None was reachable from anywhere in the repo, which is why they had survived.
-- `core/logger.py` added only an Elasticsearch sink and then logged at import, so with no ELK stack running every `import levisim` printed a traceback and **no `logger` call has ever reached the console**. That is why there are 83 `print()` calls in here.
-- Nine `cmplx()` calls in the Fortran had no `kind` argument, so every complex susceptibility $`\chi`$ was computed in **single precision** and widened back to double - a median relative error of 2e-7 in the reference data.
-- Three of the four build lines in the old `fortran/README.txt` did not compile, because the `num_traps` rename only reached three of the files.
-- `physics/kick.py` defined `info` twice, so `Kick.info` returned the string instead of printing it.
-- The comparison helpers default to `difficulty_level='very hard'`, a relative-difference threshold of 1e-12 that double-precision linear algebra cannot reach. This is why the test notebooks reported hundreds of failing method pairs that were not real disagreements - though the analytic-vs-rest disagreement on the **spectra** (mean 28-147%) is real, and is the thing the "BROKEN!" heading in `test_all_systems.ipynb` was correctly pointing at.
-
-It also could not fix, and I should: the `kappa_nano (Hz) 1.216e-86` that `NParticle.f90` prints, and the two `NOT SURE: CHECK!!!` susceptibilities in `3DEQRom.f90`.
-
-In a later session I asked it for a study of whether a two-tone drive can entangle the transverse motions. The four modules listed under *Steady-state entanglement of the transverse motions* above, their tests (`tests/test_gaussian_states.py`, `tests/test_two_tone.py`) and `docs/two_tone_entanglement/` are its work too, and the pull request that adds them says so.
-
-A third session followed that up, on the tones' polarisation, mech-mech coupling, the node position and a second particle. Its work includes:
-- `levisim.physics.focal_expansion` and `levisim.multiphysics.two_tone_traps`.
-- The per-tone couplings, `QuadraticPotential` terms and stored monodromy in `multitone`.
-- Their tests (`tests/test_focal_expansion.py`, `tests/test_two_tone_traps.py`).
-- `docs/two_tone_entanglement/polarisation_and_two_particles.*`.
-
-Its pull request says so too.
-
-A fourth session, in November 2026, polished the repository as a whole. Its work includes:
-- The general sections at the top of this README (overview, installation, quickstart, layout, tests, docs), the move of the calculation-method pathways from here into the documentation, the Sphinx documentation site under `docs/`, and the GitHub Actions workflows under `.github/`.
-- The resolution of the remaining `TODO` comments, either by implementing them or by answering them in place.
-- The generalisation of the analytic methods (6) and (7) to include the intra-particle couplings $`g_{jk}`$.
-- The section of this README on stochastic simulations of a bead in a free-space tweezer, and its documentation page.
-
-Each of its pull requests says so too.
-<!-- LLM-DISCLAIMER-END -->
-
-License chosen through [choosealicense.com](https://choosealicense.com)
+GNU General Public License v3.0 (see [`LICENSE`](LICENSE)), chosen through [choosealicense.com](https://choosealicense.com).

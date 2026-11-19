@@ -58,7 +58,7 @@ KICKS_DATA_PATH_ROOT = '/Users/julian/Downloads/jon-kick-data/Kicksforcalibratio
 
 def save_variable_to_pickle(variable, save_name='default.pickle'):
     """ Save any given python variable to a binary file """
-    logger.info(f'Saving variable to "{save_name}"')
+    logger.info('Saving variable to "{}"', save_name)
     file = open(save_name, 'wb')  # 'wb' = write binary
     pickle.dump(variable, file)
     file.close()
@@ -67,7 +67,7 @@ def save_variable_to_pickle(variable, save_name='default.pickle'):
 
 def load_variable_from_pickle(save_name):
     """ Load any previously saved python variable from a binary file """
-    logger.info(f'Loading variable from "{save_name}"')
+    logger.debug('Loading variable from "{}"', save_name)
     file = open(save_name, 'rb')  # 'rb' = read binary
     variable = pickle.load(file)
     file.close()
@@ -104,11 +104,11 @@ def apply_filter(signal, Nyquist_freq, centre_freq, filter_type, bandwidth, plot
     round-off problems of the transfer-function (b, a) form for high orders or narrow bands.
     [units of signal]
     """
-    logger.info(f'Signal has {len(signal)} samples and Nyquist frequency={Nyquist_freq / megaHz} MHz')
+    logger.debug('Filtering a signal of {} samples with Nyquist frequency {} MHz', len(signal), Nyquist_freq / megaHz)
 
     if filter_type == 'butter':
         order = 5
-        logger.info(f'Making a {bandwidth / kiloHz}kHz Butterworth bandpass filter, centred @ {centre_freq / kiloHz}kHz ({order}th order)')
+        logger.debug('Making a {} kHz Butterworth bandpass filter, centred at {} kHz (order {})', bandwidth / kiloHz, centre_freq / kiloHz, order)
         lowcut = centre_freq - bandwidth / 2
         highcut = centre_freq + bandwidth / 2
         low, high = lowcut / Nyquist_freq, highcut / Nyquist_freq
@@ -116,7 +116,7 @@ def apply_filter(signal, Nyquist_freq, centre_freq, filter_type, bandwidth, plot
 
     elif filter_type == 'iirpeak':
         Q_factor = centre_freq / bandwidth
-        logger.info(f'Making a {bandwidth / kiloHz}kHz linewidth IIR peak filter, centred @ {centre_freq / kiloHz}kHz (Q={Q_factor})')
+        logger.debug('Making a {} kHz linewidth IIR peak filter, centred at {} kHz (Q = {})', bandwidth / kiloHz, centre_freq / kiloHz, Q_factor)
         b, a = scipy.signal.iirpeak(centre_freq, Q_factor, fs=2*Nyquist_freq)
         sos = scipy.signal.tf2sos(b, a)
 
@@ -182,7 +182,7 @@ def kick_data_path(gain, run_choice):
     }
 
     assert 0 < int(run_choice) <= runs_per_gain[gain], f'For gain {gain} choice must be between 1 and {runs_per_gain[gain]}'
-    logger.info(f'Getting data path for kicks with gain {gain} -- run choice {run_choice}')
+    logger.debug('Getting the data path for kicks with gain {}, run choice {}', gain, run_choice)
     return folder_path_per_gain[gain] + file_name_root_per_gain[gain] + run_choice + '.bin'
 
 

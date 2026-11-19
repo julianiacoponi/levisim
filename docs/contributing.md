@@ -17,6 +17,75 @@ The convention is mild PEP 8, in service of human readability rather than rule c
   tables.
 - Write conjugate susceptibilities out as `χ*(-ω)`, not with a bar.
 
+## Logging levels
+
+levisim logs through loguru's `logger` (`from levisim.core.logger import logger`). Where the
+records go (the console, a JSON-lines log file, optionally Elasticsearch) is configured in
+`levisim/core/logger.py` and described in the README; by default the console shows WARNING and
+above only, so notebooks stay quiet unless something needs attention. To see more, call
+`set_console_level('INFO')` (or `'DEBUG'`, `'TRACE'`) after
+`from levisim.core.logger import set_console_level`, or set `LEVISIM_LOG_LEVEL` before importing
+levisim. Import the function by name: the attribute `levisim.core.logger` is the `logger` object
+itself, because `levisim/core/__init__.py` re-exports it.
+
+Choose the level by what the message tells a reader:
+
+| Level | Use it for | Examples in levisim |
+|---|---|---|
+| `TRACE` | per-frequency or inner-loop detail | each Runge-Kutta step of a `Simulation(rk_loop_debug=True)`; each temporary PNG deleted by the comparison helpers |
+| `DEBUG` | intermediate values that help when debugging: parameters, the branch a method takes, term counts, run times | every `info_str` of a new `MultiTrap`; `Numerical H for MultiTrap(2×2): inverting the 4×4 derangement matrix D = I - R numerically at each ω; ...`; `⏱️ "MultiTrap.homodyne_spectrum" executed in 0.1125 s` |
+| `INFO` | setup and progress milestones a user may want to follow | `Built MultiTrap(2×2): 4 dimensions (x1, y1, x2, y2) from toy parameters (Ω_model 'pairs'); ...`; `🧮 Calculating homodyne spectrum via LAM over 1600 ω points`; `Simulating 100000 time steps ...` and `Simulated 100000 samples ...`; loading or generating a power series |
+| `SUCCESS` | a requested result produced, or a check passed | `✅ All relative difference checks passed`; `Test.notify_end` when the test passed |
+| `WARNING` | suspicious input, ill-conditioning, fallbacks, deprecated usage: the code carries on, but a user should look | a drift matrix with an eigenvalue of positive real part (no steady state); a spectrum with NaN or infinite values; a linewidth estimate that fails and returns `None` |
+| `ERROR` | a failure that is about to raise, or that is caught and swallowed | `TNT LAM only gives position power spectra ...` just before the `ValueError`; a temporary file that could not be deleted |
+
+`CRITICAL` is not used. The conventions that go with the levels:
+
+- **No `print()` for diagnostics.** `print` stays only where printing *is* the documented
+  output: the `info` properties (which print their `info_str`), the `profiler` decorator's report
+  and the console banners of `core.testing.Test`. `tests/test_log_levels.py` scans the package
+  and fails on a `print` anywhere else.
+- **Format lazily.** Pass the values as arguments to a constant message, not as an f-string:
+  loguru only formats a record if some sink takes its level, so a call below every sink's level
+  costs little more than the function call. For a message that is expensive to build, pass a
+  callable through `logger.opt(lazy=True)`:
+
+  ```python
+  logger.debug('Δω = {:.3f} kHz over {} points', Δω / kHz, len(ω_range))
+  logger.opt(lazy=True).debug('Parameters of {}:\n{}', lambda: self, lambda: self.info_str)
+  ```
+
+  Never pass a variable string (one holding user data or an `info_str`) as the message while
+  also passing arguments, since its braces would be read as fields.
+- **Keep DEBUG and INFO out of hot loops.** The log file records DEBUG and above in every run,
+  so those calls are always formatted and written. Detail per frequency or per time step is
+  `TRACE`, formatted lazily, and behind a flag if building its arguments costs anything (as with
+  `rk_loop_debug`).
+- **One record per event**, with the numbers and their units in it, rather than several lines.
+  Values in levisim units print as `ω / kHz` (levisim's `kHz` is 2π·10³ rad/s, so this prints
+  ordinary kHz).
+- **Log before raising**: `logger.error(msg)` then `raise ValueError(msg)`, so the log file
+  records the failure too.
+- **Warnings must be cheap and must not change any result.** For example, the drift-matrix
+  stability check is one `eigvals` of the (2N + 2)-square drift matrix per `MultiTrap`, and the
+  spectrum methods check for non-finite values once per call, never per ω.
+- `debug=True` arguments (`Simulation(debug=True, rk_loop_debug=True)`,
+  `SpectralDensityEstimate.fit_PSD(debug=True)`, `timer(..., debug=True)`) add DEBUG or TRACE
+  records; they print nothing. Lower the console level to see them.
+
+To check log output in a test, add a temporary sink and remove it afterwards, as
+`tests/test_log_levels.py` does:
+
+```python
+records = []
+handler_id = logger.add(lambda message: records.append(message.record), level='TRACE')
+try:
+    mtrap.homodyne_spectrum(method)
+finally:
+    logger.remove(handler_id)
+assert not [r for r in records if r['level'].no >= logger.level('WARNING').no]
+```
+
 ## pre-commit and ruff
 
 ```sh
@@ -59,7 +128,7 @@ ruff check --select F821,F811,F541,F632,E711,E712,E714,E722 levisim tests
   ("fix ...", "add ...") and a body that says what changed, why, and how it was checked.
 - Pull requests are stacked: each branch starts from the one before it and is merged in order.
 - Changes written with an LLM say so in the commit message and the pull request description,
-  pointing to the README's *Disclaimer regarding use of LLMs* (see [Provenance](provenance.md)).
+  pointing to `DISCLAIMER.md` (see [Provenance](provenance.md)).
 
 ## Building these docs
 
@@ -106,10 +175,6 @@ renders on GitHub and on the site.
 
 **Publishing.** `.github/workflows/docs.yml` builds the site on every pull request, and on a
 push to `main` also deploys it to GitHub Pages at <https://julianiacoponi.github.io/levisim/>.
-Deployment needs a one-time setting in the repository: **Settings → Pages → Build and
-deployment → Source: GitHub Actions**. Until that is set, the build step still runs and the
-deploy step fails. Note that GitHub Pages on a private repository needs a paid plan, and the site
-of a private repository is public unless the plan allows restricting it.
 
 ```{include} ../README.md
 :start-after: <!-- MIXINS-START -->

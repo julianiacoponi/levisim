@@ -67,7 +67,7 @@ def calculate_area(mtrap, values):
     """
     Take the area under the given spectral values
     """
-    return np.trapz(values, mtrap.ω_range / Hz)
+    return np.trapezoid(values, mtrap.ω_range / Hz)
 
 
 def calculate_phonons_and_temperatures_from_PSD(mtrap, Sqq_values, label):
@@ -93,7 +93,7 @@ def calculate_phonons_and_temperatures_from_PSD(mtrap, Sqq_values, label):
     ħΩ = ħ * jn.Ω
 
     # convert Sqq(Ω)dΩ to Sqq(f)df with Hz = 2π
-    q_variance = np.trapz(Sqq_values, mtrap.ω_range / Hz)
+    q_variance = np.trapezoid(Sqq_values, mtrap.ω_range / Hz)
 
     # Convert to Q = q/q_zpf
     SQQ_area = q_variance / jn.zpf**2
@@ -111,7 +111,7 @@ def update_parameter_in_multitrap_kwargs(multitrap_kwargs, parameter, new_value)
     """
     Updates the given parameter from `Multitrap` instance to the given value
     """
-    logger.info(f'Updating {parameter.type} to {new_value / parameter.units:{parameter.format_specifier}}{parameter.unit_symbol}')
+    logger.debug(f'Updating {parameter.type} to {new_value / parameter.units:{parameter.format_specifier}}{parameter.unit_symbol}')
 
     if parameter.type == ParameterType.LIGHT_MECH_COUPLING:
         multitrap_kwargs['toy_params']['toy_gx'] = new_value
@@ -569,7 +569,7 @@ def animate_spectra(
 
     # make each animation 5s long
     interval = kwargs.get('animation_length_ms', 5_000) // len(frame.range)
-    logger.debug(f'animation frame {interval=} ms')
+    logger.debug('Animation frame interval = {} ms', interval)
     if kwargs.get('reverse_animation', False):
         animation_frames = animation_frames[::-1]
     animation = ArtistAnimation(fig, animation_frames, interval=interval, blit=False)

@@ -15,6 +15,7 @@ from levisim.core.units import (
     ms,
     Hz, kHz,
 )
+from levisim.core.logger import logger
 
 
 class SpectralDensityEstimate:
@@ -442,7 +443,11 @@ class SpectralDensityEstimate:
         try:
             return max(np.diff(self.freq_range[self.Γ_indices])) * Hz
         except ValueError:
-            print(f'ValueError: Γ_indices array may be empty? => len(Γ_indices)={len(self.Γ_indices)}')
+            logger.warning(
+                'Linewidth estimate failed: no pair of points found around the half maximum'
+                ' (len(Γ_indices) = {}), so returning None',
+                len(self.Γ_indices),
+            )
             return None
 
     @property
@@ -575,12 +580,10 @@ class SpectralDensityEstimate:
         # a PSD is real; the values are stored as complex (shared with the CSD code path)
         PSD_vals = np.real(PSD_vals)
         if debug:
-            print(f'fit_PSD: range={fit_range}')
-            print(f'fit_PSD: min(freqs)={min(freqs)}')
-            print(f'fit_PSD: max(freqs)={max(freqs)}')
-            print(f'fit_PSD: A0={A0:.3f}')
-            print(f'fit_PSD: Γ0={Γ0:.3f} Hz')
-            print(f'fit_PSD: Ω0={Ω0:.3f} Hz')
+            logger.debug(
+                'fit_PSD: range={}, freqs from {} to {} Hz, starting values A0={:.3f}, Γ0={:.3f} Hz, Ω0={:.3f} Hz',
+                fit_range, min(freqs), max(freqs), A0, Γ0, Ω0,
+            )
 
         self.fitting_func = responsefit_1_peak
         self.fit_params, self.fit_params_covariance_matrix = curve_fit(

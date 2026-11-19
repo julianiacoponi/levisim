@@ -1,4 +1,12 @@
-"""Quickstart: two particles in one cavity, homodyne spectrum of the cavity output"""
+"""
+Quickstart: two particles in one cavity, homodyne spectrum of the cavity output
+
+    python docs/guide/scripts/quickstart_homodyne.py
+
+Writes docs/guide/figures/quickstart_homodyne.png (the README's first figure).
+"""
+from pathlib import Path
+
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -7,6 +15,8 @@ from levisim.core.units import kHz
 from levisim.multiphysics.enums import QuantumLinearTheoryMethod
 from levisim.multiphysics.multitrap import MultiTrap
 from levisim.multiphysics.utils.shelf import DEFAULT_cavity_kwargs, DEFAULT_gas_kwargs
+
+FIGURES = Path(__file__).resolve().parents[1] / 'figures'
 
 set_plt_rcParams_to_xmgrace_style()
 
@@ -30,5 +40,6 @@ for label, dim in mtrap.dimensions.items():
 ax.set_xlabel(r'$\omega / 2\pi$ (kHz)')
 ax.set_ylabel(r'$S_{hh}(\omega)$ (shot-noise units)')
 ax.set_ylim(top=4 * S_hh.max())
+ax.margins(x=0)  # the curve runs to the left and right axes
 fig.tight_layout()
-fig.savefig('quickstart_homodyne.png', dpi=150)
+fig.savefig(FIGURES / 'quickstart_homodyne.png', dpi=150)
