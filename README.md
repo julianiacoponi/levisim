@@ -61,6 +61,16 @@ Frequencies are angular throughout: `kHz` is $`2\pi \times 10^3`$ rad/s, so divi
 
 **`MultiTrap` options.** A physical `MultiTrap` can also take its own `tweezers=[...]` and `beads=[...]` (one per particle), extra `Trap` arguments per particle (`trap_kwargs=[...]`, e.g. measured frequencies) and tweezer phases (`φn_dict`), and `photon_recoil=True` adds photon-recoil heating to the bath of each motion. See the guide page *Spectra of several particles in one cavity*.
 
+## Notebooks
+
+[`notebooks/`](notebooks/) holds worked examples as Jupyter notebooks, indexed with run times in [`notebooks/README.md`](notebooks/README.md):
+
+- [`demos/`](notebooks/demos/): six short walk-throughs of the API - the quickstart system in full, the seven calculation methods side by side, the stochastic free-space simulator, two-tone entanglement, the derangement power series, and parameter sweeps with stability checks;
+- [`showcase/`](notebooks/showcase/): a hundred particles in one cavity mode, solved by independent routes;
+- [`papers/`](notebooks/papers/): published experiments (Delić et al. 2020, Piotrowski et al. 2023, Vijayan et al. 2024) rebuilt from their stated parameters and compared with the papers' numbers.
+
+These three folders are stored with their outputs and rendered in the documentation's [notebook gallery](https://julianiacoponi.github.io/levisim/notebooks.html) (source: [`docs/notebooks.md`](docs/notebooks.md)). The research notebooks behind the thesis (`multiphysics/`, `physics/`, `archive/`) are stored without outputs.
+
 ## Repository layout
 
 | Path | Contents |
@@ -75,7 +85,7 @@ Frequencies are angular throughout: `kHz` is $`2\pi \times 10^3`$ rad/s, so divi
 | `tests/` | the pytest suite |
 | `fortran/` | the Fortran reference implementation and its reference `.dat` output (see `fortran/README.md`) |
 | `docs/` | the Sphinx documentation site, and the two-tone entanglement studies |
-| `notebooks/` | local notebooks - git-ignored |
+| `notebooks/` | Jupyter notebooks: demos, a showcase and paper reproductions (stored with their outputs), and the research and archive notebooks (outputs stripped); see `notebooks/README.md` |
 
 ## Running the tests
 

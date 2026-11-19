@@ -2,14 +2,51 @@
 # notebooks/ or levisim/. One path per line, relative to notebooks/, optionally followed by a
 # per-notebook time limit in seconds (default 600). Blank lines and # comments are ignored.
 #
-# Keep this list to notebooks that run in about a minute or less on a GitHub runner, with their
-# animation/size flags at the committed (quick) settings. Times in brackets were measured in the
-# in-process runner (Nov 2026) on a lightly loaded laptop.
+# The list holds the demo and paper-reproduction notebooks and every research or archive notebook
+# that runs in about half a minute or less, with their animation/size flags at the committed (quick)
+# settings. The bracketed times are the in-process execution times measured in Nov 2026 on an
+# 8-core laptop that was also running other work (starting a kernel and importing levisim add a few
+# seconds per notebook); a GitHub runner is slower, so each limit leaves a wide margin. Not listed, because
+# they take about a minute or more: showcase/many_particles_one_cavity (~80 s),
+# archive/mechanical-mode-comb/{supp_info_figures (~60 s), unequal_couplings_supp_info (~80 s)},
+# multiphysics/mechanical-mode-comb/plot_vertical_stack_varying_1_parameter (~40 s),
+# multiphysics/phase-dependence/{visualise_noise_vectors (~80 s), zoo_of_phase_dependent_functions (~50 s)}
+# and physics/focussing_optics_plots (~60 s).
 
-archive/animations/homodyne_slice.ipynb                    # [4 s]
-archive/animations/spectral_animations.ipynb               # [13 s, MAKE_ANIMATIONS = False]
-archive/animations/spectral_heatmap_single_frame.ipynb     # [14 s]
-archive/animations/3x2_truncated_heatmap.ipynb             # [38 s, MAKE_ANIMATIONS = False]
-physics/simulation_analysis.ipynb                          # [54 s]
+# demos
+demos/01_quickstart_cavity_spectra.ipynb         180   # [3 s]
+demos/02_seven_methods_agree.ipynb               180   # [8 s]
+demos/03_stochastic_free_space.ipynb             300   # [15 s]
+demos/04_two_tone_entanglement.ipynb             180   # [6 s]
+demos/05_derangements_and_hybridisation.ipynb    180   # [4 s]
+demos/06_parameter_sweeps.ipynb                  180   # [2 s]
 
-# demos/, showcase/ and papers/: the tracks that add them extend this list
+# paper reproductions
+papers/delic2020_ground_state_cooling.ipynb              180   # [1 s]
+papers/piotrowski2023_two_mode_ground_state.ipynb        180   # [3 s]
+papers/vijayan2024_cavity_mediated_interactions.ipynb    180   # [1 s]
+
+# archive (outputs stripped)
+archive/animations/3x2_truncated_heatmap.ipynb                     180   # [6 s]
+archive/animations/homodyne_slice.ipynb                            180   # [1 s]
+archive/animations/spectral_animations.ipynb                       180   # [5 s]
+archive/animations/spectral_heatmap_animations.ipynb               180   # [5 s]
+archive/animations/spectral_heatmap_single_frame.ipynb             180   # [7 s]
+archive/hybridisation/2x2_system.ipynb                             300   # [14 s]
+archive/hybridisation/uniform_hybridisation_approximation.ipynb    180   # [3 s]
+
+# multiphysics (outputs stripped)
+multiphysics/hybridisation/animate_hybridisation_solutions.ipynb                  300   # [16 s]
+multiphysics/hybridisation/animate_hybridisation_terms_grid.ipynb                 180   # [2 s]
+multiphysics/hybridisation/visualise_eigenvalues_of_hybridisation_matrix.ipynb    180   # [7 s]
+multiphysics/mechanical-mode-comb/reproduce_Figs_1_3_4_5.ipynb                    180   # [6 s]
+multiphysics/phase-dependence/analytics_vs_numerics.ipynb                         300   # [22 s]
+multiphysics/phase-dependence/visualise_spectra.ipynb                             180   # [8 s]
+multiphysics/power-series/animate_hybridisation_terms.ipynb                       180   # [1 s]
+multiphysics/power-series/animate_spectra_vs_Rjk_power_series.ipynb               300   # [30 s]
+multiphysics/power-series/hybridisation_number_theory.ipynb                       180   # [4 s]
+multiphysics/power-series/visualise_complex_functions.ipynb                       180   # [5 s]
+multiphysics/power-series/visualise_spectra_by_evaluation_order.ipynb             300   # [13 s]
+
+# physics (outputs stripped)
+physics/simulation_analysis.ipynb    300   # [34 s]

@@ -111,7 +111,8 @@ def build_notebook_gallery(gallery_dir=GALLERY_DIR, notebooks_dir=REPO_ROOT / 'n
             relative = notebook.relative_to(source)
             target = gallery_dir / folder / relative
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(close_notebook_heading_gaps(notebook.read_text(encoding='utf-8')), encoding='utf-8')
+            notebook_json = close_notebook_heading_gaps(notebook.read_text(encoding='utf-8'))
+            target.write_text(rewrite_notebook_docs_links(notebook_json, notebook, target), encoding='utf-8')
             entries.append(f'{folder}/{relative.with_suffix("").as_posix()}')
         if entries:
             body = '```{toctree}\n:maxdepth: 1\n\n' + '\n'.join(entries) + '\n```\n'
@@ -137,6 +138,40 @@ def close_notebook_heading_gaps(notebook_json):
     for cell, source in zip(cells, fixed):
         cell['source'] = source
     return json.dumps(nb, ensure_ascii=False, indent=1)
+
+
+# a Markdown link or image target: ](target) or ](target#anchor), relative paths only
+_RELATIVE_LINK = re.compile(r'\]\((?![a-zA-Z][a-zA-Z0-9+.-]*:|#|/)([^)\s#]+)(#[^)\s]*)?\)')
+
+
+def rewrite_notebook_docs_links(notebook_json, notebook, target, docs_dir=REPO_ROOT / 'docs'):
+    """
+    Re-points relative links from a notebook's markdown cells into docs/ so they work in its gallery copy
+
+    A notebook in notebooks/demos/ links a documentation page as ../../docs/guide/page.md, which is
+    right on GitHub; its copy in docs/_notebooks/demos/ needs ../../guide/page.md, or MyST cannot
+    resolve the cross-reference (a warning, which fails the -W build). Links to anything outside
+    docs/ (e.g. to a neighbouring gallery notebook) are left alone. The notebook in notebooks/ is
+    untouched.
+    """
+    def rewrite(match):
+        path, anchor = match.group(1), match.group(2) or ''
+        resolved = (notebook.parent / path).resolve()
+        if docs_dir not in resolved.parents:
+            return match.group(0)
+        return '](' + Path(os.path.relpath(resolved, target.parent)).as_posix() + anchor + ')'
+
+    nb = json.loads(notebook_json)
+    changed = False
+    for cell in nb.get('cells', []):
+        if cell.get('cell_type') != 'markdown':
+            continue
+        source = ''.join(cell['source']) if isinstance(cell['source'], list) else cell['source']
+        new_source = _RELATIVE_LINK.sub(rewrite, source)
+        if new_source != source:
+            cell['source'] = new_source
+            changed = True
+    return json.dumps(nb, ensure_ascii=False, indent=1) if changed else notebook_json
 
 
 # set LEVISIM_DOCS_OFFLINE=1 to build without fetching the intersphinx inventories
