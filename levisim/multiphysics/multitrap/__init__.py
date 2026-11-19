@@ -42,8 +42,6 @@ from levisim.multiphysics.multitrap.analytic_mixin import AnalyticMixin
 __all__ = [
     'MultiTrap',
     'ΩModel',
-    'POWER_SERIES_DATA_DIR',
-    'find_power_series_file',
 ]
 
 
