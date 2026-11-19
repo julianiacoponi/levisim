@@ -76,8 +76,9 @@ tail -f ~/.levisim/logs/levisim.jsonl | jq -r '"\(.timestamp) \(.level) \(.name)
 # warnings and above
 jq -c 'select(.level_no >= 30)' ~/.levisim/logs/levisim.jsonl
 
-# the records of one module
-jq -c 'select(.name == "levisim.multiphysics.multitrap")' ~/.levisim/logs/levisim.jsonl
+# the records of one module, or of a package (MultiTrap logs from the modules of levisim.multiphysics.multitrap)
+jq -c 'select(.name == "levisim.multiphysics.dimension")' ~/.levisim/logs/levisim.jsonl
+jq -c 'select(.name | startswith("levisim.multiphysics.multitrap"))' ~/.levisim/logs/levisim.jsonl
 ```
 
 or in Python, `pandas.read_json(path, lines=True)`. Rotated files sit next to the live one, as

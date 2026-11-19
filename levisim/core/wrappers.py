@@ -21,6 +21,20 @@ __all__ = [
 ]
 
 
+def _called_name(func, args):
+    """
+    The name a timed call is logged under: the function's qualified name, except for a method
+    called on an instance, which is named after the instance's class (so that a method a class
+    inherits from a base or mixin, e.g. `MultiTrap.homodyne_spectrum` from `MultiTrapBase`, is
+    logged under the class it was called on)
+    """
+    if args and '.' in func.__qualname__ and not isinstance(args[0], type):
+        cls = type(args[0])
+        if any(func.__name__ in vars(klass) for klass in cls.__mro__):
+            return f'{cls.__name__}.{func.__name__}'
+    return func.__qualname__
+
+
 def timer(enabled, debug=False):
     """
     A `perf_counter` timer decorator, which logs the run time of each call at DEBUG
@@ -38,8 +52,8 @@ def timer(enabled, debug=False):
             result = func(*args, **kwargs)
             end_time = time.perf_counter()
             if debug:
-                logger.debug('"{}" called with args={!r}, kwargs={!r}', func.__qualname__, args, kwargs)
-            logger.debug('⏱️ "{}" executed in {:.4f} s', func.__qualname__, end_time - start_time)
+                logger.debug('"{}" called with args={!r}, kwargs={!r}', _called_name(func, args), args, kwargs)
+            logger.debug('⏱️ "{}" executed in {:.4f} s', _called_name(func, args), end_time - start_time)
             return result
         return wrapper
     return decorator

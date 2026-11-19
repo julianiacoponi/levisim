@@ -77,7 +77,7 @@ These three folders are stored with their outputs and rendered in the documentat
 |---|---|
 | `levisim/core/` | units (angular: `Hz` is $`2\pi`$), physical constants, plotting style, logging, decorators |
 | `levisim/physics/` | single-trap physics: `Bead`, `Tweezer`, `Gas`, `Cavity`, `Trap`, `Kick`, and the focal-field expansion |
-| `levisim/multiphysics/` | `MultiTrap` (the multiparticle cavity QLT), `Dimension`, the hybridisation power series, covariance dynamics, multi-tone and two-tone drives |
+| `levisim/multiphysics/` | `MultiTrap` (the multiparticle cavity QLT, a base class and one mixin per family of methods in `multitrap/`), `Dimension`, the hybridisation power series, covariance dynamics, multi-tone and two-tone drives |
 | `levisim/multiphysics/enums/` | `QuantumLinearTheoryMethod`, `SpectrumType`, noise-vector and parameter enums |
 | `levisim/multiphysics/utils/` | `shelf` (default parameters and lazily built example systems), method comparison, animations |
 | `levisim/data/` | `Simulation` (stochastic simulation of a bead in a free-space tweezer), `Trace`, experiment data |
@@ -289,16 +289,19 @@ pip install ".[elk]"     # optional: also send each record to Elasticsearch as i
 On an Intel Mac or on Windows, start the same stack with `docker compose up -d` (see [`docker-compose.yaml`](docker-compose.yaml)) and use `levisim-logs ingest` and `levisim-logs open` with it. The documentation's [*Logging*](docs/guide/logging.md) page covers both setups in full, the level each kind of message uses, and the file's fields.
 
 <!-- MIXINS-START -->
-# Planned refactor: mixins for `multitrap`
+# Architecture of `MultiTrap`: a base class and three mixins
 
-`MultiTrap` currently branches on `method` inside each calculation function, which is why `multitrap.py` is over 2,000 lines. Mapping the branches out while documenting the above, the split falls fairly cleanly into three mixins plus the parts that are genuinely shared:
+`MultiTrap` lives in the package `levisim/multiphysics/multitrap/`, assembled as `class MultiTrap(LinearAmplifierMixin, HybridisationMixin, AnalyticMixin, MultiTrapBase)`, so that each family of calculation methods sits in its own module instead of being one branch inside every calculation function. `from levisim.multiphysics.multitrap import MultiTrap, ΩModel` works as before.
 
-- **`LinearAmplifierMixin`** - `(1)`, `(2)`, `(3)`. Owns `drift_matrix`, `T_matrix`, `c_noise_vector`, and the TNT-only `quantum_operator_spectral_density_array` / `position_power_spectra_array`. Takes positions and light operators by slicing $`\hat{\mathbf{c}}`$.
-- **`HybridisationMixin`** - `(4)`, `(5)`. Owns `derangement_matrix`, `hybridisation_matrix`, `deranged_determinant`, `deranged_adjugate_matrix` and `x1D_noise_vector`. Numerical and Power Series differ only in _how_ $`\mathbf{D}^{-1}`$ is obtained, so they are two methods on one mixin rather than two mixins.
-- **`AnalyticMixin`** - `(6)`, `(7)`. Owns `gbar`, `M_norm`, the $`\mathbb{F}`$ / $`\overline{\mathbb{F}}`$ transduction functions and `Q_phi`. Inside-cavity and cavity-output differ only in which end of the input-output relations is solved first.
-- **Shared on the base class** - `dimensions`, `cavity`, `ω_range`, `quantum_factor_per_noise_operator`, `noise_vector_to_power_spectrum`, `noise_vectors_to_cross_spectrum`, and the spectrum entry points that dispatch to a mixin.
+| Module | Class | Owns |
+|---|---|---|
+| `base.py` | `MultiTrapBase` | construction (trap physics or toy parameters, `dimensions`, `cavity`, `ω_range`, `quantum_factor_per_noise_operator`), the `info` functions, `noise_vector_to_power_spectrum` / `noise_vectors_to_cross_spectrum`, the spectrum entry points (`homodyne_spectrum`, `all_position_power_spectra`, `position_cross_spectrum`, ...) and the method dispatch (`light_noise_vectors`, `output_light_noise_vectors`, `hybridised_positions`, `hybridised_position_noise_vector`) |
+| `linear_amplifier_mixin.py` | `LinearAmplifierMixin` | methods `(1)`-`(3)`: `drift_matrix`, `T_matrix`, `c_noise_vector`, the positions and light operators sliced from $`\hat{\mathbf{c}}`$, and the TNT-only `quantum_operator_spectral_density_array` / `position_power_spectra_array` / `position_cross_spectra_array` |
+| `hybridisation_mixin.py` | `HybridisationMixin` | methods `(4)`, `(5)`: `derangement_matrix`, `hybridisation_matrix`, the hybridisation functions, `deranged_determinant`, `deranged_adjugate_matrix_entry`, `x1D_noise_vector` and the power-series loading; numerical and power series differ only in _how_ $`\mathbf{D}^{-1}`$ is obtained, so they are two branches of one mixin |
+| `analytic_mixin.py` | `AnalyticMixin` | methods `(6)`, `(7)`: `gbar`, `analytic_kernel`, `D`, `P`, `M_norm`, the $`\mathbb{F}`$ / $`\overline{\mathbb{F}}`$ transduction functions, the closed-form response matrix and noise vectors |
+| `omega_model.py` | `ΩModel` | the toy-parameter mechanical frequency models |
 
-The one real obstacle is that `hybridised_position_noise_vector` and `light_noise_vectors` are mutually recursive across mixins for the analytic methods - a position needs the light operators, which for Analytic Cavity Output come from the output operators, which need the collective modes. So the dispatch has to live on the base class rather than inside any one mixin.
+The dispatch lives on the base class because the light and the positions call each other across mixins: for the methods that solve for the positions first, the light comes from the positions (`light_noise_vectors_from_positions`), whereas for Analytic Cavity Output the intracavity light is obtained by reversing the input-output relations on the closed-form output light. The split moved code without changing any arithmetic: every spectrum, drift matrix and trap quantity of the physical and shelf systems by all seven methods is bit-identical to the single-module version.
 <!-- MIXINS-END -->
 
 # Use of LLMs
