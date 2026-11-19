@@ -15,6 +15,7 @@ from functools import cached_property, partial
 
 from levisim.core.constants import (
     π, ħ, kB,
+    c as speed_of_light,
     m_air,
     shot_noise,
     antinode, halfnode, node,
@@ -311,10 +312,10 @@ class MultiTrap:
         self.gas = Gas(**gas_kwargs)
 
         cavity_kwargs = kwargs.get('cavity_kwargs', {})
-        self.cavity = Cavity(**cavity_kwargs)
 
         self.toy_params = kwargs.get('toy_params')
         if self.toy_params:
+            self.cavity = Cavity(**cavity_kwargs)
             ignored = [name for name in (*PHYSICAL_PER_TRAP_KWARGS, 'φn_dict') if kwargs.get(name) is not None]
             if ignored:
                 logger.warning(
@@ -324,6 +325,8 @@ class MultiTrap:
             self.setup_toy_parameters(**self.toy_params)
         else:
             self.setup_levitated_physics(**kwargs)
+            # the cavity is built after the tweezers, so that it is driven at their frequency
+            self.cavity = Cavity(**self._cavity_kwargs_with_tweezer_frequency(cavity_kwargs))
             self.setup_linearised_coherent_scattering_physics(**kwargs)
             self.dimensions = {label: Dimension(self, label) for label in self.labels}
 
@@ -768,6 +771,38 @@ class MultiTrap:
             )
             for _ in range(self.num_traps)
         ]
+
+    def _cavity_kwargs_with_tweezer_frequency(self, cavity_kwargs):
+        """
+        The cavity keyword arguments, with `ωtw` set to the first tweezer's frequency unless given
+
+        The cavity mode is driven by the light the beads scatter from the tweezers, so its optical
+        frequency (ω = ωtw - Δ, hence k and the field per photon E0 in every coupling) must be the
+        tweezers'. `Cavity` alone defaults to `Tweezer().ω` (1064 nm), which used to apply even to
+        a MultiTrap of 1550 nm tweezers. One drive frequency is assumed for all traps, so a WARNING
+        is logged if the tweezers have different wavelengths, or if an explicit `ωtw` differs from
+        all of them by more than 1 ppm (multi-tone detunings shift it by only ~1e-9).
+        """
+        tweezer_ωs = np.array([tweezer.ω for tweezer in self.tweezers])
+        tweezer_λs_nm = ', '.join(f'{tweezer.λ / nm:.6g}' for tweezer in self.tweezers)
+        if not np.allclose(tweezer_ωs, tweezer_ωs[0], rtol=1e-12, atol=0):
+            logger.warning(
+                'The tweezers have different wavelengths (λ = {} nm), but the model has one cavity'
+                ' drive frequency: the cavity uses ωtw = {} (λ = {:.6g} nm) for every trap',
+                tweezer_λs_nm,
+                "cavity_kwargs['ωtw']" if 'ωtw' in cavity_kwargs else 'the first tweezer frequency',
+                2 * π * speed_of_light / cavity_kwargs.get('ωtw', tweezer_ωs[0]) / nm,
+            )
+        if 'ωtw' in cavity_kwargs:
+            ωtw = cavity_kwargs['ωtw']
+            if np.all(np.abs(tweezer_ωs / ωtw - 1) > 1e-6):
+                logger.warning(
+                    "cavity_kwargs['ωtw'] (λ = {:.6g} nm) differs from every tweezer frequency (λ = {} nm):"
+                    ' the cavity field and the couplings use the ωtw given',
+                    2 * π * speed_of_light / ωtw / nm, tweezer_λs_nm,
+                )
+            return cavity_kwargs
+        return {**cavity_kwargs, 'ωtw': tweezer_ωs[0]}
 
     def setup_linearised_coherent_scattering_physics(self, **kwargs):
         """
