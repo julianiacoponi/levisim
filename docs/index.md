@@ -26,6 +26,7 @@ getting_started
 concepts/conventions
 concepts/calculation_methods
 guide/index
+notebooks
 ```
 
 ```{toctree}

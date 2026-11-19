@@ -5,8 +5,10 @@ Build from the repo root with:
     pip install -r docs/requirements.txt
     sphinx-build -b html docs docs/_build/html
 """
+import json
 import os
 import re
+import shutil
 import sys
 from pathlib import Path
 
@@ -25,7 +27,9 @@ copyright = '2025-2026, Julian Iacoponi'
 # extensions
 # ----------------------------------------------------------------------------------------------
 extensions = [
-    'myst_parser',
+    # MyST-NB parses both the MyST Markdown pages and the gallery notebooks; it includes and
+    # configures myst_parser itself, so myst_parser must not also be listed here
+    'myst_nb',
     'sphinx.ext.autodoc',
     'sphinx.ext.autosummary',
     'sphinx.ext.napoleon',
@@ -35,7 +39,10 @@ extensions = [
     'sphinx_copybutton',
 ]
 
-source_suffix = {'.md': 'markdown', '.rst': 'restructuredtext'}
+# myst_nb parses .md and .ipynb ('myst-nb'). '.rst' must come first: autosummary writes its stub
+# pages with the first suffix it takes to be reStructuredText, and it cannot tell that the
+# 'myst-nb' parser is not (with '.md' first the API stubs came out as unparseable .md files)
+source_suffix = {'.rst': 'restructuredtext', '.md': 'myst-nb', '.ipynb': 'myst-nb'}
 root_doc = 'index'
 templates_path = ['_templates']
 html_static_path = ['_static']
@@ -65,6 +72,68 @@ napoleon_numpy_docstring = True
 # Cross-references to targets Sphinx cannot resolve are NOT errors. Most of the API's docstrings
 # are free-form physics notes rather than numpydoc, with no type annotations to resolve.
 nitpicky = False
+
+# ----------------------------------------------------------------------------------------------
+# notebook gallery (MyST-NB; notebooks are rendered as committed and never executed)
+# ----------------------------------------------------------------------------------------------
+nb_execution_mode = 'off'
+# progress bars and warnings that a notebook wrote to stderr are not part of the gallery
+nb_output_stderr = 'remove'
+nb_merge_streams = True
+
+# The demo, showcase and paper-reproduction notebooks live in notebooks/, outside this source
+# directory, so every build copies them into docs/_notebooks/ (git-ignored) and writes one index
+# page per folder there; notebooks.md links those pages. A folder with no notebooks yet gets a
+# page saying so, so the build stays warning-free while the gallery fills up.
+GALLERY_FOLDERS = {
+    'demos': ('Demos', 'Short, task-focused walk-throughs of the levisim API.'),
+    'showcase': ('Showcase', 'A tour of what levisim can do, in one notebook.'),
+    'papers': ('Paper reproductions', 'Figures from published papers, recomputed with levisim.'),
+}
+GALLERY_DIR = Path(__file__).resolve().parent / '_notebooks'
+
+
+def build_notebook_gallery(gallery_dir=GALLERY_DIR, notebooks_dir=REPO_ROOT / 'notebooks'):
+    """Copies notebooks/{demos,showcase,papers}/**/*.ipynb into `gallery_dir`, with an index page per folder"""
+    shutil.rmtree(gallery_dir, ignore_errors=True)
+    gallery_dir.mkdir(parents=True)
+    for folder, (title, purpose) in GALLERY_FOLDERS.items():
+        source = notebooks_dir / folder
+        notebooks = sorted(
+            path for path in source.rglob('*.ipynb') if '.ipynb_checkpoints' not in path.parts
+        ) if source.is_dir() else []
+        entries = []
+        for notebook in notebooks:
+            relative = notebook.relative_to(source)
+            target = gallery_dir / folder / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(close_notebook_heading_gaps(notebook.read_text(encoding='utf-8')), encoding='utf-8')
+            entries.append(f'{folder}/{relative.with_suffix("").as_posix()}')
+        if entries:
+            body = '```{toctree}\n:maxdepth: 1\n\n' + '\n'.join(entries) + '\n```\n'
+        else:
+            body = f'No notebooks in `notebooks/{folder}/` yet.\n'
+        (gallery_dir / f'{folder}.md').write_text(f'# {title}\n\n{purpose}\n\n{body}', encoding='utf-8')
+
+
+def close_notebook_heading_gaps(notebook_json):
+    """
+    Applies `close_heading_level_gaps` across all the markdown cells of a notebook, in order
+
+    Jupyter renders a skipped heading level (a title cell '# ...' followed by '### ...') happily;
+    MyST warns about it, which would fail the -W build. The notebook in notebooks/ is untouched.
+    """
+    nb = json.loads(notebook_json)
+    cells = [cell for cell in nb.get('cells', []) if cell.get('cell_type') == 'markdown']
+    if not cells:
+        return notebook_json
+    separator = '\x00levisim-cell-break\x00'
+    sources = [''.join(cell['source']) if isinstance(cell['source'], list) else cell['source'] for cell in cells]
+    fixed = close_heading_level_gaps(('\n' + separator + '\n').join(sources)).split('\n' + separator + '\n')
+    for cell, source in zip(cells, fixed):
+        cell['source'] = source
+    return json.dumps(nb, ensure_ascii=False, indent=1)
+
 
 # set LEVISIM_DOCS_OFFLINE=1 to build without fetching the intersphinx inventories
 intersphinx_mapping = {} if os.environ.get('LEVISIM_DOCS_OFFLINE') else {
@@ -158,6 +227,10 @@ def _point_reexported_instances_to_their_docs(app, what, name, obj, options, lin
         return
     package = cls.__module__.split('.')[0]
     lines[:] = [f'An instance of ``{cls.__qualname__}`` from ``{package}``; see that package\'s documentation.']
+
+
+# after close_heading_level_gaps is defined, which the gallery copies use
+build_notebook_gallery()
 
 
 def setup(app):
