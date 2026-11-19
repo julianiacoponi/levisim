@@ -59,6 +59,8 @@ Frequencies are angular throughout: `kHz` is $`2\pi \times 10^3`$ rad/s, so divi
 
 **Stability.** The tweezer phases matter. With unequal phases the cavity-mediated coupling between the particles gains a non-reciprocal part $`\propto \sin(\phi_2 - \phi_1)`$, which can anti-damp a hybridised mode of near-degenerate motions. For this system a phase difference $`|\phi_2 - \phi_1|`$ between about 54° and 126° (modulo 180°) makes it linearly unstable: with the second tweezer's built-in phase of 90° one $`y`$ mode grows at $`\mathrm{Re}\,\lambda = +2.7 \times 10^3`$ s⁻¹, which is why the quickstart sets 30°. `MultiTrap` logs a WARNING when its drift matrix has an eigenvalue with positive real part. The stationary spectra of such a system are still finite numbers, but they are formal: they describe no physical steady state.
 
+**`MultiTrap` options.** A physical `MultiTrap` can also take its own `tweezers=[...]` and `beads=[...]` (one per particle), extra `Trap` arguments per particle (`trap_kwargs=[...]`, e.g. measured frequencies) and tweezer phases (`φn_dict`), and `photon_recoil=True` adds photon-recoil heating to the bath of each motion. See the guide page *Spectra of several particles in one cavity*.
+
 ## Repository layout
 
 | Path | Contents |
