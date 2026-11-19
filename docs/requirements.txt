@@ -7,6 +7,8 @@ myst-nb>=1.0
 furo
 sphinx-copybutton
 sphinxcontrib-mermaid
+# the interactive versions of the README showcase figures (docs/_ext/showcase_plotly.py)
+plotly>=5.0
 numpy
 scipy
 matplotlib
