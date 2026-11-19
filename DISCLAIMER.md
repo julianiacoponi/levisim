@@ -7,6 +7,8 @@ I think it's fair to say that at some point in 2026 (probably not until mid-late
 
 Below  is a record of which parts of the repository Claude has since written at my request, and what those sessions found; each describes the repository as it was at the time.
 
+(For extra clarity, the last commit I made without Claude's help is https://github.com/julianiacoponi/levisim/commit/247fb55ee1f19ddab5675de858cb6490cbf2a249).
+
 ## October 2026 update
 
 That remains true of every commit on `main`. In one session I pointed Claude at this repository, the untracked `notebooks/` folder and the `fortran/` folder, and asked it to propose fixes as pull requests. It opened a stack of them, and **this update and the two sections that then sat above it in the README** (the code pathways of the noise vectors, now on the documentation's *Calculation methods* page, and the planned `multitrap` mixins refactor) **are themselves part of that work** - so the claim above no longer covers the whole repository if any of those branches are merged. Each pull request description carries the same note.
