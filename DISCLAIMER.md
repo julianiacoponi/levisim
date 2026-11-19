@@ -1,12 +1,15 @@
 # Disclaimer regarding use of LLMs
 
-The first paragraph below is the repository owner's own. The dated sections after it record which parts of the repository Claude (Anthropic) has since written at his request, and what those sessions found; each describes the repository as it was at the time.
+_"While in early 2025 I dabbled with using ChatGPT and DeepSeek to give me starting points for certain more generic parts of this code (help with wrappers etc.) the only thing that remains of legitimate value that I gained from using those tools is the first attempt at the `docker-compose.yaml`, which I otherwise would have likely laboured a bit harder to do. Otherwise this code was proudly written without any LLM generated code :-)_"
 
-While in early 2025 I dabbled with using ChatGPT and DeepSeek to give me starting points for certain more generic parts of this code (help with wrappers etc.) the only thing that remains of legitimate value that I gained from using those tools is the first attempt at the `docker-compose.yaml`, which I otherwise would have likely laboured a bit harder to do. Otherwise this code was proudly written without any LLM generated code :-)
+The above is what I had written before my access to Opus and then Fable in late October 2026.
+I think it's fair to say that at some point in 2026 (probably not until mid-late summer), these models became super-intelligent at coding and maths, and therefore most theoretical science (at least: they removed the main bottleneck of actually producing accurate work).
+
+Below  is a record of which parts of the repository Claude has since written at my request, and what those sessions found; each describes the repository as it was at the time.
 
 ## October 2026 update
 
-That remains true of every commit on `main`. In one session I pointed Claude (Anthropic) at this repository, the untracked `notebooks/` folder and the `fortran/` folder, and asked it to propose fixes as pull requests. It opened a stack of them, and **this update and the two sections that then sat above it in the README** (the code pathways of the noise vectors, now on the documentation's *Calculation methods* page, and the planned `multitrap` mixins refactor) **are themselves part of that work** - so the claim above no longer covers the whole repository if any of those branches are merged. Each pull request description carries the same note.
+That remains true of every commit on `main`. In one session I pointed Claude at this repository, the untracked `notebooks/` folder and the `fortran/` folder, and asked it to propose fixes as pull requests. It opened a stack of them, and **this update and the two sections that then sat above it in the README** (the code pathways of the noise vectors, now on the documentation's *Calculation methods* page, and the planned `multitrap` mixins refactor) **are themselves part of that work** - so the claim above no longer covers the whole repository if any of those branches are merged. Each pull request description carries the same note.
 
 For the record, the things it found that I had not:
 
