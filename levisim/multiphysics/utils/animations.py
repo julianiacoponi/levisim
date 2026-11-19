@@ -118,7 +118,23 @@ def update_parameter_in_multitrap_kwargs(multitrap_kwargs, parameter, new_value)
         multitrap_kwargs['toy_params']['toy_gy'] = new_value
 
     elif parameter.type == ParameterType.PHASE_OF_2ND_TWEEZER:
-        multitrap_kwargs['toy_params']['φ2'] = new_value
+        # MultiTrap reads tweezer phases from φn_dict (toy_params['φn_dict'] for toy parameters,
+        # the φn_dict keyword for physical ones); a 'φ2' key used to be set here, which MultiTrap
+        # ignores, so every frame showed the same system
+        toy_params = multitrap_kwargs.get('toy_params')
+        if toy_params:
+            # keep the other traps' phases, which default to φ_odd_n / φ_even_n
+            φn_dict = {
+                n: toy_params.get('φn_dict', {}).get(n, toy_params.get('φ_odd_n' if n % 2 else 'φ_even_n', 0.0))
+                for n in range(1, multitrap_kwargs['num_traps'] + 1)
+            }
+            φn_dict[2] = new_value
+            toy_params['φn_dict'] = φn_dict
+        else:
+            multitrap_kwargs['φn_dict'] = {**multitrap_kwargs.get('φn_dict', {}), 2: new_value}
+
+    elif parameter.type == ParameterType.HOMODYNE_ANGLE:
+        multitrap_kwargs['cavity_kwargs']['θhom'] = new_value
 
     elif parameter.type == ParameterType.CAVITY_DETUNING:
         multitrap_kwargs['cavity_kwargs']['Δ'] = new_value
@@ -140,6 +156,11 @@ def update_parameter_in_multitrap_kwargs(multitrap_kwargs, parameter, new_value)
             multitrap_kwargs['QLT_method'] = QuantumLinearTheoryMethod.NUMERICAL_HYBRIDISATION
         elif multitrap_kwargs['evaluation_order'] < num_dimensions:
             multitrap_kwargs['QLT_method'] = QuantumLinearTheoryMethod.POWER_SERIES_HYBRIDISATION
+
+    else:
+        msg = f'update_parameter_in_multitrap_kwargs does not know how to set {parameter.type!r}'
+        logger.error(msg)
+        raise ValueError(msg)
 
     return multitrap_kwargs
 
@@ -173,19 +194,22 @@ def calculate_spectra_across_y_range_for_one_frame(
     for yy, y_value in enumerate(y.range):
         multitrap_kwargs = update_parameter_in_multitrap_kwargs(multitrap_kwargs, y, y_value)
         mtrap = MultiTrap(**multitrap_kwargs)
+        # an EVALUATION_ORDER parameter picks the method through multitrap_kwargs['QLT_method']
+        QLT_method = multitrap_kwargs.get('QLT_method', method)
 
         if spectrum_type == SpectrumType.HETERODYNE:
-            spectra_across_y_range[:, yy] = mtrap.calculate_heterodyne_spectrum(mtrap.QLT_method)
+            spectra_across_y_range[:, yy] = mtrap.heterodyne_spectrum(QLT_method)
             area = calculate_area(mtrap, spectra_across_y_range[:, yy])
             area_across_y_range.append(area)
 
         elif spectrum_type == SpectrumType.HOMODYNE:
-            spectra_across_y_range[:, yy] = mtrap.calculate_homodyne_spectrum(mtrap.QLT_method)
+            spectra_across_y_range[:, yy] = mtrap.homodyne_spectrum(QLT_method)
             area = calculate_area(mtrap, spectra_across_y_range[:, yy])
             area_across_y_range.append(area)
 
         elif spectrum_type == SpectrumType.POSITION_PSD:
-            _, psd_dict = mtrap.calculate_all_position_power_spectra(mtrap.QLT_method)
+            # in m²/Hz, as calculate_phonons_and_temperatures_from_PSD divides by the zpf²
+            _, psd_dict = mtrap.all_position_power_spectra(QLT_method, zpf_scaled=False)
             spectra_across_y_range[:, yy] = psd_dict[PSD_label]
 
             ph, T_ph, T_var = calculate_phonons_and_temperatures_from_PSD(

@@ -2,7 +2,6 @@
 One mechanical degree of freedom (Dimension) of a multi-particle cavity trap
 """
 
-import sympy
 import numpy as np
 
 from levisim.core.constants import π, ħ, kB
@@ -15,6 +14,10 @@ from levisim.core.units import (
 __all__ = [
     'Dimension',
 ]
+
+
+# (cos, sin) of the coupling phases Φjn_CS = 0 (x, y) and ±π/2 (z), keyed by the multiple of π/2
+EXACT_COS_SIN_OF_QUARTER_TURNS = {0: (1.0, 0.0), 1: (0.0, 1.0), -1: (0.0, -1.0)}
 
 
 class Dimension:
@@ -158,18 +161,13 @@ class Dimension:
                     self.gxz = self.mech_mech_coupling('xz')
                     self.gyz = self.mech_mech_coupling('yz')
 
-        # all coupling rates apart from gz should be negative
-        for coupling in [
-            self.gxy,
-            self.gxz,
-            self.gyz,
-        ]:
-            assert coupling <= 0, f'(gxy, gxz, gyz) = ({self.gxy / kHz}, {self.gxz / kHz}, {self.gyz / kHz}) kHz'
-
-        if self.label[0] in ['x', 'y']:
-            assert self.g <= 0, f'g{label} = {self.g / kHz} kHz'
-        elif self.label[0] == 'z':
-            assert self.g >= 0, f'g{label} = {self.g / kHz} kHz'
+        # NOTE: the signs of the couplings are not fixed. For red detuning (Δ < 0), 0 ≤ θ ≤ π/2 and
+        # beads with 0 ≤ Φ ≤ π/2 they are gx, gy, gxy, gxz, gyz ≤ 0 and gz ≥ 0 (this used to be
+        # asserted), but gx, gy ∝ -sin(Φ), gz ∝ cos(Φ), gxy ∝ -A0·cos(Φ) and gxz, gyz ∝ -P0·sin(Φ) with
+        # A0 ∝ -Δ·∑cos(Φn) and P0 ∝ ∑cos(Φn), so a bead on the other side of a node or antinode, blue
+        # detuning, or toy couplings of either sign legitimately change them (and round-off gave
+        # gxz ~ +1e-16 at Φ = π). Only relative signs matter: e.g. Φ → π - Φ for every bead flips
+        # gz, gxz and gyz, which is the relabelling z → -z, and leaves every spectrum unchanged.
 
         ############################################################################################
         # DERIVED PROPERTIES
@@ -180,8 +178,11 @@ class Dimension:
         # Linear coupling of (x, y, z)-motion to the cavity light quadratures with tweezer phase included
         # [2π·Hz]
         if not self.φ:
-            # NOTE: only sympy gives exact cos(π/2) = 0
-            self.G = self.g * (float(sympy.cos(sign * Φjn_CS)) + 1j * float(sympy.sin(sign * Φjn_CS)))
+            # NOTE: exact cos and sin of Φjn_CS = 0 or ±π/2, since np.cos(π/2) = 6.1e-17 would leave a
+            # spurious amplitude-quadrature coupling of z (these are the values sympy gave, which was
+            # used here before; it took about a second to import)
+            cos_Φ, sin_Φ = EXACT_COS_SIN_OF_QUARTER_TURNS[round(sign * Φjn_CS / (π/2))]
+            self.G = self.g * (cos_Φ + 1j * sin_Φ)
         else:
             self.G = self.g * np.exp(sign * 1j * self.φ_coupling)
 
@@ -296,7 +297,7 @@ class Dimension:
         return {
             'x': 0,
             'y': 0,
-            'z': π/2 if self.φ else sympy.pi / 2,
+            'z': π/2,
         }[self.axis]
 
     @property

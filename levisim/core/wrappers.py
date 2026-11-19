@@ -96,6 +96,34 @@ def resolve_variable_path(bound_arguments, path):
     return obj
 
 
+def progress_bar_wanted_levels():
+    """
+    The console levels at which progress bars are drawn: INFO and anything more verbose
+
+    SUCCESS (severity 25) is less verbose than INFO (20), so, like WARNING, it draws no bars; this
+    matches the numeric rule in :func:`progress_bars_wanted` (severity <= 20).
+    """
+    return ('TRACE', 'DEBUG', 'INFO')
+
+
+def progress_bars_wanted():
+    """
+    Whether progress bars should be drawn now, decided at call time
+
+    True only if the console log level (see levisim.core.logger.set_console_level) is INFO or
+    more verbose, so that the default WARNING console keeps notebooks and scripts free of bars.
+    tqdm's own TQDM_DISABLE environment variable still switches them off regardless.
+    """
+    import sys
+    module = sys.modules.get('levisim.core.logger')
+    level = getattr(module, '_console_level', None)
+    if level is None:
+        return False
+    if isinstance(level, int):
+        return level <= 20
+    return str(level).upper() in progress_bar_wanted_levels()
+
+
 def progress_bar(loop_variable_path, enabled):
     """
     A decorator that shows a tqdm progress bar sized by an iterable the function loops over
@@ -117,7 +145,7 @@ def progress_bar(loop_variable_path, enabled):
 
         @wraps(func)
         def wrapper(*args, **kwargs):
-            if not enabled:
+            if not enabled or not progress_bars_wanted():
                 return func(*args, **kwargs)
 
             bound = signature.bind(*args, **kwargs)

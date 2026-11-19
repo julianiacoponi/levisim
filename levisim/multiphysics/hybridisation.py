@@ -6,7 +6,6 @@ import time
 
 from collections import namedtuple
 from itertools import permutations
-from sympy.combinatorics import Permutation
 
 from levisim.core.logger import logger
 from levisim.core.wrappers import timer, profiler, progress_bar
@@ -105,7 +104,7 @@ def term_string(term):
 
 
 def term_latex(term, with_ω=True):
-    """
+    r"""
     Generates latex that represents the hybridistaion term
     e.g. R_{x_{1} y{1}} \cdot R_{y{1}x{2}} \cdot R_{x{2}x{1}}
     """
@@ -118,20 +117,36 @@ def term_latex(term, with_ω=True):
         j_n, k_m = f'{j}_{{{n}}}', f'{k}_{{{m}}}'
 
         if with_ω:
-            dot = '(\omega)' if ii == len(term.pairs) - 1 else '(\omega) \cdot '
+            dot = r'(\omega)' if ii == len(term.pairs) - 1 else r'(\omega) \cdot '
         else:
-            dot = '' if ii == len(term.pairs) - 1 else ' \cdot '
+            dot = '' if ii == len(term.pairs) - 1 else r' \cdot '
 
         t_str = rf'{t_str}R_{{{j_n + k_m}}}{dot}'
     return t_str
+
+
+def alphabetic_subscript(index):
+    """
+    The subscript of the dimension with 0-based `index`: 'a', ..., 'z', then 'aa', 'ab', ..., 'az',
+    'ba', ..., 'zz', 'aaa', ... (as spreadsheet columns), so any number of dimensions has unique
+    subscripts and the first 26 are the single letters used before
+    """
+    alphabet = 'abcdefghijklmnopqrstuvwxyz'
+    subscript = ''
+    index += 1
+    while index > 0:
+        index, remainder = divmod(index - 1, 26)
+        subscript = alphabet[remainder] + subscript
+    return subscript
 
 
 def generate_subscripts_and_labels(num_traps, Cartesian_axes_per_trap):
     """
     Generates::
 
-        - the unique subscripts for the hybridisation functions
-            e.g. 'abcd' for 4 total dimensions
+        - the unique subscripts for the hybridisation functions, as a list
+            e.g. ['a', 'b', 'c', 'd'] for 4 total dimensions; after 'z' they continue
+            'aa', 'ab', ... (see `alphabetic_subscript`), so there is no limit of 26 dimensions
         - the unique labels of the form
             e.g. ['x1' 'y1', 'x2', 'y2'] for 2 particles xy
 
@@ -166,8 +181,7 @@ def generate_subscripts_and_labels(num_traps, Cartesian_axes_per_trap):
         1 = 1 particle, x (1x1)
     """
     n = num_traps * Cartesian_axes_per_trap
-    alphabet = 'abcdefghijklmnopqrstuvwxyz'
-    subscripts = alphabet[:n]
+    subscripts = [alphabetic_subscript(index) for index in range(n)]
 
     labels = []
     for trap_index in range(1, num_traps + 1):
@@ -187,6 +201,10 @@ def symmetric_group_with_min_fixed_points(
     """
     Generator for the symmetric group that produces permutations with a minimum number of fixed points
     """
+    # imported here, not at the top: sympy takes about a second to import and nothing else in a
+    # MultiTrap build needs it
+    from sympy.combinatorics import Permutation
+
     items = list(range(order))
     for perm_tuple in permutations(items):
 

@@ -3,7 +3,6 @@ General helpers: pickling, time arrays and slices, filtering, and generating and
 """
 
 import pickle
-import scipy.signal
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -104,6 +103,9 @@ def apply_filter(signal, Nyquist_freq, centre_freq, filter_type, bandwidth, plot
     round-off problems of the transfer-function (b, a) form for high orders or narrow bands.
     [units of signal]
     """
+    # imported here, not at the top: scipy.signal takes about half a second to import
+    import scipy.signal
+
     logger.debug('Filtering a signal of {} samples with Nyquist frequency {} MHz', len(signal), Nyquist_freq / megaHz)
 
     if filter_type == 'butter':

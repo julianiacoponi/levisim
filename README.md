@@ -26,7 +26,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from levisim.core.plotting import set_plt_rcParams_to_xmgrace_style
-from levisim.core.units import kHz
+from levisim.core.units import degrees, kHz
 from levisim.multiphysics.enums import QuantumLinearTheoryMethod
 from levisim.multiphysics.multitrap import MultiTrap
 from levisim.multiphysics.utils.shelf import DEFAULT_cavity_kwargs, DEFAULT_gas_kwargs
@@ -38,6 +38,7 @@ mtrap = MultiTrap(
     Cartesian_axes_per_trap=2,
     gas_kwargs=DEFAULT_gas_kwargs,          # 1e-6 mbar, 300 K
     cavity_kwargs=DEFAULT_cavity_kwargs,    # Δ = -2π × 450 kHz, L = 0.96 cm, finesse 40 000
+    φn_dict={2: 30*degrees},                # second tweezer's phase (built-in 90°: unstable, see below)
     ω_range=np.arange(125, 165, 0.02) * kHz,
 )
 mtrap.info
@@ -54,7 +55,21 @@ fig.savefig('quickstart_homodyne.png')
 
 ![Homodyne spectrum of two particles in one cavity](docs/guide/figures/quickstart_homodyne.png)
 
-Frequencies are angular throughout: `kHz` is $`2\pi \times 10^3`$ rad/s, so dividing by it gives ordinary kHz for plotting. The homodyne spectrum is in shot-noise units, tending to 1 far from the mechanical peaks. The dotted lines in the figure (drawn by the full script, `docs/guide/scripts/quickstart_homodyne.py`) mark each motion's bare trap frequency $`\Omega_{j_n}`$; the peaks sit below them because of the optical spring, and the two $`y`$ motions show as one peak because the cavity hybridises them.
+Frequencies are angular throughout: `kHz` is $`2\pi \times 10^3`$ rad/s, so dividing by it gives ordinary kHz for plotting. The homodyne spectrum is in shot-noise units, tending to 1 far from the mechanical peaks. The dotted lines in the figure (drawn by the full script, `docs/guide/scripts/quickstart_homodyne.py`) mark each motion's bare trap frequency $`\Omega_{j_n}`$. The two $`x`$ peaks, at 150.2 and 155.1 kHz, sit 1.9 and 1.3 kHz below their bare frequencies because of the optical spring. The cavity hybridises the two $`y`$ motions into a broad, bright mode at 131.7 kHz (linewidth 2.8 kHz) and a narrow, nearly dark mode at 136.5 kHz (linewidth 94 Hz).
+
+**Stability.** The tweezer phases matter. With unequal phases the cavity-mediated coupling between the particles gains a non-reciprocal part $`\propto \sin(\phi_2 - \phi_1)`$, which can anti-damp a hybridised mode of near-degenerate motions. For this system a phase difference $`|\phi_2 - \phi_1|`$ between about 54° and 126° (modulo 180°) makes it linearly unstable: with the second tweezer's built-in phase of 90° one $`y`$ mode grows at $`\mathrm{Re}\,\lambda = +2.7 \times 10^3`$ s⁻¹, which is why the quickstart sets 30°. `MultiTrap` logs a WARNING when its drift matrix has an eigenvalue with positive real part. The stationary spectra of such a system are still finite numbers, but they are formal: they describe no physical steady state.
+
+**`MultiTrap` options.** A physical `MultiTrap` can also take its own `tweezers=[...]` and `beads=[...]` (one per particle), extra `Trap` arguments per particle (`trap_kwargs=[...]`, e.g. measured frequencies) and tweezer phases (`φn_dict`), and `photon_recoil=True` adds photon-recoil heating to the bath of each motion. See the guide page *Spectra of several particles in one cavity*.
+
+## Notebooks
+
+[`notebooks/`](notebooks/) holds worked examples as Jupyter notebooks, indexed with run times in [`notebooks/README.md`](notebooks/README.md):
+
+- [`demos/`](notebooks/demos/): six short walk-throughs of the API - the quickstart system in full, the seven calculation methods side by side, the stochastic free-space simulator, two-tone entanglement, the derangement power series, and parameter sweeps with stability checks;
+- [`showcase/`](notebooks/showcase/): a hundred particles in one cavity mode, solved by independent routes;
+- [`papers/`](notebooks/papers/): published experiments (Delić et al. 2020, Piotrowski et al. 2023, Vijayan et al. 2024) rebuilt from their stated parameters and compared with the papers' numbers.
+
+These three folders are stored with their outputs and rendered in the documentation's [notebook gallery](https://julianiacoponi.github.io/levisim/notebooks.html) (source: [`docs/notebooks.md`](docs/notebooks.md)). The research notebooks behind the thesis (`multiphysics/`, `physics/`, `archive/`) are stored without outputs.
 
 ## Repository layout
 
@@ -70,7 +85,7 @@ Frequencies are angular throughout: `kHz` is $`2\pi \times 10^3`$ rad/s, so divi
 | `tests/` | the pytest suite |
 | `fortran/` | the Fortran reference implementation and its reference `.dat` output (see `fortran/README.md`) |
 | `docs/` | the Sphinx documentation site, and the two-tone entanglement studies |
-| `notebooks/` | local notebooks - git-ignored |
+| `notebooks/` | Jupyter notebooks: demos, a showcase and paper reproductions (stored with their outputs), and the research and archive notebooks (outputs stripped); see `notebooks/README.md` |
 
 ## Running the tests
 

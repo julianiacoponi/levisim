@@ -32,14 +32,24 @@ There are two ways to set the physical parameters:
 
 - **From the physics** (the default). Each particle is a silica bead in its own tweezer, and the
   trap frequencies and the linearised coherent-scattering couplings follow from the tweezer waist
-  and power, the bead and its position in the cavity standing wave. The tweezers and beads are
-  set in `MultiTrap.setup_levitated_physics` (up to nine particles, all at the cavity node).
+  and power, the bead and its position in the cavity standing wave. By default the tweezers and
+  beads are the nine built into `MultiTrap.setup_levitated_physics` (1064 nm, tweezer phases 0°,
+  90°, 20°, 30°, ..., 80°, all beads at the cavity node). To replace them, pass
+  `tweezers=[Tweezer(...), ...]` and `beads=[Bead(...), ...]` (one per particle, any number of
+  particles), `trap_kwargs=[dict(override_Ω_dict=...), ...]` for extra `Trap` arguments such as
+  measured frequencies, or `φn_dict={2: 30*degrees}` for some of the tweezer phases. The cavity is
+  driven at the first tweezer's frequency unless `cavity_kwargs` gives `ωtw`.
 - **From toy parameters**, by passing `toy_params=dict(...)`: the frequencies follow an
   `Ω_model` (`'pairs'`, `'equal spacing'`, `'equal spacing: simple'`, ...), and the couplings and
   tweezer phases are given directly (`gjn_dict`, `φn_dict`, or `toy_gx`, `toy_gy`, `toy_gz`).
   {mod}`levisim.multiphysics.utils.shelf` holds the sets used by the tests and the Fortran
   comparison, e.g. `FORTRAN_toy_params`, `PHASE_EQUAL_toy_params`, `PHASE_DEPENDENT_toy_params`
   and `OFF_NODE_toy_params_pairs`.
+
+**Photon recoil.** By default the bath of each motion is the gas alone. With physical parameters,
+`photon_recoil=True` adds the recoil heating of the scattered tweezer light,
+`Trap.photon_recoil_heating_rates`, by raising each bath occupation from $n$ to
+$n + \Gamma_\mathrm{rec}/\Gamma$; it dominates the gas heating at low pressure.
 
 **Choosing `ω_range`.** Spectra are evaluated point by point on this grid (angular frequency;
 see [Units](../concepts/conventions.md#units)). The mechanical peaks are only as wide as their
