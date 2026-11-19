@@ -33,6 +33,7 @@ The suite runs on every push and pull request through GitHub Actions
 | `test_gaussian_states.py` | two-mode Gaussian-state measures (PPT, log-negativity, discord, witnesses) |
 | `test_two_tone.py`, `test_two_tone_traps.py`, `test_focal_expansion.py` | covariance dynamics, the multi-tone Floquet drive, the two-tone scheme, and traps built from the focal field |
 | `test_readme_showcase.py` | the README showcase: each of its snippets runs (the stochastic one is marked `slow`), and the scripts in `docs/guide/scripts/showcase/` give the cancellation point, co-spectrum sign, bright-mode shift and stability window that the README quotes |
+| `test_output_modes.py` | covariance of filtered (propagating) cavity-output modes: frequency integration against a cascaded filter cavity, several cavity modes on one particle, and the worked example of Deplano et al. (2026), Eq. (S45) |
 
 Two markers are registered in `tests/conftest.py`: `slow` (more than about 10 s) and
 `needs_power_series` (needs a power-series pickle; the three small ones the suite uses are
