@@ -327,8 +327,13 @@ class Dimension:
         """
         Linear coupling of (x, y, z)-motion to the cavity light quadratures
         [2π·Hz]
+
+        The wavenumber k, polarisation angle θ and Rayleigh range (Gouy term of the z coupling) are
+        those of the light the bead scatters into the cavity, `Trap.drive_tweezer` (the trapping
+        tweezer unless the trap has a `cavity_drive_tweezer`). For a bead away from that tweezer's
+        focus the Gouy term is still the focal one, k - 1/zR; the x, y couplings do not have it.
         """
-        kc, θtw = self.trap.tweezer.k, self.trap.tweezer.θ
+        kc, θtw = self.trap.drive_tweezer.k, self.trap.drive_tweezer.θ
         ωdsinθ = self.trap.ωd * np.sin(θtw)
         Φ = self.trap.bead.Φ
         zpf = self.zero_point_fluctuation(self.axis)
@@ -342,7 +347,7 @@ class Dimension:
 
         # z couples to the phase quadrature, has positive sign!
         if self.axis == 'z':
-            kz = (kc - 1 / self.trap.tweezer.zR)
+            kz = (kc - 1 / self.trap.drive_tweezer.zR)
             return ωdsinθ * kz * zpf * np.cos(Φ)
 
     def mech_mech_coupling(self, axes):
@@ -350,7 +355,7 @@ class Dimension:
         Linear coupling between 2 axes of motion
         [2π·Hz]
         """
-        kc, θtw = self.trap.tweezer.k, self.trap.tweezer.θ
+        kc, θtw = self.trap.drive_tweezer.k, self.trap.drive_tweezer.θ
         Φ = self.trap.bead.Φ
 
         A0, P0 = self.multitrap.cavity.A0, self.multitrap.cavity.P0
@@ -365,13 +370,13 @@ class Dimension:
         if axes == 'xz':
             x_zpf = self.zero_point_fluctuation(axes[0])
             z_zpf = self.zero_point_fluctuation(axes[1])
-            kz = (kc - 1 / self.trap.tweezer.zR)
+            kz = (kc - 1 / self.trap.drive_tweezer.zR)
             return -P0 * ωdsinθ * (kc * x_zpf) * (kz * z_zpf) * np.sin(θtw) * np.sin(Φ)
 
         if axes == 'yz':
             y_zpf = self.zero_point_fluctuation(axes[0])
             z_zpf = self.zero_point_fluctuation(axes[1])
-            kz = (kc - 1 / self.trap.tweezer.zR)
+            kz = (kc - 1 / self.trap.drive_tweezer.zR)
             return -P0 * ωdsinθ * (kc * y_zpf) * (kz * z_zpf) * np.cos(θtw) * np.sin(Φ)
 
     def zero_point_fluctuation(self, axis):

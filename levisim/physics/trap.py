@@ -86,6 +86,26 @@ class Trap:
         # useful to get SpectralDensityTheory curves to match Experiment or Simulation data
         self.override_Ω_dict = kwargs.get('override_Ω_dict', None)
 
+        # ------------------------------------------------------------------------------------------
+        # Cavity drive: the light this bead coherently scatters into a cavity (used by MultiTrap)
+        # By default it is the trapping tweezer's own light at its focus. A bead can instead be
+        # trapped by one beam and scatter another into the cavity, e.g. a bead held by a 976 nm
+        # tweezer that the cavity does not resonate with, while it scatters the out-of-focus field
+        # of a 1064 nm tweezer that the cavity does (Pontin et al., PRL 135, 073602 (2025)):
+        #   - cavity_drive_tweezer: the `Tweezer` whose light the bead scatters into the cavity; its
+        #     wavelength, polarisation angle θ and focal field E0 enter the coherent-scattering
+        #     couplings in place of the trapping tweezer's (default: the trapping tweezer)
+        #   - cavity_drive_field_ratio: amplitude of that light at the bead relative to its focal
+        #     field E0, e.g. ζ < 1 for a bead away from the focus (default 1)
+        # The phase of the scattered light stays the trapping tweezer's φ (MultiTrap's φn_dict).
+        self.cavity_drive_tweezer = kwargs.get('cavity_drive_tweezer', None)
+        self.cavity_drive_field_ratio = float(kwargs.get('cavity_drive_field_ratio', 1.0))
+        if not np.isfinite(self.cavity_drive_field_ratio) or self.cavity_drive_field_ratio < 0:
+            raise ValueError(
+                f'cavity_drive_field_ratio must be a finite, non-negative amplitude ratio, not {self.cavity_drive_field_ratio}'
+                ' (put a phase into the tweezer phase φ instead)'
+            )
+
         # to calculate theoretical spectral density curves
         self.theory = SpectralDensityTheory(
             self.bead.m,
@@ -177,6 +197,26 @@ class Trap:
             f'\n    id(gas) = {id(self.gas)}'
             f'\n)'
         )
+
+    ################################################################################################
+    # CAVITY DRIVE (coherent scattering, used by MultiTrap)
+    # ----------------------------------------------------------------------------------------------
+    @property
+    def drive_tweezer(self):
+        """
+        The `Tweezer` whose light the bead coherently scatters into a cavity: `cavity_drive_tweezer`
+        if given, otherwise the trapping tweezer
+        """
+        return self.tweezer if self.cavity_drive_tweezer is None else self.cavity_drive_tweezer
+
+    @property
+    def cavity_drive_field(self):
+        """
+        Amplitude of the light the bead scatters into a cavity, at the bead:
+        `cavity_drive_field_ratio` × `drive_tweezer.E0` (the trapping tweezer's E0 by default)
+        [V/m]
+        """
+        return self.cavity_drive_field_ratio * self.drive_tweezer.E0
 
     ################################################################################################
     # DERIVED PROPERTIES
