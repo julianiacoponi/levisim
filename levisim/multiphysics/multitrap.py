@@ -2223,6 +2223,16 @@ class MultiTrap:
         if method.is_analytic:
             return self.analytic_hybridised_positions(method, ω)
 
+        # only the TNT LAM reaches here: it has no per-frequency noise vectors (it builds the
+        # position PSDs from T·N·T† in position_power_spectra_array), so say so instead of returning
+        # None, which failed later with an opaque matmul error in the light noise vectors
+        msg = (
+            f'{method!r} has no per-frequency noise vectors (it only gives position power spectra,'
+            ' through all_position_power_spectra): use another method for noise vectors and optical spectra'
+        )
+        logger.error(msg)
+        raise ValueError(msg)
+
     ################################################################################################
     # NOISE VECTORS FOR CALCULATING SPECTRA
     # ----------------------------------------------------------------------------------------------
