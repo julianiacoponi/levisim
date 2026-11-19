@@ -6,7 +6,6 @@ import time
 
 from collections import namedtuple
 from itertools import permutations
-from sympy.combinatorics import Permutation
 
 from levisim.core.logger import logger
 from levisim.core.wrappers import timer, profiler, progress_bar
@@ -202,6 +201,10 @@ def symmetric_group_with_min_fixed_points(
     """
     Generator for the symmetric group that produces permutations with a minimum number of fixed points
     """
+    # imported here, not at the top: sympy takes about a second to import and nothing else in a
+    # MultiTrap build needs it
+    from sympy.combinatorics import Permutation
+
     items = list(range(order))
     for perm_tuple in permutations(items):
 

@@ -5,7 +5,6 @@ Quantum linear theory of several levitated particles coherently scattering into 
 
 import os
 import time
-import sympy
 import numpy as np
 import itertools
 
