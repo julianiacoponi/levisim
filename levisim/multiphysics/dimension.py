@@ -158,18 +158,13 @@ class Dimension:
                     self.gxz = self.mech_mech_coupling('xz')
                     self.gyz = self.mech_mech_coupling('yz')
 
-        # all coupling rates apart from gz should be negative
-        for coupling in [
-            self.gxy,
-            self.gxz,
-            self.gyz,
-        ]:
-            assert coupling <= 0, f'(gxy, gxz, gyz) = ({self.gxy / kHz}, {self.gxz / kHz}, {self.gyz / kHz}) kHz'
-
-        if self.label[0] in ['x', 'y']:
-            assert self.g <= 0, f'g{label} = {self.g / kHz} kHz'
-        elif self.label[0] == 'z':
-            assert self.g >= 0, f'g{label} = {self.g / kHz} kHz'
+        # NOTE: the signs of the couplings are not fixed. For red detuning (Δ < 0), 0 ≤ θ ≤ π/2 and
+        # beads with 0 ≤ Φ ≤ π/2 they are gx, gy, gxy, gxz, gyz ≤ 0 and gz ≥ 0 (this used to be
+        # asserted), but gx, gy ∝ -sin(Φ), gz ∝ cos(Φ), gxy ∝ -A0·cos(Φ) and gxz, gyz ∝ -P0·sin(Φ) with
+        # A0 ∝ -Δ·∑cos(Φn) and P0 ∝ ∑cos(Φn), so a bead on the other side of a node or antinode, blue
+        # detuning, or toy couplings of either sign legitimately change them (and round-off gave
+        # gxz ~ +1e-16 at Φ = π). Only relative signs matter: e.g. Φ → π - Φ for every bead flips
+        # gz, gxz and gyz, which is the relabelling z → -z, and leaves every spectrum unchanged.
 
         ############################################################################################
         # DERIVED PROPERTIES
