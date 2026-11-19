@@ -33,8 +33,9 @@ def test_built_in_phases_give_one_growing_mode():
     assert mtrap.max_growth_rate == pytest.approx(2677.5, rel=1e-4)
     [(Ω, rate)] = mtrap.unstable_modes
     assert Ω / kHz == pytest.approx(134.92, abs=0.01)
-    assert rate == mtrap.max_growth_rate
-    assert mtrap.least_stable_mode == (Ω, rate)
+    # the two members of a conjugate pair agree only to round-off, and either can come first
+    assert rate == pytest.approx(mtrap.max_growth_rate, rel=1e-9)
+    assert mtrap.least_stable_mode == pytest.approx((Ω, rate), rel=1e-9)
     with pytest.raises(Exception):
         steady_state_covariance(mtrap)
 
