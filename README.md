@@ -26,7 +26,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from levisim.core.plotting import set_plt_rcParams_to_xmgrace_style
-from levisim.core.units import kHz
+from levisim.core.units import degrees, kHz
 from levisim.multiphysics.enums import QuantumLinearTheoryMethod
 from levisim.multiphysics.multitrap import MultiTrap
 from levisim.multiphysics.utils.shelf import DEFAULT_cavity_kwargs, DEFAULT_gas_kwargs
@@ -38,6 +38,7 @@ mtrap = MultiTrap(
     Cartesian_axes_per_trap=2,
     gas_kwargs=DEFAULT_gas_kwargs,          # 1e-6 mbar, 300 K
     cavity_kwargs=DEFAULT_cavity_kwargs,    # Δ = -2π × 450 kHz, L = 0.96 cm, finesse 40 000
+    φn_dict={2: 30*degrees},                # second tweezer's phase (built-in 90°: unstable, see below)
     ω_range=np.arange(125, 165, 0.02) * kHz,
 )
 mtrap.info
@@ -54,7 +55,9 @@ fig.savefig('quickstart_homodyne.png')
 
 ![Homodyne spectrum of two particles in one cavity](docs/guide/figures/quickstart_homodyne.png)
 
-Frequencies are angular throughout: `kHz` is $`2\pi \times 10^3`$ rad/s, so dividing by it gives ordinary kHz for plotting. The homodyne spectrum is in shot-noise units, tending to 1 far from the mechanical peaks. The dotted lines in the figure (drawn by the full script, `docs/guide/scripts/quickstart_homodyne.py`) mark each motion's bare trap frequency $`\Omega_{j_n}`$; the peaks sit below them because of the optical spring, and the two $`y`$ motions show as one peak because the cavity hybridises them.
+Frequencies are angular throughout: `kHz` is $`2\pi \times 10^3`$ rad/s, so dividing by it gives ordinary kHz for plotting. The homodyne spectrum is in shot-noise units, tending to 1 far from the mechanical peaks. The dotted lines in the figure (drawn by the full script, `docs/guide/scripts/quickstart_homodyne.py`) mark each motion's bare trap frequency $`\Omega_{j_n}`$. The two $`x`$ peaks, at 150.2 and 155.1 kHz, sit 1.9 and 1.3 kHz below their bare frequencies because of the optical spring. The cavity hybridises the two $`y`$ motions into a broad, bright mode at 131.7 kHz (linewidth 2.8 kHz) and a narrow, nearly dark mode at 136.5 kHz (linewidth 94 Hz).
+
+**Stability.** The tweezer phases matter. With unequal phases the cavity-mediated coupling between the particles gains a non-reciprocal part $`\propto \sin(\phi_2 - \phi_1)`$, which can anti-damp a hybridised mode of near-degenerate motions. For this system a phase difference $`|\phi_2 - \phi_1|`$ between about 54° and 126° (modulo 180°) makes it linearly unstable: with the second tweezer's built-in phase of 90° one $`y`$ mode grows at $`\mathrm{Re}\,\lambda = +2.7 \times 10^3`$ s⁻¹, which is why the quickstart sets 30°. `MultiTrap` logs a WARNING when its drift matrix has an eigenvalue with positive real part. The stationary spectra of such a system are still finite numbers, but they are formal: they describe no physical steady state.
 
 ## Repository layout
 
