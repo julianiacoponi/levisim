@@ -126,12 +126,28 @@ def term_latex(term, with_ω=True):
     return t_str
 
 
+def alphabetic_subscript(index):
+    """
+    The subscript of the dimension with 0-based `index`: 'a', ..., 'z', then 'aa', 'ab', ..., 'az',
+    'ba', ..., 'zz', 'aaa', ... (as spreadsheet columns), so any number of dimensions has unique
+    subscripts and the first 26 are the single letters used before
+    """
+    alphabet = 'abcdefghijklmnopqrstuvwxyz'
+    subscript = ''
+    index += 1
+    while index > 0:
+        index, remainder = divmod(index - 1, 26)
+        subscript = alphabet[remainder] + subscript
+    return subscript
+
+
 def generate_subscripts_and_labels(num_traps, Cartesian_axes_per_trap):
     """
     Generates::
 
-        - the unique subscripts for the hybridisation functions
-            e.g. 'abcd' for 4 total dimensions
+        - the unique subscripts for the hybridisation functions, as a list
+            e.g. ['a', 'b', 'c', 'd'] for 4 total dimensions; after 'z' they continue
+            'aa', 'ab', ... (see `alphabetic_subscript`), so there is no limit of 26 dimensions
         - the unique labels of the form
             e.g. ['x1' 'y1', 'x2', 'y2'] for 2 particles xy
 
@@ -166,8 +182,7 @@ def generate_subscripts_and_labels(num_traps, Cartesian_axes_per_trap):
         1 = 1 particle, x (1x1)
     """
     n = num_traps * Cartesian_axes_per_trap
-    alphabet = 'abcdefghijklmnopqrstuvwxyz'
-    subscripts = alphabet[:n]
+    subscripts = [alphabetic_subscript(index) for index in range(n)]
 
     labels = []
     for trap_index in range(1, num_traps + 1):
