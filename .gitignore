@@ -13,6 +13,8 @@ __pycache__/
 
 # images generated for in-code comparisons
 *.png
+# the figures of the docs pages, made by the scripts next to them
+!docs/**/figures/*.png
 
 # notebooks are tracked (see notebooks/README.md). Research and archive notebooks are committed
 # with their outputs stripped (nbstripout in .pre-commit-config.yaml); demo and paper notebooks

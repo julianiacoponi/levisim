@@ -6,7 +6,8 @@ stationary state of the linearised Langevin equations $\dot{\hat{\mathbf c}} = \
 \hat{\mathbf c} + \hat{\mathbf c}_\text{in}$. That state exists only if every eigenvalue $\lambda$ of
 the drift matrix $\mathbf A$ has a negative real part. If one does not, the mode it belongs to grows
 as $e^{\mathrm{Re}\,\lambda\, t}$ until the linearisation breaks down, while the spectra are still
-finite numbers that describe nothing physical. This page shows how to check, and which of the ready-made systems are unstable.
+finite numbers that describe nothing physical
+([Eigenvalue stability of coupled resonators](../concepts/stability.md) explains why). This page shows how to check, and which of the ready-made systems are unstable.
 
 ## The stability report
 
