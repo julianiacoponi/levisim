@@ -88,3 +88,19 @@ def test_progress_bars_follow_the_console_level(capsys):
     assert progress_bars_wanted()
     assert Looper().method() == 21
     assert 'Looping through' in capsys.readouterr().err
+
+
+@pytest.mark.parametrize('level, wanted', [
+    ('TRACE', True), ('DEBUG', True), ('INFO', True), ('SUCCESS', False), ('WARNING', False), ('ERROR', False),
+    (5, True), (20, True), (25, False), (30, False),
+])
+def test_progress_bars_are_drawn_at_info_or_more_verbose_only(level, wanted):
+    """By name or by severity, the same rule: INFO (20) or more verbose; SUCCESS (25) is not"""
+    import sys
+    logger_module = sys.modules['levisim.core.logger']  # `levisim.core.logger` the attribute is loguru's logger
+    previous = logger_module._console_level
+    try:
+        logger_module._console_level = level
+        assert progress_bars_wanted() is wanted
+    finally:
+        logger_module._console_level = previous

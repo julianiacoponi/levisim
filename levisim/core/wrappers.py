@@ -97,8 +97,13 @@ def resolve_variable_path(bound_arguments, path):
 
 
 def progress_bar_wanted_levels():
-    """The console levels at which progress bars are drawn: INFO and anything more verbose"""
-    return ('TRACE', 'DEBUG', 'INFO', 'SUCCESS')
+    """
+    The console levels at which progress bars are drawn: INFO and anything more verbose
+
+    SUCCESS (severity 25) is less verbose than INFO (20), so, like WARNING, it draws no bars; this
+    matches the numeric rule in :func:`progress_bars_wanted` (severity <= 20).
+    """
+    return ('TRACE', 'DEBUG', 'INFO')
 
 
 def progress_bars_wanted():
