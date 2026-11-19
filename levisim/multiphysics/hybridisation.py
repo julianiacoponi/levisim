@@ -105,7 +105,7 @@ def term_string(term):
 
 
 def term_latex(term, with_ω=True):
-    """
+    r"""
     Generates latex that represents the hybridistaion term
     e.g. R_{x_{1} y{1}} \cdot R_{y{1}x{2}} \cdot R_{x{2}x{1}}
     """
@@ -118,9 +118,9 @@ def term_latex(term, with_ω=True):
         j_n, k_m = f'{j}_{{{n}}}', f'{k}_{{{m}}}'
 
         if with_ω:
-            dot = '(\omega)' if ii == len(term.pairs) - 1 else '(\omega) \cdot '
+            dot = r'(\omega)' if ii == len(term.pairs) - 1 else r'(\omega) \cdot '
         else:
-            dot = '' if ii == len(term.pairs) - 1 else ' \cdot '
+            dot = '' if ii == len(term.pairs) - 1 else r' \cdot '
 
         t_str = rf'{t_str}R_{{{j_n + k_m}}}{dot}'
     return t_str
