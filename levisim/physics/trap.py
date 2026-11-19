@@ -749,6 +749,35 @@ class Trap:
         return self.bead.α / (1 - 1j * (self.tweezer.k**3 / (6*π*ε0)) * self.bead.α)
 
     @cached_property
+    def photon_recoil_heating_rates(self):
+        """
+        Photon-recoil heating rates of the bead's centre-of-mass motion, {'x': Γ_rec,x, ...}
+        [2π·Hz, phonons per second: d〈n_j〉/dt = Γ_rec,j]
+
+        ::
+
+            Γ_rec,j = π/(15ħε0) · (α·E0/2π)² · k⁵ · c_j · x_zpf,j²,   (c_x, c_y, c_z) = (2, 1, 7)
+
+        i.e. (c_j/5)·R·k²·x_zpf,j² for a rate R = P_scat/ħω of scattered tweezer photons: c_j = 1
+        along the polarisation (levisim's tweezer y axis), 2 perpendicular to it in the focal plane
+        (x), and 7 along the beam (z), 2 from the dipole emission pattern plus 5 from the momentum
+        of the absorbed tweezer photons. This is Eq. (4) of Piotrowski et al., Nat. Phys. 19, 1009
+        (2023), whose polarisation is along their x. Eq. (B33) of Gonzalez-Ballestero et al.,
+        Phys. Rev. A 100, 013805 (2019) has π/30 because its Γ(r) is the rate of the dissipator
+        -Γ(r)·[q, [q, ρ]], which heats at 2Γ(r) phonons per second. α is Re(α_eff), as in the trap
+        stiffness, and x_zpf uses the trap frequencies Ωj (override_Ω_dict if given).
+
+        These are used by `MultiTrap(photon_recoil=True)`; the `photon_recoil` flag of this class
+        is separate and switches on the recoil force in `Simulation`.
+        """
+        prefactor = π / (15 * ħ * ε0) * (np.real(self.α_eff) * self.tweezer.E0 / (2*π))**2 * self.tweezer.k**5
+        coefficients = {'x': 2, 'y': 1, 'z': 7}
+        return {
+            axis: prefactor * coefficient * ħ / (2 * self.bead.m * self.Ωj[axis])
+            for axis, coefficient in coefficients.items()
+        }
+
+    @cached_property
     def σ_scattering(self):
         """
         Scattering cross section for tweezer light hitting the bead

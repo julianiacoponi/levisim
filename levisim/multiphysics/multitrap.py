@@ -357,6 +357,34 @@ class MultiTrap:
 
 
         # ------------------------------------------------------------------------------------------
+        # PHOTON RECOIL HEATING (opt-in)
+        # ------------------------------------------------------------------------------------------
+        # off by default: the bath of each dimension is then the gas alone (damping Γ = Trap.Γth,
+        # occupation n from the gas temperature). With photon_recoil=True each dimension also heats
+        # at Γ_rec (Trap.photon_recoil_heating_rates), which adds no damping, so it is included by
+        # raising the bath occupation, n → n + Γ_rec/Γ: the same d〈n〉/dt = -Γ(〈n〉 - n) + Γ_rec.
+        # Recoil is a momentum diffusion, whereas levisim's bath noise drives both quadratures; the
+        # two are equivalent in the rotating-wave sense used throughout (Ω much larger than every
+        # damping, heating and optical rate).
+        self.photon_recoil = bool(kwargs.get('photon_recoil', False))
+        self.recoil_heating_rate_dict = {}
+        if self.photon_recoil:
+            if self.toy_params:
+                msg = 'photon_recoil=True needs physical parameters (tweezers and beads), not toy_params'
+                logger.error(msg)
+                raise ValueError(msg)
+            for label, dimension in self.dimensions.items():
+                if not dimension.Γ > 0:
+                    msg = f'photon_recoil=True needs a non-zero damping Γ{label} (gas pressure > 0) to carry the recoil heating'
+                    logger.error(msg)
+                    raise ValueError(msg)
+                self.recoil_heating_rate_dict[label] = dimension.trap.photon_recoil_heating_rates[dimension.axis]
+            logger.debug(
+                'Photon recoil heating added to the baths of {}: {}', self,
+                ', '.join(f'Γ_rec,{label}/2π = {Γ_rec / kHz:.4g} kHz' for label, Γ_rec in self.recoil_heating_rate_dict.items()),
+            )
+
+        # ------------------------------------------------------------------------------------------
         # NOISE CORRELATIONS
         # ------------------------------------------------------------------------------------------
         self.quantum_factor_per_noise_operator = [
@@ -374,6 +402,8 @@ class MultiTrap:
             # since kB·T >> ħΩ for T = 300K
             # njn = self.dimensions[label].noise_phonons_approx
             njn = self.dimensions[label].noise_phonons_exact
+            if self.photon_recoil:
+                njn = njn + self.recoil_heating_rate_dict[label] / self.dimensions[label].Γ
 
             # phonon annihilation operators, 〈bjn_in(ω)·bjn_in†(-ω)〉= njn + 1
             self.quantum_factor_per_noise_operator.append(njn + 1)
