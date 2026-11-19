@@ -222,6 +222,10 @@ class ΩModel:
         print(self.info_str)
 
 
+# keyword arguments of MultiTrap that replace the built-in per-trap physics (one entry per trap)
+PHYSICAL_PER_TRAP_KWARGS = ('tweezers', 'beads', 'trap_kwargs')
+
+
 class MultiTrap:
     """
     Class to calculate Quantum Linear Theory for a multi-particle cavity trap
@@ -236,7 +240,13 @@ class MultiTrap:
         # ------------------------------------------------------------------------------------------
         # SETUP
         # ------------------------------------------------------------------------------------------
-        self.num_traps = kwargs.get('num_traps', 2)
+        # in physical mode, lists of per-trap objects (see setup_levitated_physics) set the default
+        default_num_traps = 2
+        if not kwargs.get('toy_params'):
+            per_trap_lists = [kwargs[name] for name in PHYSICAL_PER_TRAP_KWARGS if kwargs.get(name) is not None]
+            if per_trap_lists:
+                default_num_traps = len(per_trap_lists[0])
+        self.num_traps = kwargs.get('num_traps', default_num_traps)
         self.Cartesian_axes_per_trap = kwargs.get('Cartesian_axes_per_trap', 2)
         # ω_range is either one array of angular frequencies, or a list/tuple of arrays that are
         # stitched into one sorted array without duplicates - e.g. a fine grid around each
@@ -305,6 +315,12 @@ class MultiTrap:
 
         self.toy_params = kwargs.get('toy_params')
         if self.toy_params:
+            ignored = [name for name in (*PHYSICAL_PER_TRAP_KWARGS, 'φn_dict') if kwargs.get(name) is not None]
+            if ignored:
+                logger.warning(
+                    'MultiTrap keyword arguments {} only apply to physical parameters and are ignored with'
+                    ' toy_params (give toy tweezer phases as toy_params["φn_dict"])', ignored,
+                )
             self.setup_toy_parameters(**self.toy_params)
         else:
             self.setup_levitated_physics(**kwargs)
@@ -633,21 +649,78 @@ class MultiTrap:
     def setup_levitated_physics(self, **kwargs):
         """
         Setup the physics of many beads levitated in tweezer traps
+
+        By default the tweezers and beads are the built-in lists below, cut to the first `num_traps`:
+        1064 nm tweezers at θ = 45° with phases φn = 0°, 90°, 20°, 30°, ..., 80° and slightly different
+        waists, and beads (default `Bead` material) of radius 60.1, 60.2, ..., 60.9 nm, all at the
+        node. Each list can be replaced through `MultiTrap` keyword arguments:
+
+            - tweezers: list of `Tweezer` instances, one per trap
+            - beads: list of `Bead` instances, one per trap
+            - trap_kwargs: list of dicts of extra `Trap` keyword arguments, one per trap, e.g.
+              `override_Ω_dict` to use measured mechanical frequencies
+            - φn_dict: {n: φn} tweezer phases [rad] for any of the traps n = 1, ..., num_traps; they
+              replace the phase of that trap's tweezer (given or built-in). The `Tweezer` instances
+              passed in are not modified: a trap whose phase is replaced gets a copy of its tweezer.
+
+        If `num_traps` is not given, it is the length of the first of these lists that is given.
         """
-        # roughly 42 degrees
-        θtw = 0.731991
-        θtw = 45*degrees
-        self.tweezers = [
-            Tweezer(θ=θtw),
-            Tweezer(wx0=950*nm, wy0=1050*nm, θ=θtw, φ=90*degrees),
-            Tweezer(wx0=975*nm, wy0=1025*nm, θ=θtw, φ=20*degrees),
-            Tweezer(wx0=965*nm, wy0=1015*nm, θ=θtw, φ=30*degrees),
-            Tweezer(wx0=940*nm, wy0=1020*nm, θ=θtw, φ=40*degrees),
-            Tweezer(wx0=930*nm, wy0=1010*nm, θ=θtw, φ=50*degrees),
-            Tweezer(wx0=915*nm, wy0=1055*nm, θ=θtw, φ=60*degrees),
-            Tweezer(wx0=925*nm, wy0=1045*nm, θ=θtw, φ=70*degrees),
-            Tweezer(wx0=935*nm, wy0=1035*nm, θ=θtw, φ=80*degrees),
-        ][:self.num_traps]
+        tweezers = kwargs.get('tweezers')
+        beads = kwargs.get('beads')
+        trap_kwargs = kwargs.get('trap_kwargs')
+        φn_overrides = kwargs.get('φn_dict')
+
+        def check_length(name, items):
+            if items is not None and len(items) != self.num_traps:
+                msg = f'{name} has {len(items)} entries but num_traps = {self.num_traps}: give one per trap'
+                logger.error(msg)
+                raise ValueError(msg)
+
+        check_length('tweezers', tweezers)
+        check_length('beads', beads)
+        check_length('trap_kwargs', trap_kwargs)
+
+        if tweezers is None:
+            # roughly 42 degrees
+            θtw = 0.731991
+            θtw = 45*degrees
+            builtin_tweezers = [
+                Tweezer(θ=θtw),
+                Tweezer(wx0=950*nm, wy0=1050*nm, θ=θtw, φ=90*degrees),
+                Tweezer(wx0=975*nm, wy0=1025*nm, θ=θtw, φ=20*degrees),
+                Tweezer(wx0=965*nm, wy0=1015*nm, θ=θtw, φ=30*degrees),
+                Tweezer(wx0=940*nm, wy0=1020*nm, θ=θtw, φ=40*degrees),
+                Tweezer(wx0=930*nm, wy0=1010*nm, θ=θtw, φ=50*degrees),
+                Tweezer(wx0=915*nm, wy0=1055*nm, θ=θtw, φ=60*degrees),
+                Tweezer(wx0=925*nm, wy0=1045*nm, θ=θtw, φ=70*degrees),
+                Tweezer(wx0=935*nm, wy0=1035*nm, θ=θtw, φ=80*degrees),
+            ]
+            if self.num_traps > len(builtin_tweezers):
+                msg = (
+                    f'there are {len(builtin_tweezers)} built-in tweezers but num_traps = {self.num_traps}:'
+                    ' pass tweezers=[...] (one Tweezer per trap)'
+                )
+                logger.error(msg)
+                raise ValueError(msg)
+            tweezers = builtin_tweezers[:self.num_traps]
+        else:
+            tweezers = list(tweezers)
+
+        if φn_overrides:
+            unknown = sorted(set(φn_overrides) - set(range(1, self.num_traps + 1)))
+            if unknown:
+                msg = f'φn_dict has trap indices {unknown} outside 1, ..., num_traps = {self.num_traps}'
+                logger.error(msg)
+                raise ValueError(msg)
+            for n, φn in φn_overrides.items():
+                tweezer = copy(tweezers[n - 1])
+                tweezer.φ = float(φn)
+                tweezers[n - 1] = tweezer
+            logger.debug(
+                'Tweezer phases replaced by φn_dict: {}',
+                {n: f'{φn / degrees:.3f}°' for n, φn in φn_overrides.items()},
+            )
+        self.tweezers = tweezers
         self.φn_dict = {ii + 1: tweezer.φ for ii, tweezer in enumerate(self.tweezers)}
 
         # NOTE: all mech-mech, and z-light couplings are 0 at the node
@@ -658,18 +731,31 @@ class MultiTrap:
         # the static light field sums each trap's 'drive' energy into the cavity
         # each of these cavity drive energies goes as cos(Φ), due to the linearised potential V_CS
         # z-light couplings also go with cos(Φ), due to the linearised potential V_CS
-        Φbead = node
-        self.beads = [
-            Bead(r=60.1*nm, Φ=Φbead),
-            Bead(r=60.2*nm, Φ=Φbead),
-            Bead(r=60.3*nm, Φ=Φbead),
-            Bead(r=60.4*nm, Φ=Φbead),
-            Bead(r=60.5*nm, Φ=Φbead),
-            Bead(r=60.6*nm, Φ=Φbead),
-            Bead(r=60.7*nm, Φ=Φbead),
-            Bead(r=60.8*nm, Φ=Φbead),
-            Bead(r=60.9*nm, Φ=Φbead),
-        ][:self.num_traps]
+        if beads is None:
+            Φbead = node
+            builtin_beads = [
+                Bead(r=60.1*nm, Φ=Φbead),
+                Bead(r=60.2*nm, Φ=Φbead),
+                Bead(r=60.3*nm, Φ=Φbead),
+                Bead(r=60.4*nm, Φ=Φbead),
+                Bead(r=60.5*nm, Φ=Φbead),
+                Bead(r=60.6*nm, Φ=Φbead),
+                Bead(r=60.7*nm, Φ=Φbead),
+                Bead(r=60.8*nm, Φ=Φbead),
+                Bead(r=60.9*nm, Φ=Φbead),
+            ]
+            if self.num_traps > len(builtin_beads):
+                msg = (
+                    f'there are {len(builtin_beads)} built-in beads but num_traps = {self.num_traps}:'
+                    ' pass beads=[...] (one Bead per trap)'
+                )
+                logger.error(msg)
+                raise ValueError(msg)
+            beads = builtin_beads[:self.num_traps]
+        self.beads = list(beads)
+
+        if trap_kwargs is None:
+            trap_kwargs = [{} for _ in range(self.num_traps)]
 
         # each particle/trap/tweezer has its own physics!
         self.traps = [
@@ -677,7 +763,8 @@ class MultiTrap:
                 tweezer=self.tweezers[_],
                 bead=self.beads[_],
                 gas=self.gas,
-                trap_index= _ + 1
+                trap_index=_ + 1,
+                **trap_kwargs[_],
             )
             for _ in range(self.num_traps)
         ]
