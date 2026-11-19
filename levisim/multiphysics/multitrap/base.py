@@ -206,27 +206,45 @@ class MultiTrapBase:
 
 
         # ------------------------------------------------------------------------------------------
-        # PHOTON RECOIL HEATING (opt-in)
+        # PHOTON RECOIL HEATING (on by default with physical parameters)
         # ------------------------------------------------------------------------------------------
-        # off by default: the bath of each dimension is then the gas alone (damping Γ = Trap.Γth,
-        # occupation n from the gas temperature). With photon_recoil=True each dimension also heats
-        # at Γ_rec (Trap.photon_recoil_heating_rates), which adds no damping, so it is included by
-        # raising the bath occupation, n → n + Γ_rec/Γ: the same d〈n〉/dt = -Γ(〈n〉 - n) + Γ_rec.
-        # Recoil is a momentum diffusion, whereas levisim's bath noise drives both quadratures; the
-        # two are equivalent in the rotating-wave sense used throughout (Ω much larger than every
-        # damping, heating and optical rate).
-        self.photon_recoil = bool(kwargs.get('photon_recoil', False))
+        # each dimension heats at Γ_rec (Trap.photon_recoil_heating_rates) from the recoil of the
+        # tweezer photons its bead scatters. Recoil adds no damping, so it is included by raising the
+        # bath occupation, n → n + Γ_rec/Γ: the same d〈n〉/dt = -Γ(〈n〉 - n) + Γ_rec. It does not
+        # change the drift matrix, so the dynamics, their stability and the mode frequencies are the
+        # same with or without it; only the noise is larger. Recoil is a momentum diffusion, whereas
+        # levisim's bath noise drives both quadratures; the two are equivalent in the rotating-wave
+        # sense used throughout (Ω much larger than every damping, heating and optical rate).
+        #   - physical parameters: on unless photon_recoil=False. If it was not asked for explicitly
+        #     and a dimension has no damping (gas pressure 0), there is no bath to carry the heating:
+        #     a WARNING is logged and recoil is left out. photon_recoil=True then raises ValueError.
+        #   - toy parameters: there is no tweezer or bead to scatter from, so recoil is always off;
+        #     photon_recoil=True raises ValueError.
+        photon_recoil = kwargs.get('photon_recoil')
+        recoil_requested = photon_recoil is not None and bool(photon_recoil)
+        if photon_recoil is None:
+            photon_recoil = not self.toy_params
+        self.photon_recoil = bool(photon_recoil)
         self.recoil_heating_rate_dict = {}
         if self.photon_recoil:
             if self.toy_params:
                 msg = 'photon_recoil=True needs physical parameters (tweezers and beads), not toy_params'
                 logger.error(msg)
                 raise ValueError(msg)
+            undamped = [label for label, dimension in self.dimensions.items() if not dimension.Γ > 0]
+            if undamped and recoil_requested:
+                msg = f'photon_recoil=True needs a non-zero damping Γ{undamped[0]} (gas pressure > 0) to carry the recoil heating'
+                logger.error(msg)
+                raise ValueError(msg)
+            if undamped:
+                logger.warning(
+                    '{}: photon recoil heating is left out, since the dimensions {} have no damping (gas'
+                    ' pressure 0) to carry it; pass photon_recoil=False to silence this',
+                    self, ', '.join(undamped),
+                )
+                self.photon_recoil = False
+        if self.photon_recoil:
             for label, dimension in self.dimensions.items():
-                if not dimension.Γ > 0:
-                    msg = f'photon_recoil=True needs a non-zero damping Γ{label} (gas pressure > 0) to carry the recoil heating'
-                    logger.error(msg)
-                    raise ValueError(msg)
                 self.recoil_heating_rate_dict[label] = dimension.trap.photon_recoil_heating_rates[dimension.axis]
             logger.debug(
                 'Photon recoil heating added to the baths of {}: {}', self,
@@ -364,6 +382,7 @@ class MultiTrapBase:
             # f'\n    QLT_method = {self.QLT_method}'
             f'\n'
             f'\n    tweezer_phase_sign_convention = {self.tweezer_phase_sign_convention}'
+            f'\n    photon_recoil = {self.photon_recoil}'
             f'\n    g_RMS = {self.g_RMS / kHz:.3f} kHz'
             f'\n    gbar = {self.gbar / kHz:.3f} kHz'
             f'\n'
@@ -498,6 +517,9 @@ class MultiTrapBase:
             - φn_dict: {n: φn} tweezer phases [rad] for any of the traps n = 1, ..., num_traps; they
               replace the phase of that trap's tweezer (given or built-in). The `Tweezer` instances
               passed in are not modified: a trap whose phase is replaced gets a copy of its tweezer.
+            - photon_recoil: add the photon-recoil heating of each bead to the bath of each of its
+              dimensions (default True with physical parameters; see the PHOTON RECOIL HEATING
+              block of `__init__`)
 
         If `num_traps` is not given, it is the length of the first of these lists that is given.
         """

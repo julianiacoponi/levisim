@@ -46,10 +46,14 @@ There are two ways to set the physical parameters:
   comparison, e.g. `FORTRAN_toy_params`, `PHASE_EQUAL_toy_params`, `PHASE_DEPENDENT_toy_params`
   and `OFF_NODE_toy_params_pairs`.
 
-**Photon recoil.** By default the bath of each motion is the gas alone. With physical parameters,
-`photon_recoil=True` adds the recoil heating of the scattered tweezer light,
-`Trap.photon_recoil_heating_rates`, by raising each bath occupation from $n$ to
-$n + \Gamma_\mathrm{rec}/\Gamma$; it dominates the gas heating at low pressure.
+**Photon recoil.** With physical parameters the bath of each motion includes, by default, the
+recoil heating of the scattered tweezer light, `Trap.photon_recoil_heating_rates`, which raises
+each bath occupation from $n$ to $n + \Gamma_\mathrm{rec}/\Gamma$; it dominates the gas heating
+at low pressure. It adds no damping, so it changes the noise and the spectra's heights but not
+the drift matrix: frequencies, linewidths and linear stability are the same without it.
+`photon_recoil=False` leaves the gas bath alone. A system with no gas damping (pressure 0) has no
+bath to carry the heating, so recoil is then left out with a WARNING (`photon_recoil=True` raises
+instead). Toy-parameter systems have no tweezer or bead to scatter from and never include it.
 
 **Choosing `ω_range`.** Spectra are evaluated point by point on this grid (angular frequency;
 see [Units](../concepts/conventions.md#units)). The mechanical peaks are only as wide as their

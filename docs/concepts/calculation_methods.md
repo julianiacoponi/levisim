@@ -42,9 +42,9 @@ untracked `notebooks/` folder.
 
 | System | (2) hom. | (2) PSD | (3) PSD | (4) hom. | (4) PSD | (6), (7) hom. | (6), (7) PSD |
 |---|---|---|---|---|---|---|---|
-| physical defaults, 2×1 | 1.3e-15 | 0 | 8.9e-16 | 2.0e-15 | 1.8e-15 | 2.2e-15 | 1.3e-15 |
-| physical defaults, 2×2 | 1.8e-15 | 0 | 1.4e-15 | 2.0e-15 | 2.7e-15 | 3.1e-15 | 4.7e-15 |
-| physical defaults, 1×3 | 1.6e-15 | 0 | 1.0e-15 | 1.8e-15 | 1.6e-15 | 2.7e-15 | 1.8e-15 |
+| physical defaults, 2×1 | 1.3e-15 | 0 | 1.0e-15 | 2.1e-15 | 1.8e-15 | 2.2e-15 | 1.3e-15 |
+| physical defaults, 2×2 | 1.8e-15 | 0 | 1.0e-15 | 2.0e-15 | 2.6e-15 | 3.1e-15 | 4.7e-15 |
+| physical defaults, 1×3 | 1.6e-15 | 0 | 8.9e-16 | 2.1e-15 | 1.8e-15 | 2.6e-15 | 1.8e-15 |
 | `PHASE_DEPENDENT` toy, 2×2 | 2.0e-15 | 0 | 7.8e-16 | 2.0e-14 | 2.2e-14 | 7.8e-15 | 7.8e-15 |
 | `OFF_NODE` pairs toy, 2×1 | 1.6e-15 | 0 | 7.8e-16 | 1.0e-14 | 9.8e-15 | 3.0e-15 | 3.1e-15 |
 | `OFF_NODE` pairs toy, 2×2 | 1.7e-15 | 0 | 8.9e-16 | 2.2e-14 | 2.3e-14 | 1.8e-14 | 2.8e-14 |

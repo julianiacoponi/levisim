@@ -767,7 +767,7 @@ class Trap:
         -Γ(r)·[q, [q, ρ]], which heats at 2Γ(r) phonons per second. α is Re(α_eff), as in the trap
         stiffness, and x_zpf uses the trap frequencies Ωj (override_Ω_dict if given).
 
-        These are used by `MultiTrap(photon_recoil=True)`; the `photon_recoil` flag of this class
+        These are used by `MultiTrap(photon_recoil=True)` (the default with physical parameters); the `photon_recoil` flag of this class
         is separate and switches on the recoil force in `Simulation`.
         """
         prefactor = π / (15 * ħ * ε0) * (np.real(self.α_eff) * self.tweezer.E0 / (2*π))**2 * self.tweezer.k**5

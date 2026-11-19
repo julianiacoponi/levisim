@@ -106,14 +106,14 @@ $(n_\text{c} + 1, n_\text{c}, \ldots, n_{j_n} + 1, n_{j_n}, \ldots)$
 (`MultiTrap.quantum_factor_per_noise_operator`).
 
 Two consequences, both checked by `docs/guide/scripts/conventions_psd_normalisation.py` for
-one $x$ motion ($\Omega/2\pi = 156.3$ kHz) at the default parameters:
+one $x$ motion ($\Omega/2\pi = 156.3$ kHz) at the default parameters, whose bath includes photon recoil:
 
-- **Normalisation.** $\int S_{qq}\, d\omega/2\pi = 89.018$ over $|\omega|/2\pi < 3$ MHz, against
-  $\langle \hat q^2 \rangle = 89.028$ from the Lyapunov steady state of
+- **Normalisation.** $\int S_{qq}\, d\omega/2\pi = 95.509$ over $|\omega|/2\pi < 3$ MHz, against
+  $\langle \hat q^2 \rangle = 95.520$ from the Lyapunov steady state of
   {mod}`levisim.multiphysics.covariance` (relative difference $-1.1 \times 10^{-4}$, from the
-  truncated tails), i.e. $n = 44.0$ phonons.
-- **Sideband asymmetry.** $S_{qq}(+\Omega)/S_{qq}(-\Omega) = 1.0231$, against
-  $(n + 1)/n = 1.0227$: the positive-frequency peak carries $n + 1$ and the negative one $n$.
+  truncated tails), i.e. $n = 47.3$ phonons.
+- **Sideband asymmetry.** $S_{qq}(+\Omega)/S_{qq}(-\Omega) = 1.0215$, against
+  $(n + 1)/n = 1.0212$: the positive-frequency peak carries $n + 1$ and the negative one $n$.
 
 To compare with a measured **one-sided** displacement PSD in m²/Hz, fold and rescale:
 $S^{(1)}_{xx}(f) = x_\text{zpf}^2\,[S_{qq}(2\pi f) + S_{qq}(-2\pi f)]$ for $f > 0$, which keeps

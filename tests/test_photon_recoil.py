@@ -1,5 +1,6 @@
 """
-Opt-in photon-recoil heating in the quantum linear theory: MultiTrap(photon_recoil=True)
+Photon-recoil heating in the quantum linear theory: MultiTrap(photon_recoil=...), on by default with
+physical parameters
 
 Reference numbers are those of the Delić et al., Science 367, 892 (2020) reproduction notebook
 (notebooks/papers on branch round2/paper-reproductions), which added the same heating by hand
@@ -39,16 +40,55 @@ def occupation(mtrap, label):
     return (V[2*k, 2*k] + V[2*k + 1, 2*k + 1] - 2) / 4
 
 
-def test_off_by_default_and_the_bath_is_the_gas_alone():
+def test_on_by_default_with_physical_parameters():
     mtrap = MultiTrap(num_traps=2, Cartesian_axes_per_trap=2)
-    assert mtrap.photon_recoil is False and mtrap.recoil_heating_rate_dict == {}
-    gas_only = [mtrap.quantum_factor_per_noise_operator[0], mtrap.quantum_factor_per_noise_operator[1]]
-    for label in mtrap.labels:
-        n = mtrap.dimensions[label].noise_phonons_exact
-        gas_only += [n + 1, n]
-    assert mtrap.quantum_factor_per_noise_operator == gas_only
+    explicit = MultiTrap(num_traps=2, Cartesian_axes_per_trap=2, photon_recoil=True)
+    assert mtrap.photon_recoil is True and set(mtrap.recoil_heating_rate_dict) == set(mtrap.labels)
+    assert mtrap.quantum_factor_per_noise_operator == explicit.quantum_factor_per_noise_operator
+    assert np.array_equal(mtrap.noise_matrix, explicit.noise_matrix)
+
+
+def test_off_gives_the_gas_bath_alone():
     off = MultiTrap(num_traps=2, Cartesian_axes_per_trap=2, photon_recoil=False)
-    assert np.array_equal(off.noise_matrix, mtrap.noise_matrix)
+    assert off.photon_recoil is False and off.recoil_heating_rate_dict == {}
+    gas_only = [off.quantum_factor_per_noise_operator[0], off.quantum_factor_per_noise_operator[1]]
+    for label in off.labels:
+        n = off.dimensions[label].noise_phonons_exact
+        gas_only += [n + 1, n]
+    assert off.quantum_factor_per_noise_operator == gas_only
+
+
+def test_recoil_changes_the_noise_but_not_the_drift_matrix_or_its_stability():
+    on = MultiTrap(num_traps=2, Cartesian_axes_per_trap=2)
+    off = MultiTrap(num_traps=2, Cartesian_axes_per_trap=2, photon_recoil=False)
+    assert np.array_equal(on.drift_matrix, off.drift_matrix)
+    assert np.array_equal(np.linalg.eigvals(on.drift_matrix), np.linalg.eigvals(off.drift_matrix))
+    assert not np.array_equal(on.noise_matrix, off.noise_matrix)
+    # the light noise is untouched, every mechanical bath occupation is raised
+    assert on.quantum_factor_per_noise_operator[:2] == off.quantum_factor_per_noise_operator[:2]
+    assert all(a > b for a, b in zip(on.quantum_factor_per_noise_operator[2:], off.quantum_factor_per_noise_operator[2:]))
+
+
+def test_off_by_default_with_toy_parameters():
+    toy_params = dict(Ω_model='custom', toy_Ωjn_dict={'x1': 100*kHz}, gjn_dict={'x1': -10*kHz})
+    mtrap = MultiTrap(num_traps=1, Cartesian_axes_per_trap=1, toy_params=toy_params)
+    assert mtrap.photon_recoil is False and mtrap.recoil_heating_rate_dict == {}
+    off = MultiTrap(num_traps=1, Cartesian_axes_per_trap=1, toy_params=toy_params, photon_recoil=False)
+    assert mtrap.quantum_factor_per_noise_operator == off.quantum_factor_per_noise_operator
+
+
+def test_default_is_left_out_with_a_warning_without_damping_but_explicit_true_raises():
+    from loguru import logger
+    messages = []
+    sink = logger.add(messages.append, level='WARNING', format='{message}')
+    try:
+        mtrap = MultiTrap(num_traps=1, Cartesian_axes_per_trap=2, gas_kwargs=dict(P=0.0))
+    finally:
+        logger.remove(sink)
+    assert mtrap.photon_recoil is False and mtrap.recoil_heating_rate_dict == {}
+    assert any('photon recoil heating is left out' in message for message in messages), messages
+    with pytest.raises(ValueError, match='needs a non-zero damping'):
+        MultiTrap(num_traps=1, Cartesian_axes_per_trap=2, gas_kwargs=dict(P=0.0), photon_recoil=True)
 
 
 def test_recoil_rates_match_the_delic_notebook():

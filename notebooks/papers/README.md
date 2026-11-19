@@ -21,12 +21,13 @@ adds a second or two.
 
 - The systems are built with levisim directly: `MultiTrap(tweezers=[...], beads=[...], trap_kwargs=[...])`
   takes each paper's `Tweezer` and `Bead` (and measured frequencies through `override_Ω_dict`),
-  drives the cavity at the tweezer's wavelength, and `MultiTrap(photon_recoil=True)` adds the
-  photon-recoil heating (`Trap.photon_recoil_heating_rates`) to the gas bath of every mode.
+  drives the cavity at the tweezer's wavelength, and adds the photon-recoil heating
+  (`Trap.photon_recoil_heating_rates`) to the gas bath of every mode (on by default with physical
+  parameters; the notebooks also pass `photon_recoil=True` explicitly).
 - [`paper_tools.py`](paper_tools.py): thin helpers over levisim's public API (see its docstring):
   - `toy_multitrap` builds a toy-parameter `MultiTrap` with a paper's fitted couplings and *total*
     heating rates, which `add_heating` imposes by raising each mode's bath occupation
-    (`photon_recoil=True` needs physical parameters, so toy systems still need this);
+    (photon recoil needs physical parameters, so toy systems still need this);
   - `heterodyne` is a vectorised version of `MultiTrap.heterodyne_spectrum`, checked against it in
     every notebook that uses it;
   - `occupations`, `mechanical_eigenfrequencies` and `load_digitised` read out a built system and
