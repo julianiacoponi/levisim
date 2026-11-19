@@ -344,15 +344,11 @@ class MultiTrapBase:
         of A have negative real parts; otherwise a mode grows as exp(Re λ·t) and there is no
         steady state, although the formulas still return finite numbers. One eigvals call on the
         small (2N + 2)-square drift matrix per build, so the check is cheap, and it changes no
-        result. The tolerance (1e-8 of the largest |A| entry) ignores round-off in the decay
-        rates of dark modes, which can be as small as the gas damping.
+        result. The test is `is_stable`, with the tolerance of `stability_tolerance`.
         """
-        eigenvalues = np.linalg.eigvals(self.drift_matrix)
-        growth_rates = eigenvalues.real
-        tolerance = 1e-8 * np.abs(self.drift_matrix).max()
-        worst = eigenvalues[np.argmax(growth_rates)]
+        worst = self.drift_eigenvalues[0]
         logger.debug('{}: largest drift-matrix eigenvalue real part Re λ = {:+.4e} /s', self, worst.real)
-        num_unstable = int(np.sum(growth_rates > tolerance))
+        num_unstable = int(np.sum(self.drift_eigenvalues.real > self.stability_tolerance))
         if num_unstable:
             logger.warning(
                 '{}: {} of the {} drift-matrix eigenvalues have a positive real part (largest'
@@ -360,8 +356,104 @@ class MultiTrapBase:
                 ' so the linearised dynamics are unstable and have no steady state: the stationary'
                 ' spectra are formally finite but do not describe a physical steady state.'
                 ' Check the detuning Δ, the couplings and the tweezer phases φn.',
-                self, num_unstable, len(eigenvalues), worst.real, 1e3 / worst.real, abs(worst.imag) / kHz,
+                self, num_unstable, len(self.drift_eigenvalues), worst.real, 1e3 / worst.real, abs(worst.imag) / kHz,
             )
+
+    ################################################################################################
+    # LINEAR STABILITY
+    # ----------------------------------------------------------------------------------------------
+    # The linearised Langevin equations dc/dt = A·c + c_in have a steady state only if every
+    # eigenvalue λ of the drift matrix A has Re λ < 0. Each eigenvalue is a normal mode: |Im λ| is
+    # its angular frequency and -Re λ its amplitude damping rate (half its energy damping rate, the
+    # half-width of its Lorentzian). Eigenvalues come in pairs λ, λ* (a mode and its conjugate), so
+    # every mode appears twice in `drift_eigenvalues` and once in `unstable_modes`. See the docs page
+    # concepts/stability for the theory.
+    # ----------------------------------------------------------------------------------------------
+    @cached_property
+    def drift_eigenvalues(self):
+        """
+        Eigenvalues λ of the drift matrix A, sorted by decreasing real part (largest growth first)
+
+        Re λ is minus the amplitude damping rate of the normal mode, ``|Im λ|`` its angular frequency.
+        [1/s, complex] (divide Im λ by `kHz` for the frequency in kHz)
+        """
+        eigenvalues = np.linalg.eigvals(self.drift_matrix)
+        return eigenvalues[np.argsort(-eigenvalues.real, kind='stable')]
+
+    @property
+    def stability_tolerance(self):
+        """
+        Largest Re λ still counted as stable: 1e-8 of the largest ``|A|`` entry
+
+        It ignores round-off in the decay rates of dark modes, which can be as small as the gas
+        damping.
+        [1/s]
+        """
+        return 1e-8 * np.abs(self.drift_matrix).max()
+
+    @property
+    def max_growth_rate(self):
+        """
+        Largest real part of the drift-matrix eigenvalues, max Re λ: negative (minus the damping of
+        the least-damped mode) for a stable system, positive (the growth rate of the fastest-growing
+        mode, whose amplitude grows as exp(Re λ·t)) for an unstable one
+        [1/s]
+        """
+        return float(self.drift_eigenvalues[0].real)
+
+    @property
+    def is_stable(self):
+        """
+        Whether the linearised dynamics have a steady state: every Re λ ≤ `stability_tolerance`
+        [bool]
+        """
+        return bool(self.max_growth_rate <= self.stability_tolerance)
+
+    @property
+    def least_stable_mode(self):
+        """
+        (Ω, Re λ) of the normal mode with the largest Re λ: its angular frequency Ω = ``|Im λ|`` and
+        its growth rate (positive) or minus its damping rate (negative)
+        [2π·Hz, 1/s]
+        """
+        worst = self.drift_eigenvalues[0]
+        return float(abs(worst.imag)), float(worst.real)
+
+    @property
+    def unstable_modes(self):
+        """
+        The growing normal modes, as a list of (Ω, Re λ) pairs, fastest-growing first: Ω = ``|Im λ|``
+        is the mode's angular frequency and Re λ > `stability_tolerance` its growth rate. Each
+        conjugate pair of eigenvalues λ, λ* counts once (through the member with Im λ > 0); a
+        purely real eigenvalue (Ω = 0, a static instability) counts on its own.
+        Empty for a stable system.
+        [2π·Hz, 1/s]
+        """
+        modes = []
+        for eigenvalue in self.drift_eigenvalues:
+            if eigenvalue.real <= self.stability_tolerance:
+                continue
+            # a purely real eigenvalue (a static, non-oscillating instability, e.g. a negative net
+            # spring constant) is its own conjugate, so it counts on its own; numerically its
+            # imaginary part is only zero to within round-off
+            is_real = abs(eigenvalue.imag) <= self.stability_tolerance
+            if is_real or eigenvalue.imag > 0:
+                modes.append((0.0 if is_real else float(eigenvalue.imag), float(eigenvalue.real)))
+        return modes
+
+    @property
+    def stability_info_str(self):
+        """
+        Lines describing the linear stability, as printed in `info_str`
+        """
+        Ω, growth_rate = self.least_stable_mode
+        lines = (
+            f'\n    linearly_stable = {self.is_stable}'
+            f'\n    max_growth_rate = {growth_rate:+.4g} /s (max Re λ, on the mode at |Im λ|/2π = {Ω / kHz:.3f} kHz)'
+        )
+        for Ω, growth_rate in self.unstable_modes:
+            lines += f'\n    unstable mode at {Ω / kHz:.3f} kHz grows at Re λ = {growth_rate:+.4g} /s'
+        return lines
 
     ################################################################################################
     # INFORMATION PRINTING FUNCTIONS
@@ -383,6 +475,7 @@ class MultiTrapBase:
             f'\n'
             f'\n    tweezer_phase_sign_convention = {self.tweezer_phase_sign_convention}'
             f'\n    photon_recoil = {self.photon_recoil}'
+            f'{self.stability_info_str}'
             f'\n    g_RMS = {self.g_RMS / kHz:.3f} kHz'
             f'\n    gbar = {self.gbar / kHz:.3f} kHz'
             f'\n'

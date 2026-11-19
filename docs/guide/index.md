@@ -4,6 +4,7 @@
 :maxdepth: 1
 
 cavity_spectra
+stability
 stochastic_simulations
 logging
 ../two_tone_entanglement/README
@@ -12,6 +13,9 @@ logging
 
 - [Spectra of several particles in one cavity](cavity_spectra.md): building a `MultiTrap`, and
   calculating and cross-checking its optical and mechanical spectra.
+- [Linear stability of a system](stability.md): the stability report of a `MultiTrap`, which
+  ready-made systems are unstable, and the window of tweezer phases that destabilises the default
+  two-particle system.
 - [Stochastic simulations of a bead in a free-space tweezer](stochastic_simulations.md): the
   Langevin simulator, its spectral estimates and their comparison with theory.
 - [Logging](logging.md): where levisim's log records go, what each level means, reading the
