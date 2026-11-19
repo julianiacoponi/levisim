@@ -128,7 +128,7 @@ ruff check --select F821,F811,F541,F632,E711,E712,E714,E722 levisim tests
   ("fix ...", "add ...") and a body that says what changed, why, and how it was checked.
 - Pull requests are stacked: each branch starts from the one before it and is merged in order.
 - Changes written with an LLM say so in the commit message and the pull request description,
-  pointing to the README's *Disclaimer regarding use of LLMs* (see [Provenance](provenance.md)).
+  pointing to `DISCLAIMER.md` (see [Provenance](provenance.md)).
 
 ## Building these docs
 
@@ -175,10 +175,6 @@ renders on GitHub and on the site.
 
 **Publishing.** `.github/workflows/docs.yml` builds the site on every pull request, and on a
 push to `main` also deploys it to GitHub Pages at <https://julianiacoponi.github.io/levisim/>.
-Deployment needs a one-time setting in the repository: **Settings → Pages → Build and
-deployment → Source: GitHub Actions**. Until that is set, the build step still runs and the
-deploy step fails. Note that GitHub Pages on a private repository needs a paid plan, and the site
-of a private repository is public unless the plan allows restricting it.
 
 ```{include} ../README.md
 :start-after: <!-- MIXINS-START -->

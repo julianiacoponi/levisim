@@ -7,7 +7,13 @@ calculation methods, but reported failures by appending to a `Test.exceptions` l
 printing PASSED/FAILED - so a failing notebook still ran to completion and the failure was
 only visible by reading the printed output. Here they raise, as tests should.
 """
-import pytest
+import os
+
+# keep test runs out of the developer's log file (~/.levisim/logs/levisim.jsonl); this must be
+# set before levisim is imported, since the file sink is configured at import
+os.environ.setdefault('LEVISIM_LOG_FILE', '0')
+
+import pytest  # noqa: E402
 
 from levisim.multiphysics.multitrap import MultiTrap
 from levisim.multiphysics.utils.shelf import (

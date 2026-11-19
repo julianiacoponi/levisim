@@ -7,16 +7,13 @@
 ```sh
 git clone https://github.com/julianiacoponi/levisim.git
 cd levisim
-pip install numpy scipy matplotlib sympy loguru tqdm   # runtime dependencies
-pip install -e .                                       # editable install
+pip install .        # or `pip install -e .` to edit the code in place
 ```
 
-The runtime dependencies are listed explicitly because `pyproject.toml` does not yet declare
-them, and only the **editable** install works for now: `pyproject.toml` names the top-level
-package only, so a regular `pip install .` ships `levisim/__init__.py` without its subpackages
-and `import levisim` fails with `ModuleNotFoundError: No module named 'levisim.core'`. Both are
-fixed by the packaging pull requests (#3, then #6); once they are merged, `pip install .`
-installs the package and its dependencies in one step.
+This installs the runtime dependencies too. Optional extras: `elk` (ship logs to Elasticsearch,
+see [Logging](guide/logging.md)), `notify` (desktop notifications from long test runs), `video`
+(OpenCV, for the image-comparison helpers) and `dev` (pytest and ruff), e.g.
+`pip install '.[dev]'`.
 
 Alternatively, skip installing altogether and work from the repo root: the tests are configured
 to find the in-tree package (see [Testing](testing.md)), and scripts and notebooks can do the same
@@ -24,12 +21,11 @@ with `export PYTHONPATH=/path/to/levisim`.
 
 ### Note on importing from `levisim`
 
-The repository and the Python package inside it are both called `levisim`, so there are two
-layers of `levisim` directory. Importing `levisim` into a Python session whose current working
+The repository and the Python package inside it are both called `levisim`. Importing `levisim` into a Python session whose current working
 directory itself contains a directory called `levisim` - for example the parent folder of the
 clone - picks up the wrong one and gives an empty import, by
 [name shadowing](https://en.wikipedia.org/wiki/Variable_shadowing). This is one reason to keep
-notebooks in a local `notebooks/` directory inside the clone (it is git-ignored).
+notebooks in the `notebooks/` directory inside the clone.
 
 ## Quickstart
 
@@ -61,6 +57,7 @@ S_hh = mtrap.homodyne_spectrum(QuantumLinearTheoryMethod.LINEAR_AMPLIFIER_MODEL)
 
 fig, ax = plt.subplots()
 ax.semilogy(mtrap.ω_range / kHz, S_hh)
+ax.margins(x=0)
 ax.set_xlabel(r'$\omega / 2\pi$ (kHz)')
 ax.set_ylabel(r'$S_{hh}(\omega)$ (shot-noise units)')
 fig.savefig('quickstart_homodyne.png')

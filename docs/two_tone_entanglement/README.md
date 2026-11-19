@@ -248,4 +248,4 @@ print(two_tone_steady_state(mtrap, ratio=0.525).summary_str)  # E_N ≈ 0.18
 
 ---
 
-*Provenance: this study and the code it uses were written by Claude (Anthropic) at Julian Iacoponi's request, in October 2026; see the note at the end of the top-level README.*
+*Provenance: this study and the code it uses were written by Claude (Anthropic) at Julian Iacoponi's request, in October 2026; see `DISCLAIMER.md` at the top of the repository.*

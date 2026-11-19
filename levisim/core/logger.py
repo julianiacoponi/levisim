@@ -26,6 +26,7 @@ import hashlib
 import json
 import os
 import sys
+import threading
 import traceback
 from pathlib import Path
 
@@ -156,6 +157,10 @@ def send_to_elasticsearch(message):
         )
     except Exception as exception:
         _elasticsearch_reachable = False
+        # remove the handler from a helper thread: removing it from inside its own sink would
+        # wait on the lock this call holds. Once it is gone, loguru's minimum level rises back
+        # to the other sinks' levels and TRACE records are no longer built at all
+        threading.Thread(target=_remove_handler, args=('elasticsearch',), daemon=True).start()
         kept = (
             f'\n  Logs are still written to {_log_file};' if _log_file is not None else '\n '
         )

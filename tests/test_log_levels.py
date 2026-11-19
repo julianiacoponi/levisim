@@ -241,7 +241,9 @@ def test_print_is_only_used_where_printing_is_the_documented_output():
     offenders = []
     for path in sorted(LEVISIM_ROOT.rglob('*.py')):
         relative = path.relative_to(LEVISIM_ROOT.parent).as_posix()
-        if relative == 'levisim/core/logger.py':
+        # logger.py configures the sinks itself; elk.py is the levisim-logs command-line tool, whose
+        # printed lines are its user interface
+        if relative in ('levisim/core/logger.py', 'levisim/core/elk.py'):
             continue
         for scope, line in print_calls(path):
             function = scope.split('.')[-1] if scope else ''
