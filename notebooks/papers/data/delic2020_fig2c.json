@@ -1,5 +1,5 @@
 {
- "paper": "U. Delić et al., Science 367, 892 (2020), doi:10.1126/science.aba3993 (arXiv:1911.04406v1)",
+ "paper": "U. Delić et al., Science 367, 892 (2020), doi:10.1126/science.aba3993 (arXiv:1911.04406v2)",
  "figure": "Fig. 2c: occupation n_x versus detuning Δ/2π (paper convention Δ = ω_cav - ω_tw > 0 is red detuning)",
  "method": "extracted from the vector graphics of the arXiv PDF (page 4) with PyMuPDF; axis calibration from tick marks: Δ/2π [kHz] = 100 + (x - 364.62)/0.376, n = (391.66 - y)/66.706 (PDF points). The three values quoted in the text (0.43 at 315 kHz, 0.83 at 380 kHz, 4.8 at 580 kHz) are recovered to within 0.03.",
  "points": [
