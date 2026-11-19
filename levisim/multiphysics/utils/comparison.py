@@ -144,7 +144,9 @@ def verify_equivalence_of_spectrum_calculation_methods(mtrap, spectrum_types, me
         - checking for sufficently few errant pixels in a greyscale image diff
         - checking the relative absolute difference is sufficiently low
     """
-    _require_cv2()
+    # a single method only plots; the image diff (and so OpenCV) is needed only to compare two
+    if len(methods) > 1:
+        _require_cv2()
     set_plt_rcParams_to_xmgrace_style()
 
     logger.info(

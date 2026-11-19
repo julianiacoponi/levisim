@@ -430,7 +430,7 @@ class MultiTrap:
             N, d = self.num_traps, self.Cartesian_axes_per_trap
             n , max_order = N * d, self.max_order
 
-            # NOTE: these pickle files were made using the save_power_series_to_pickle.ipynb notebook
+            # NOTE: these pickle files are made by scripts/generate_power_series_pickles.py
             filename = f'{n}D_{N}x{d}_up_to_{max_order}.pickle'
             current_file_path = Path(__file__).resolve()
             # currently this file sits in levisim/levisim/multiphysics/
@@ -926,6 +926,32 @@ class MultiTrap:
         #   and checked against the CS literature before being added (as an opt-in, defaulting off,
         #   since it changes every off-node result) - see open questions in the Nov 2026 analytic PR.
 
+    # every toy_params key that setup_toy_parameters reads, besides those of the chosen ΩModel kind
+    TOY_PARAMETER_KEYS = frozenset({
+        'Ω_model', 'Ωz_to_Ωx_multiplier',
+        'P', 'T', 'm', 'r', 'ρ', 'vth', 'use_Γ_formula', 'toy_Γ', 'Γjn_dict',
+        'toy_gx', 'toy_gy', 'toy_gz', 'toy_gxy', 'toy_gxz', 'toy_gyz', 'gjn_dict',
+        'φ_odd_n', 'φ_even_n', 'φn_dict',
+    })
+
+    def warn_about_unknown_toy_parameters(self, params):
+        """
+        Logs a WARNING naming any toy_params key that nothing reads
+
+        Unknown keys used to be ignored silently, so a renamed or misspelt key (e.g. 'φ2' for
+        'φ_even_n', 'gs' for 'gjn_dict', or 'Ω_gap' with the 'pairs' model) changed the physics
+        without any message. Parameters of an ΩModel kind other than the chosen one count as
+        unknown, since they have no effect.
+        """
+        known = set(self.TOY_PARAMETER_KEYS) | set(ΩModel.KINDS[self.Ω_model_object.kind])
+        unknown = sorted(set(params) - known)
+        if unknown:
+            logger.warning(
+                'toy_params keys {} are not used by MultiTrap (Ω_model {!r}) and have no effect;'
+                ' check for renamed or misspelt keys', unknown, self.Ω_model_object.kind,
+            )
+        return unknown
+
     def setup_toy_parameters(self, **params):
         """
         Setup 'toy' parameters to insert into the model directly, without need to calculate them
@@ -938,6 +964,7 @@ class MultiTrap:
         # see ΩModel above, and plot_vertical_stack_varying_1_parameter.ipynb for more
         self.Ω_model_object = ΩModel.from_toy_params(params)
         self.Ω_model = self.Ω_model_object.kind
+        self.warn_about_unknown_toy_parameters(params)
         logger.debug('Setting up toy parameters with {!r}', self.Ω_model_object)
         # the model's parameters stay available as attributes, e.g. self.Ω_first for 'pairs'
         for name, value in self.Ω_model_object.params.items():

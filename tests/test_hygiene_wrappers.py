@@ -5,7 +5,19 @@ from types import SimpleNamespace
 
 import pytest
 
-from levisim.core.wrappers import progress_bar, resolve_variable_path
+from levisim.core.logger import set_console_level
+from levisim.core.wrappers import progress_bar, progress_bars_wanted, resolve_variable_path
+
+
+@pytest.fixture(autouse=True)
+def console_at_info():
+    """Progress bars draw only when the console is at INFO or more verbose"""
+    import levisim.core.logger  # noqa: F401
+    import sys
+    previous = sys.modules['levisim.core.logger']._console_level
+    set_console_level('INFO')
+    yield
+    set_console_level(previous)
 
 
 class Looper:
@@ -64,3 +76,15 @@ def test_unresolvable_path_raises():
     def g(x):
         return x
     assert g(1) == 1
+
+
+def test_progress_bars_follow_the_console_level(capsys):
+    """At the default WARNING console no bar is drawn; at INFO one is"""
+    set_console_level('WARNING')
+    assert not progress_bars_wanted()
+    assert Looper().method() == 21
+    assert 'Looping through' not in capsys.readouterr().err
+    set_console_level('INFO')
+    assert progress_bars_wanted()
+    assert Looper().method() == 21
+    assert 'Looping through' in capsys.readouterr().err
