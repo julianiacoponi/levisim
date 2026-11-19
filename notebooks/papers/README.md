@@ -13,6 +13,7 @@ running them.
 | [delic2020_ground_state_cooling](delic2020_ground_state_cooling.ipynb) (~1 s) | U. Delić, M. Reisenbauer, K. Dare, D. Grass, V. Vuletić, N. Kiesel and M. Aspelmeyer, *Cooling of a levitated nanoparticle to the motional quantum ground state*, Science **367**, 892 (2020), [doi:10.1126/science.aba3993](https://doi.org/10.1126/science.aba3993) | cavity drive, $g_x$, gas and recoil heating; $n_x$ against detuning (Fig. 2c); heterodyne sidebands and sideband thermometry (Eqs. S2, S3) | $n_x$ = 0.397 at 315 kHz against measured 0.43 ± 0.03, inside the paper's theory band (0.31-0.54); $\omega_d/2\pi$ = 4.33 × 10⁹ Hz (paper ≈ 4 × 10⁹); recoil 5.6 kHz (paper 6 kHz); recoil-limited minimum 0.145 (paper 0.154) | $g_x$ 12 % above the inferred 71 kHz, gas heating 16 % above measured; measured $n_x$ above every model (and above the paper's band) at large detuning; at the optimum ($g_x/\kappa$ = 0.41) the paper's thermometry estimators deviate from the true $n_x$ by +9 % (Lorentzian fit) and −34 % (band power) |
 | [piotrowski2023_two_mode_ground_state](piotrowski2023_two_mode_ground_state.ipynb) (~2 s) | J. Piotrowski, D. Windey, J. Vijayan, C. Gonzalez-Ballestero, A. de los Ríos Sommer, N. Meyer, R. Quidant, O. Romero-Isart, R. Reimann and L. Novotny, *Simultaneous ground-state cooling of two mechanical modes of a levitated nanoparticle*, Nat. Phys. **19**, 1009 (2023), [doi:10.1038/s41567-023-01956-1](https://doi.org/10.1038/s41567-023-01956-1) | trap frequencies, recoil and gas heating; $n_x$, $n_y$ against detuning (Fig. 2b) and polarisation angle (Fig. 3e); the sideband-thermometry error map (Fig. 4d,e) | paraxial frequencies and recoil rates within 1 % of the paper; with the fitted $g$, $\Gamma$ the lower edge of the uncertainty band matches the paper's $n_x$ band within 0.01 at all five detunings (identical to two decimals at four); thermometry error 1.2 % / 1.0 % at the Fig. 2 parameters (paper: "about 1 %"); dipole law ($\propto\sin\theta$) matches $n_x(\theta)$, a θ-independent $G_0$ does not | the coupling from the paper's own Eq. (1) and stated parameters is 2.1-2.5× the fitted one (the paper uses the fitted values); measured $n_y$ above both levisim and the paper's model at 362-662 kHz; Methods typos ($G_0 \propto \cos\theta$ convention slip, gas heating a factor 2 below its Eq. (3)) |
 | [vijayan2024_cavity_mediated_interactions](vijayan2024_cavity_mediated_interactions.ipynb) (~1 s) | J. Vijayan, J. Piotrowski, C. Gonzalez-Ballestero, K. Weber, O. Romero-Isart and L. Novotny, *Cavity-mediated long-range interactions in levitated optomechanics*, Nat. Phys. **20**, 859 (2024), [doi:10.1038/s41567-024-02405-3](https://doi.org/10.1038/s41567-024-02405-3) | two particles in one cavity (levisim's multi-trap case): coupling estimates, spectrogram of the avoided crossing (Fig. 2a), splitting against detuning (Fig. 2d) and particle position (Fig. 3b), full linear model against the paper's adiabatic Eq. (1) | with waists inferred from the measured frequencies, the full model matches 11 of 14 measured splittings within 8 % (6.12 against 6.61 kHz at 0.45 MHz) and the splitting at $d = 4\lambda$; the paper's $g_y$ and $g_z$ estimates are reproduced if the zero-point motion is taken at paraxial frequencies | the stated 0.85 μm waist is inconsistent with the measured frequencies and gives ~50 % larger splittings; the bare cavity-axis frequency (70 kHz) is inferred, not stated; Eq. (1) underestimates the full model by up to 5.5 %; Fig. 4 not reproduced (detuning and $\Omega_z$ not stated) |
+| [pontin2025_pair_dark_modes](pontin2025_pair_dark_modes.ipynb) (~1 min) | A. Pontin, Q. Deplano, A. Ranfagni, F. Marino and F. Marin, *Strong coupling and dark modes in the motion of a pair of levitated nanoparticles*, Phys. Rev. Lett. **135**, 073602 (2025), [doi:10.1103/t33b-f1b2](https://doi.org/10.1103/t33b-f1b2) (arXiv:2502.08563v1) | two particles in one bichromatic tweezer (1064 + 976 nm), only the 1064 nm light scattered into the cavity (levisim's per-trap cavity drive, `Trap(cavity_drive_tweezer=..., cavity_drive_field_ratio=ζ)`); particle-2 couplings, the four eigenfrequencies against the 976 nm power (Fig. 3) with the Coulomb coupling and shift, the dark modes (Fig. 4), linear stability across the scan | particle-2 couplings follow the paper's $(P_0/P)^{1/4}$ law within 1.5 %; calibrated bare frequencies 124.41, 117.28, 129.10 kHz (stated 124, 117, 129) and the fourth crossing at 214.3 mW (paper 214); splittings 1.17, 1.44, 0.74 kHz against 1.25, 1.53 kHz (Fig. 4a) and 0.71 kHz (Fig. 3); dark modes at 297.0 and 335.8 mW against 297.4 and 336.1 mW marked in Fig. 4a | the stated parameters give $g_{x1}$ 1.36× the fitted value; the text's splittings (1.22, 1.20, 1.02 kHz) differ from the figures for $y_1x_2$ and are not reproduced by the paper's model as written at its fitted parameters ($\chi^2$ = 43); Eq. (37) gives the Coulomb off-diagonal terms the sign of the diagonal ones; the model is weakly unstable (≤ 1.5 /s) in two ~1-2 mW windows where $\varphi - k\Delta z$ is furthest from π; figures are raster, so all data are digitised from pixels |
 
 Runtimes are the computation time printed at the end of each notebook on a laptop; importing levisim
 adds a second or two.
@@ -20,7 +21,8 @@ adds a second or two.
 ## Shared pieces
 
 - The systems are built with levisim directly: `MultiTrap(tweezers=[...], beads=[...], trap_kwargs=[...])`
-  takes each paper's `Tweezer` and `Bead` (and measured frequencies through `override_Ω_dict`),
+  takes each paper's `Tweezer` and `Bead` (and measured frequencies through `override_Ω_dict`, or another
+  tweezer's light as a bead's cavity drive through `cavity_drive_tweezer`),
   drives the cavity at the tweezer's wavelength, and adds the photon-recoil heating
   (`Trap.photon_recoil_heating_rates`) to the gas bath of every mode (on by default with physical
   parameters; the notebooks also pass `photon_recoil=True` explicitly).
@@ -29,7 +31,8 @@ adds a second or two.
     heating rates, which `add_heating` imposes by raising each mode's bath occupation
     (photon recoil needs physical parameters, so toy systems still need this);
   - `heterodyne` is a vectorised version of `MultiTrap.heterodyne_spectrum`, checked against it in
-    every notebook that uses it;
+    every notebook that uses it; it and `mechanical_eigenfrequencies` take an optional modified drift
+    matrix (e.g. with the Coulomb coupling of the Pontin et al. 2025 pair added);
   - `occupations`, `mechanical_eigenfrequencies` and `load_digitised` read out a built system and
     load the digitised figure data.
 
@@ -40,8 +43,8 @@ adds a second or two.
 
 ## Conventions used throughout
 
-levisim's detuning is $\Delta = \omega_\text{tweezer} - \omega_\text{cavity}$ (red is $\Delta < 0$), and
-all three papers use the opposite sign; plots use the papers' sign. levisim's tweezer is polarised
+levisim's detuning is $\Delta = \omega_\text{tweezer} - \omega_\text{cavity}$ (red is $\Delta < 0$); Delić,
+Piotrowski and Vijayan use the opposite sign, Pontin et al. (2025) the same one; plots use the papers' sign. levisim's tweezer is polarised
 along its $y$ axis and `Tweezer.θ` is the polarisation angle to the cavity axis, so each notebook
 states how the paper's axes map onto levisim's. Recoil heating uses the standard dipole-scattering
 rates with coefficients (1, 2, 7) along, perpendicular to and along the beam relative to the

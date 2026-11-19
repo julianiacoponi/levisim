@@ -25,6 +25,7 @@ demos/06_parameter_sweeps.ipynb                  180   # [2 s]
 papers/delic2020_ground_state_cooling.ipynb              180   # [1 s]
 papers/piotrowski2023_two_mode_ground_state.ipynb        180   # [3 s]
 papers/vijayan2024_cavity_mediated_interactions.ipynb    180   # [1 s]
+papers/pontin2025_pair_dark_modes.ipynb                  300   # [57 s]
 
 # archive (outputs stripped)
 archive/animations/3x2_truncated_heatmap.ipynb                     180   # [6 s]
