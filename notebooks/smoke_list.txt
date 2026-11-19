@@ -1,0 +1,15 @@
+# Notebooks executed end to end by .github/workflows/notebooks.yml on pull requests that touch
+# notebooks/ or levisim/. One path per line, relative to notebooks/, optionally followed by a
+# per-notebook time limit in seconds (default 600). Blank lines and # comments are ignored.
+#
+# Keep this list to notebooks that run in about a minute or less on a GitHub runner, with their
+# animation/size flags at the committed (quick) settings. Times in brackets were measured in the
+# in-process runner (Nov 2026) on a lightly loaded laptop.
+
+archive/animations/homodyne_slice.ipynb                    # [4 s]
+archive/animations/spectral_animations.ipynb               # [13 s, MAKE_ANIMATIONS = False]
+archive/animations/spectral_heatmap_single_frame.ipynb     # [14 s]
+archive/animations/3x2_truncated_heatmap.ipynb             # [38 s, MAKE_ANIMATIONS = False]
+physics/simulation_analysis.ipynb                          # [54 s]
+
+# demos/, showcase/ and papers/: the tracks that add them extend this list

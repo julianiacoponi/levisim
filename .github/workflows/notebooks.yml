@@ -1,0 +1,96 @@
+name: notebooks
+
+# Smoke-runs the fast notebooks listed in notebooks/smoke_list.txt with a real Jupyter kernel
+# (nbclient), so that a change to levisim that breaks a notebook shows up on the pull request.
+# The executed notebooks are discarded: nothing is written back to the repository.
+
+on:
+  pull_request:
+    paths:
+      - 'notebooks/**'
+      - 'levisim/**'
+      - '.github/workflows/notebooks.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: notebooks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install levisim and the notebook runner
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install nbclient nbformat ipykernel
+          python -m ipykernel install --user --name python3
+
+      - name: Execute the smoke-test notebooks
+        env:
+          MPLBACKEND: Agg
+          PYTHONUNBUFFERED: '1'
+        run: |
+          python - <<'EOF'
+          """Executes each notebook in notebooks/smoke_list.txt in its own directory, with a time limit"""
+          import subprocess
+          import sys
+          import time
+          from pathlib import Path
+
+          DEFAULT_LIMIT = 600  # seconds per notebook
+
+          # one notebook per process, so a hung kernel cannot outlive its time limit
+          EXECUTE = '''
+          import sys
+          from pathlib import Path
+          import nbformat
+          from nbclient import NotebookClient
+          path = Path(sys.argv[1])
+          nb = nbformat.read(path, as_version=4)
+          NotebookClient(nb, timeout=None, kernel_name='python3',
+                         resources={'metadata': {'path': str(path.parent)}}).execute()
+          '''
+
+          entries = []
+          for line in Path('notebooks/smoke_list.txt').read_text().splitlines():
+              line = line.split('#', 1)[0].strip()
+              if not line:
+                  continue
+              path, *limit = line.split()
+              entries.append((Path('notebooks') / path, int(limit[0]) if limit else DEFAULT_LIMIT))
+
+          failures = []
+          for path, limit in entries:
+              if not path.exists():
+                  failures.append(f'{path}: listed in smoke_list.txt but missing')
+                  print(f'::error file={path}::listed in notebooks/smoke_list.txt but missing')
+                  continue
+              print(f'::group::{path} (limit {limit} s)')
+              start = time.perf_counter()
+              try:
+                  result = subprocess.run([sys.executable, '-c', EXECUTE, str(path)], timeout=limit)
+                  ok, reason = result.returncode == 0, f'exit code {result.returncode}'
+              except subprocess.TimeoutExpired:
+                  ok, reason = False, f'took longer than {limit} s'
+              elapsed = time.perf_counter() - start
+              print('::endgroup::')
+              print(f'{"PASS" if ok else "FAIL"}  {path}  ({elapsed:.0f} s)')
+              if not ok:
+                  failures.append(f'{path}: {reason}')
+                  print(f'::error file={path}::{reason}')
+
+          print(f'\n{len(entries) - len(failures)} of {len(entries)} notebooks ran')
+          sys.exit(1 if failures else 0)
+          EOF

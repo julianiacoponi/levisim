@@ -2,6 +2,8 @@
 # (levisim's own runtime dependencies are needed too, because autodoc imports the package)
 sphinx>=7.2
 myst-parser>=3.0  # myst_fence_as_directive
+# renders the notebook gallery (docs/notebooks.md); never executes the notebooks
+myst-nb>=1.0
 furo
 sphinx-copybutton
 sphinxcontrib-mermaid

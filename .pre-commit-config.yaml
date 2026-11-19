@@ -32,11 +32,21 @@ repos:
           - F821,F811,F541,F632,E711,E712,E714,E722
 
   - repo: https://github.com/kynan/nbstripout
-    rev: 0.8.1
+    rev: 0.9.2
     hooks:
-      # Notebook outputs were 1.65 GB across 41 notebooks; stripping them leaves 0.9 MB.
-      # This matters if notebooks are ever tracked again - they are currently gitignored,
-      # and the stale *.ipynb Git LFS filter was removed because of exactly this problem.
+      # Notebooks are tracked (see notebooks/README.md). The owner's uploaded set was 1.65 GB, of
+      # which 99.9% was stored output, so outputs are stripped by default.
+      #
+      # Opting out: a notebook whose top-level metadata has "keep_output": true keeps its outputs
+      # (the demo and paper-reproduction notebooks, which keep light figures for the docs gallery).
+      # Checked with nbstripout 0.9.2: with no --keep-output flag, strip_output() reads
+      # nb.metadata["keep_output"] and keeps every cell's outputs; a cell can still opt back out
+      # with cell metadata "keep_output": false (or opt in, in a stripped notebook, with true or
+      # the tag keep_output). Execution counts are always removed, and so are the volatile
+      # metadata keys (e.g. cell.metadata.ExecuteTime, metadata.signature).
+      #
+      # To set the flag: Jupyter's notebook-metadata editor, or
+      #   python -c "import nbformat as n,sys; p=sys.argv[1]; nb=n.read(p,4); nb.metadata['keep_output']=True; n.write(nb,p)" NB.ipynb
       - id: nbstripout
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
