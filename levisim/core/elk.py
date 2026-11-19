@@ -515,7 +515,14 @@ def start_process(paths, product, extra_env=None):
 
 
 def stop_process(paths, product, timeout=30.0):
-    """Stops our `product` (SIGTERM to its process group, SIGKILL after `timeout`); True if it was running"""
+    """
+    Stops our `product`: SIGTERM to its process group, then SIGKILL to whatever is left of the
+    group after `timeout` seconds. Returns once the whole group has gone (or, if even SIGKILL leaves
+    something behind, after a further few seconds); True if it was running.
+
+    The whole group is waited for, not only the process started: bin/elasticsearch and bin/kibana
+    are launcher scripts whose children (the Java server, the Node process) can outlive them.
+    """
     pid = read_pid(paths, product)
     if pid is None:
         return False
@@ -527,20 +534,38 @@ def stop_process(paths, product, timeout=30.0):
         return False
     except OSError:
         target, kill = pid, os.kill
+
+    def still_there():
+        if pid_is_running(pid):
+            return True
+        if kill is not os.killpg:
+            return False
+        try:
+            os.killpg(target, 0)  # anything left in the group, an exited-but-unreaped child included
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            pass
+        return True
+
+    def wait(seconds):
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline and still_there():
+            time.sleep(0.1)
+        return not still_there()
+
     try:
         kill(target, signal.SIGTERM)
     except ProcessLookupError:
         pass
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline and pid_is_running(pid):
-        time.sleep(0.2)
-    if pid_is_running(pid):
+    if not wait(timeout):
+        print(f'{product} (process group {target}) did not stop within {timeout:g} s of SIGTERM; sending SIGKILL', file=sys.stderr)
         try:
             kill(target, signal.SIGKILL)
         except ProcessLookupError:
             pass
-        time.sleep(0.2)
-        _reap(pid)
+        if not wait(5.0):
+            print(f'part of the {product} process group {target} is still there after SIGKILL', file=sys.stderr)
     paths.pid_file(product).unlink(missing_ok=True)
     return True
 

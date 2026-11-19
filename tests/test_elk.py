@@ -306,6 +306,26 @@ def test_start_and_stop_a_process_group(tmp_path):
     assert elk.stop_process(paths, 'elasticsearch') is False  # nothing left to stop
 
 
+def test_stop_waits_for_children_that_outlive_the_launcher_and_kills_them(tmp_path, capsys):
+    # like bin/elasticsearch, the launcher script exits on SIGTERM but leaves a child behind - here
+    # one that ignores SIGTERM - so stopping must wait for the whole group, then SIGKILL the rest
+    script = (
+        '#!/bin/sh\n'
+        "(trap '' TERM; echo 'child started'; exec sleep 60) &\n"
+        'echo "elasticsearch started"\n'
+        'wait\n'
+    )
+    paths = make_installation(tmp_path, scripts={'elasticsearch': script})
+    pid = elk.start_process(paths, 'elasticsearch')
+    assert wait_for(lambda: 'child started' in paths.out_file('elasticsearch').read_text())
+    started = time.monotonic()
+    assert elk.stop_process(paths, 'elasticsearch', timeout=1)
+    assert time.monotonic() - started >= 1  # it waited for the straggler rather than returning at once
+    with pytest.raises(ProcessLookupError):
+        os.killpg(pid, 0)
+    assert 'sending SIGKILL' in capsys.readouterr().err
+
+
 def test_start_process_needs_an_installation(tmp_path):
     with pytest.raises(ElkError, match='levisim-logs install'):
         elk.start_process(ElkPaths(tmp_path, VERSION), 'kibana')
