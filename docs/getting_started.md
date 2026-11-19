@@ -2,7 +2,14 @@
 
 ## Installation
 
-`levisim` is installed from a clone of the repository:
+The latest release is on [PyPI](https://pypi.org/project/levisim/):
+
+```sh
+pip install levisim
+```
+
+The notebooks, tests and scripts are not part of the package, so to run them, or to use the
+development version, install from a clone of the repository instead:
 
 ```sh
 git clone https://github.com/julianiacoponi/levisim.git
@@ -10,10 +17,13 @@ cd levisim
 pip install .        # or `pip install -e .` to edit the code in place
 ```
 
-This installs the runtime dependencies too. Optional extras: `elk` (ship logs to Elasticsearch,
-see [Logging](guide/logging.md)), `notify` (desktop notifications from long test runs), `video`
-(OpenCV, for the image-comparison helpers) and `dev` (pytest and ruff), e.g.
-`pip install '.[dev]'`.
+Both need Python 3.10 or newer and install the runtime dependencies too. Optional extras: `elk`
+(ship logs to Elasticsearch, see [Logging](guide/logging.md)), `notify` (desktop notifications
+from long test runs), `video` (OpenCV, for the image-comparison helpers) and `dev` (pytest and
+ruff), e.g. `pip install 'levisim[elk]'` or, from a clone, `pip install '.[dev]'`.
+
+`levisim.__version__` says which version is installed; `CHANGELOG.md` in the repository lists what
+changed in each.
 
 Alternatively, skip installing altogether and work from the repo root: the tests are configured
 to find the in-tree package (see [Testing](testing.md)), and scripts and notebooks can do the same

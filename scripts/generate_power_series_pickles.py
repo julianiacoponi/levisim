@@ -9,7 +9,7 @@ Each pickle holds the tuple
 returned by `generate_determinant_and_adjugate_by_order(n, labels, max_order)` for a system of
 N traps with d Cartesian axes each (n = N·d dimensions), saved as
 
-    notebooks/multiphysics/power-series/pickle/{n}D_{N}x{d}_up_to_{max_order}.pickle
+    levisim/multiphysics/power_series_data/{n}D_{N}x{d}_up_to_{max_order}.pickle
 
 MultiTrap loads the full-order file, max_order = n. The three files tracked in git (the ones the
 test suite needs) are the default targets:
@@ -43,7 +43,7 @@ from levisim.multiphysics.hybridisation import (  # noqa: E402
     generate_subscripts_and_labels,
 )
 
-PICKLE_DIR = REPO_ROOT / 'notebooks' / 'multiphysics' / 'power-series' / 'pickle'
+PICKLE_DIR = REPO_ROOT / 'levisim' / 'multiphysics' / 'power_series_data'
 
 # the files tracked in git, which the test suite loads
 TRACKED_SYSTEMS = ['1×2', '2×2', '3×2']
@@ -111,7 +111,7 @@ def main(argv=None):
     parser.add_argument('--check', action='store_true',
                         help='compare with the stored files instead of writing them; exit 1 on a mismatch')
     parser.add_argument('--out-dir', type=Path, default=PICKLE_DIR,
-                        help='output directory (default: notebooks/multiphysics/power-series/pickle)')
+                        help='output directory (default: levisim/multiphysics/power_series_data)')
     args = parser.parse_args(argv)
 
     systems = ALL_SYSTEMS if args.all else (args.systems or TRACKED_SYSTEMS)

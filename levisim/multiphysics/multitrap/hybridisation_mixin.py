@@ -11,6 +11,7 @@ evaluates D⁻¹ = adj(D)/det(D) from the power series of deranged cycles and pa
 
 import numpy as np
 
+import os
 from pathlib import Path
 
 from levisim.core.logger import logger
@@ -27,14 +28,40 @@ from levisim.multiphysics.hybridisation import (
 
 
 __all__ = [
+    'POWER_SERIES_DATA_DIR',
     'POWER_SERIES_PICKLE_DIR',
+    'find_power_series_file',
     'HybridisationMixin',
 ]
 
 
-# NOTE: the power-series pickle files are made by scripts/generate_power_series_pickles.py. This file
-# sits in levisim/levisim/multiphysics/multitrap/, and the base directory is levisim/
-POWER_SERIES_PICKLE_DIR = Path(__file__).resolve().parents[3] / 'notebooks' / 'multiphysics' / 'power-series' / 'pickle'
+# NOTE: the power-series pickle files are made by scripts/generate_power_series_pickles.py. The 2D,
+# 4D and 6D series ship with the package, in levisim/multiphysics/power_series_data/ (this file sits
+# in levisim/multiphysics/multitrap/); larger ones can be generated into a folder given by
+# power_series_dir= or by the LEVISIM_POWER_SERIES_DIR environment variable
+POWER_SERIES_DATA_DIR = Path(__file__).resolve().parents[1] / 'power_series_data'
+# the name this folder had before the series were shipped with the package
+POWER_SERIES_PICKLE_DIR = POWER_SERIES_DATA_DIR
+
+
+def find_power_series_file(filename, power_series_dir=None):
+    """
+    The path of a power-series pickle, looked for in order in `power_series_dir`, in
+    $LEVISIM_POWER_SERIES_DIR, and in the folder shipped with levisim (POWER_SERIES_DATA_DIR)
+
+    Raises FileNotFoundError naming every folder tried, and how to generate the file.
+    """
+    folders = [Path(d) for d in (power_series_dir, os.environ.get('LEVISIM_POWER_SERIES_DIR')) if d]
+    folders.append(POWER_SERIES_DATA_DIR)
+    for folder in folders:
+        candidate = folder / filename
+        if candidate.is_file():
+            return candidate
+    raise FileNotFoundError(
+        f'No power-series pickle {filename!r} in {[str(f) for f in folders]}. Generate it with '
+        f'`python scripts/generate_power_series_pickles.py` (from a clone of the repository), or '
+        f'build the series in place with MultiTrap(generate_power_series=True).'
+    )
 
 
 class HybridisationMixin:
@@ -55,7 +82,8 @@ class HybridisationMixin:
             - max_order: highest order of the power series (default and maximum 9, and at most the
               number of dimensions)
             - evaluation_order: order at which the power series is evaluated (default max_order)
-            - load_in_power_series: load the power series from `POWER_SERIES_PICKLE_DIR`
+            - load_in_power_series: load the power series found by `find_power_series_file`
+              (`power_series_dir=`, then $LEVISIM_POWER_SERIES_DIR, then the shipped `POWER_SERIES_DATA_DIR`)
             - generate_power_series: generate the power series symbolically (slow above 6 dimensions)
             - compare_Rjk_calculations: check each hybridisation function against its alternative forms
         """
@@ -72,7 +100,7 @@ class HybridisationMixin:
             N, d = self.num_traps, self.Cartesian_axes_per_trap
             n , max_order = N * d, self.max_order
             filename = f'{n}D_{N}x{d}_up_to_{max_order}.pickle'
-            power_series_file_path = POWER_SERIES_PICKLE_DIR / filename
+            power_series_file_path = find_power_series_file(filename, kwargs.get('power_series_dir'))
             logger.info('Loading the {}D power series up to order {} from {}', n, max_order, filename)
             power_series_data = load_variable_from_pickle(power_series_file_path)
             self.deranged_determinant_by_order, self.deranged_adjugate_by_order = power_series_data

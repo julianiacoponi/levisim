@@ -1,55 +1,81 @@
 [build-system]
-requires = ["setuptools>=42", "wheel"]  # Use setuptools and wheel for packaging
-build-backend = "setuptools.build_meta" # Set setuptools as the build backend
+# setuptools 77 is the first to read the PEP 639 `license` expression and `license-files`
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "levisim"
-version = "0.0.1"
+version = "0.1.0"
+description = "Quantum linear theory and stochastic simulation of optically levitated nanoparticles: multi-particle coherent-scattering cavity spectra, free-space tweezer dynamics and Gaussian-state entanglement"
+readme = { file = "PYPI_README.md", content-type = "text/markdown" }
 authors = [
-  { name = "Julian Iacoponi", email = "julian.iacoponi@gmail.com" }
+  { name = "Julian Iacoponi", email = "julian.iacoponi@gmail.com" },
 ]
-description = "A package for levitated physics simulations"
-readme = "README.md"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
 requires-python = ">=3.10"  # match statements in dimension.py and comparison.py
-license = { file = "LICENSE" }
+keywords = [
+  "levitated optomechanics", "optical tweezers", "coherent scattering", "cavity optomechanics",
+  "quantum linear theory", "quantum Langevin equations", "power spectral density",
+  "nanoparticles", "entanglement", "physics simulation",
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "Topic :: Scientific/Engineering :: Physics",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+]
 
-# NOTE: these are unpinned deliberately - the versions this code has actually been developed
-# and run against are not recorded anywhere, so a lower bound would be a guess. Add floors
-# once a known-good set is established.
+# The floors are the oldest versions the test suite has passed against: Python 3.10 with numpy 2.0.2,
+# scipy 1.13.1, matplotlib 3.8.4, sympy 1.12.1, loguru 0.7.0 and tqdm 4.60.0 (558 passed, Nov 2026).
+# numpy 2.0 is a hard floor: levisim uses np.trapezoid, which arrived in numpy 2.0. CI tests these
+# floors on Python 3.10 and the newest releases on Python 3.10-3.13.
 dependencies = [
-  "numpy",
-  "scipy",
-  "matplotlib",
-  "sympy",
-  "loguru",
-  "tqdm",
+  "numpy>=2.0",
+  "scipy>=1.13",
+  "matplotlib>=3.8",
+  "sympy>=1.12",
+  "loguru>=0.7",
+  "tqdm>=4.60",
 ]
 
 # optional conveniences - none of these are needed to import levisim or run the physics
 [project.optional-dependencies]
-# ship logs to a local Elasticsearch/Kibana stack, see docker-compose.yaml
-elk = ["elasticsearch"]
-# desktop notifications when a long test run starts and finishes, see levisim/core/testing.py
+# ship logs to Elasticsearch/Kibana (see `levisim-logs` and docs/guide/logging.md)
+elk = ["elasticsearch>=8"]
+# desktop notifications when a long test run starts and finishes (levisim/core/testing.py)
 notify = ["plyer"]
 # pixel-level image comparison in levisim/multiphysics/utils/comparison.py
 video = ["opencv-python"]
-# running the test suite and the linter
-dev = ["pytest", "ruff"]
+# running the notebooks in notebooks/
+notebooks = ["jupyterlab", "ipykernel", "nbclient", "networkx"]
+# building the documentation site
+docs = ["sphinx>=7.2", "myst-parser>=3.0", "myst-nb>=1.0", "furo", "sphinx-copybutton", "sphinxcontrib-mermaid"]
+# running the test suite and the linter, and building releases
+dev = ["pytest", "pytest-xdist", "ruff", "nbstripout", "pre-commit", "build", "twine"]
 
-# `levisim-logs install|up|down|status|ingest|open`: Elasticsearch and Kibana without Docker
 [project.scripts]
 levisim-logs = "levisim.core.elk:main"
 
 [project.urls]
 Homepage = "https://github.com/julianiacoponi/levisim"
+Documentation = "https://julianiacoponi.github.io/levisim/"
+Source = "https://github.com/julianiacoponi/levisim"
 Issues = "https://github.com/julianiacoponi/levisim/issues"
+Changelog = "https://github.com/julianiacoponi/levisim/blob/main/CHANGELOG.md"
 
-[tool.setuptools]
-include-package-data = true  # If you have a MANIFEST.in for non-code files
-
-# NOTE: `packages = ["levisim"]` used to be set here, which shipped only the
-# top-level directory and none of the subpackages, so an installed `levisim`
-# raised `ModuleNotFoundError: No module named 'levisim.core'` on import.
-# Automatic discovery picks up `levisim` and every `levisim.*` subpackage.
+# NOTE: `packages = ["levisim"]` used to be set here, which shipped only the top-level directory
+# and none of the subpackages, so an installed `levisim` raised `ModuleNotFoundError: No module
+# named 'levisim.core'` on import. Automatic discovery picks up `levisim` and every subpackage.
 [tool.setuptools.packages.find]
 include = ["levisim*"]
+
+# the shipped power-series pickles (2D, 4D, 6D; about 270 kB) and their README
+[tool.setuptools.package-data]
+"levisim.multiphysics" = ["power_series_data/*.pickle", "power_series_data/README.md"]

@@ -3,7 +3,7 @@ The symbolic power-series ('derangement') machinery in levisim.multiphysics.hybr
 
 Pins three things: the generated terms are the exact power series of det(D) and of
 det(D)·D⁻¹ for the derangement matrix D = I - R; the single-pass generator returns exactly what
-the per-entry generator does; and the power-series pickles committed under notebooks/ (written
+the per-entry generator does; and the power-series pickles shipped in levisim/multiphysics/power_series_data/ (written
 when HybridisationTerm was a plain namedtuple) still load and equal freshly generated terms.
 """
 import pickle
@@ -24,7 +24,7 @@ from levisim.multiphysics.hybridisation import (
     truncate_power_series,
 )
 
-PICKLE_DIR = Path(__file__).resolve().parent.parent / 'notebooks' / 'multiphysics' / 'power-series' / 'pickle'
+from levisim.multiphysics.multitrap import POWER_SERIES_DATA_DIR as PICKLE_DIR  # noqa: E402
 
 
 def evaluate(terms, R, label_to_index):
@@ -99,7 +99,7 @@ def test_hybridisation_term_class():
 
 @pytest.mark.parametrize('N', [1, 2, 3])
 def test_committed_pickles_load_and_equal_generated_terms(N):
-    """The force-added power-series pickles still load, as HybridisationTerm, and are unchanged"""
+    """The shipped power-series pickles still load, as HybridisationTerm, and are unchanged"""
     n = 2 * N
     path = PICKLE_DIR / f'{n}D_{N}x2_up_to_{n}.pickle'
     determinant, adjugate = load_variable_from_pickle(path)

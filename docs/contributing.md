@@ -130,6 +130,38 @@ ruff check --select F821,F811,F541,F632,E711,E712,E714,E722 levisim tests
 - Changes written with an LLM say so in the commit message and the pull request description,
   pointing to `DISCLAIMER.md` (see [Provenance](provenance.md)).
 
+## Releasing
+
+Releases go to PyPI from GitHub Actions (`.github/workflows/release.yml`) by [trusted
+publishing](https://docs.pypi.org/trusted-publishers/), so no API token is stored anywhere.
+
+One-off setup, by the repository owner:
+
+1. On PyPI (and on TestPyPI, for rehearsals), add a *pending trusted publisher* for the project
+   `levisim`: owner `julianiacoponi`, repository `levisim`, workflow `release.yml`, environment
+   `pypi` (`testpypi` on TestPyPI).
+2. In the repository's *Settings → Environments*, create the environments `pypi` and `testpypi`;
+   giving `pypi` a required reviewer means nothing is published without a click from the owner.
+
+Each release:
+
+1. Bump `version` in `pyproject.toml` (`levisim.__version__` follows it once installed, and
+   `tests/test_packaging.py` checks they agree), move the *Unreleased* notes in `CHANGELOG.md`
+   under the new version, and update `version` and `date-released` in `CITATION.cff`.
+2. Optionally rehearse: run the release workflow by hand (*Actions → release → Run workflow*),
+   which builds and uploads to TestPyPI, then `pip install -i https://test.pypi.org/simple/
+   --extra-index-url https://pypi.org/simple/ levisim`. TestPyPI, like PyPI, never accepts the
+   same version twice, so a second rehearsal needs a pre-release version such as `0.1.1.dev1`.
+3. Merge, tag the merge commit `vX.Y.Z`, and publish a GitHub release from the tag; publishing the
+   release builds the sdist and wheel, checks them with `twine check --strict`, and uploads them
+   to PyPI.
+
+The package ships the three smallest power-series pickles (`levisim/multiphysics/
+power_series_data/`, about 270 KB) so `load_in_power_series=True` works from a pip install;
+regenerate them with `python scripts/generate_power_series_pickles.py` (and confirm with
+`--check`) if the series code changes. The `package` job in the tests workflow builds the wheel on
+every push, installs it in a clean environment and loads a series from it.
+
 ## Building these docs
 
 ```sh

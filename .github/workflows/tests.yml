@@ -17,10 +17,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 3.10 is the oldest Python the code runs on: dimension.py and
-        # multiphysics/utils/comparison.py use `match` statements, so 3.9 (still the
-        # requires-python floor in pyproject.toml) cannot even import them
-        python-version: ['3.10', '3.11']
+        # 3.10 is the oldest Python the code runs on (dimension.py and
+        # multiphysics/utils/comparison.py use `match` statements); 3.13 the newest classified
+        python-version: ['3.10', '3.11', '3.12', '3.13']
+        dependencies: ['latest']
+        include:
+          # the floors declared in pyproject.toml, so they stay true
+          - python-version: '3.10'
+            dependencies: 'minimum'
+    name: pytest (${{ matrix.python-version }}, ${{ matrix.dependencies }})
     steps:
       - uses: actions/checkout@v4
 
@@ -29,14 +34,46 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
 
-      - name: Install dependencies
-        # listed here because pyproject.toml does not declare them yet (see PRs #3/#6)
+      - name: Install levisim and the test tools
         run: |
           python -m pip install --upgrade pip
-          pip install numpy scipy matplotlib sympy loguru tqdm pytest pytest-xdist
+          if [ "${{ matrix.dependencies }}" = "minimum" ]; then
+            pip install "numpy==2.0.*" "scipy==1.13.*" "matplotlib==3.8.*" "sympy==1.12.*" \
+                        "loguru==0.7.0" "tqdm==4.60.*"
+          fi
+          pip install . pytest pytest-xdist
 
       - name: Run the test suite
-        # pythonpath and testpaths come from pytest.ini
+        # pythonpath and testpaths come from pytest.ini, so the in-tree package is the one tested
         env:
           MPLBACKEND: Agg
         run: python -m pytest -n auto
+
+  package:
+    # build the sdist and wheel as a release would, and check the installed wheel works on its own
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build and check
+        run: |
+          python -m pip install --upgrade build twine
+          python -m build
+          python -m twine check --strict dist/*
+      - name: Install the wheel in a clean environment and use it
+        run: |
+          python -m venv /tmp/venv
+          /tmp/venv/bin/pip install dist/*.whl
+          cd /tmp
+          /tmp/venv/bin/python - <<'PY'
+          import levisim
+          from levisim.multiphysics.multitrap import MultiTrap
+          from levisim.multiphysics.utils.shelf import OFF_NODE_toy_params_pairs
+          print('levisim', levisim.__version__)
+          mtrap = MultiTrap(num_traps=2, Cartesian_axes_per_trap=2, toy_params=OFF_NODE_toy_params_pairs,
+                            load_in_power_series=True)
+          assert mtrap.deranged_determinant_by_order, 'shipped power series did not load'
+          PY
+          /tmp/venv/bin/levisim-logs --help > /dev/null

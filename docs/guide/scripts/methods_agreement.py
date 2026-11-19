@@ -2,7 +2,7 @@
 Maximum relative difference of each QLT method from LINEAR_AMPLIFIER_MODEL
 
 Prints the table quoted on the 'Calculation methods' docs page. POWER_SERIES_HYBRIDISATION is
-left out because it needs the power-series pickles under the untracked notebooks/ folder.
+left out: it needs a power-series pickle, and the shipped ones stop at 6 dimensions.
 """
 import numpy as np
 
