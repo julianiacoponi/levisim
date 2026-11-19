@@ -11,7 +11,7 @@ __all__ = [
 
 
 class QuantumLinearTheoryMethod(Enum):
-    """
+    r"""
     An enumeration class for the choice of method to solve the Heisenberg-Langevin equations of motion
 
     ::

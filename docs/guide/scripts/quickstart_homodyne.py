@@ -11,7 +11,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from levisim.core.plotting import set_plt_rcParams_to_xmgrace_style
-from levisim.core.units import kHz
+from levisim.core.units import degrees, kHz
 from levisim.multiphysics.enums import QuantumLinearTheoryMethod
 from levisim.multiphysics.multitrap import MultiTrap
 from levisim.multiphysics.utils.shelf import DEFAULT_cavity_kwargs, DEFAULT_gas_kwargs
@@ -20,12 +20,15 @@ FIGURES = Path(__file__).resolve().parents[1] / 'figures'
 
 set_plt_rcParams_to_xmgrace_style()
 
-# two particles, each moving in x and y, in one red-detuned cavity (Δ = -2π × 450 kHz)
+# two particles, each moving in x and y, in one red-detuned cavity (Δ = -2π × 450 kHz); the second
+# tweezer's phase is set to 30°, since with its built-in 90° (any phase difference of about 54-126°)
+# this system is linearly unstable and MultiTrap logs a WARNING
 mtrap = MultiTrap(
     num_traps=2,
     Cartesian_axes_per_trap=2,
     gas_kwargs=DEFAULT_gas_kwargs,
     cavity_kwargs=DEFAULT_cavity_kwargs,
+    φn_dict={2: 30*degrees},
     ω_range=np.arange(125, 165, 0.02) * kHz,  # kHz ≡ 2π × 10³ rad/s, so this grid is angular
 )
 mtrap.info

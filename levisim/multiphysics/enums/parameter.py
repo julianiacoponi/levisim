@@ -122,7 +122,7 @@ light_mech_coupling = Parameter(
 )
 phase_of_2nd_tweezer = Parameter(
     _type=ParameterType.PHASE_OF_2ND_TWEEZER,
-    symbol='$\phi_2$',
+    symbol=r'$\phi_2$',
     units=degrees,
     unit_symbol='°',
     unit_string='(degrees)',
@@ -131,7 +131,7 @@ phase_of_2nd_tweezer = Parameter(
 )
 cavity_detuning = Parameter(
     _type=ParameterType.CAVITY_DETUNING,
-    symbol='$\Delta$/2π',
+    symbol=r'$\Delta$/2π',
     units=kHz,
     unit_symbol=' kHz',
     unit_string='(kHz)',
@@ -140,7 +140,7 @@ cavity_detuning = Parameter(
 )
 optical_damping = Parameter(
     _type=ParameterType.OPTICAL_DAMPING,
-    symbol='$\kappa$/2π',
+    symbol=r'$\kappa$/2π',
     units=kHz,
     unit_symbol=' kHz',
     unit_string='(kHz)',

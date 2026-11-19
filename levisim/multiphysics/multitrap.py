@@ -5,7 +5,6 @@ Quantum linear theory of several levitated particles coherently scattering into 
 
 import os
 import time
-import sympy
 import numpy as np
 import itertools
 
@@ -15,6 +14,7 @@ from functools import cached_property, partial
 
 from levisim.core.constants import (
     π, ħ, kB,
+    c as speed_of_light,
     m_air,
     shot_noise,
     antinode, halfnode, node,
@@ -222,6 +222,10 @@ class ΩModel:
         print(self.info_str)
 
 
+# keyword arguments of MultiTrap that replace the built-in per-trap physics (one entry per trap)
+PHYSICAL_PER_TRAP_KWARGS = ('tweezers', 'beads', 'trap_kwargs')
+
+
 class MultiTrap:
     """
     Class to calculate Quantum Linear Theory for a multi-particle cavity trap
@@ -236,7 +240,13 @@ class MultiTrap:
         # ------------------------------------------------------------------------------------------
         # SETUP
         # ------------------------------------------------------------------------------------------
-        self.num_traps = kwargs.get('num_traps', 2)
+        # in physical mode, lists of per-trap objects (see setup_levitated_physics) set the default
+        default_num_traps = 2
+        if not kwargs.get('toy_params'):
+            per_trap_lists = [kwargs[name] for name in PHYSICAL_PER_TRAP_KWARGS if kwargs.get(name) is not None]
+            if per_trap_lists:
+                default_num_traps = len(per_trap_lists[0])
+        self.num_traps = kwargs.get('num_traps', default_num_traps)
         self.Cartesian_axes_per_trap = kwargs.get('Cartesian_axes_per_trap', 2)
         # ω_range is either one array of angular frequencies, or a list/tuple of arrays that are
         # stitched into one sorted array without duplicates - e.g. a fine grid around each
@@ -301,13 +311,21 @@ class MultiTrap:
         self.gas = Gas(**gas_kwargs)
 
         cavity_kwargs = kwargs.get('cavity_kwargs', {})
-        self.cavity = Cavity(**cavity_kwargs)
 
         self.toy_params = kwargs.get('toy_params')
         if self.toy_params:
+            self.cavity = Cavity(**cavity_kwargs)
+            ignored = [name for name in (*PHYSICAL_PER_TRAP_KWARGS, 'φn_dict') if kwargs.get(name) is not None]
+            if ignored:
+                logger.warning(
+                    'MultiTrap keyword arguments {} only apply to physical parameters and are ignored with'
+                    ' toy_params (give toy tweezer phases as toy_params["φn_dict"])', ignored,
+                )
             self.setup_toy_parameters(**self.toy_params)
         else:
             self.setup_levitated_physics(**kwargs)
+            # the cavity is built after the tweezers, so that it is driven at their frequency
+            self.cavity = Cavity(**self._cavity_kwargs_with_tweezer_frequency(cavity_kwargs))
             self.setup_linearised_coherent_scattering_physics(**kwargs)
             self.dimensions = {label: Dimension(self, label) for label in self.labels}
 
@@ -338,6 +356,34 @@ class MultiTrap:
 
 
         # ------------------------------------------------------------------------------------------
+        # PHOTON RECOIL HEATING (opt-in)
+        # ------------------------------------------------------------------------------------------
+        # off by default: the bath of each dimension is then the gas alone (damping Γ = Trap.Γth,
+        # occupation n from the gas temperature). With photon_recoil=True each dimension also heats
+        # at Γ_rec (Trap.photon_recoil_heating_rates), which adds no damping, so it is included by
+        # raising the bath occupation, n → n + Γ_rec/Γ: the same d〈n〉/dt = -Γ(〈n〉 - n) + Γ_rec.
+        # Recoil is a momentum diffusion, whereas levisim's bath noise drives both quadratures; the
+        # two are equivalent in the rotating-wave sense used throughout (Ω much larger than every
+        # damping, heating and optical rate).
+        self.photon_recoil = bool(kwargs.get('photon_recoil', False))
+        self.recoil_heating_rate_dict = {}
+        if self.photon_recoil:
+            if self.toy_params:
+                msg = 'photon_recoil=True needs physical parameters (tweezers and beads), not toy_params'
+                logger.error(msg)
+                raise ValueError(msg)
+            for label, dimension in self.dimensions.items():
+                if not dimension.Γ > 0:
+                    msg = f'photon_recoil=True needs a non-zero damping Γ{label} (gas pressure > 0) to carry the recoil heating'
+                    logger.error(msg)
+                    raise ValueError(msg)
+                self.recoil_heating_rate_dict[label] = dimension.trap.photon_recoil_heating_rates[dimension.axis]
+            logger.debug(
+                'Photon recoil heating added to the baths of {}: {}', self,
+                ', '.join(f'Γ_rec,{label}/2π = {Γ_rec / kHz:.4g} kHz' for label, Γ_rec in self.recoil_heating_rate_dict.items()),
+            )
+
+        # ------------------------------------------------------------------------------------------
         # NOISE CORRELATIONS
         # ------------------------------------------------------------------------------------------
         self.quantum_factor_per_noise_operator = [
@@ -355,6 +401,8 @@ class MultiTrap:
             # since kB·T >> ħΩ for T = 300K
             # njn = self.dimensions[label].noise_phonons_approx
             njn = self.dimensions[label].noise_phonons_exact
+            if self.photon_recoil:
+                njn = njn + self.recoil_heating_rate_dict[label] / self.dimensions[label].Γ
 
             # phonon annihilation operators, 〈bjn_in(ω)·bjn_in†(-ω)〉= njn + 1
             self.quantum_factor_per_noise_operator.append(njn + 1)
@@ -382,7 +430,7 @@ class MultiTrap:
             N, d = self.num_traps, self.Cartesian_axes_per_trap
             n , max_order = N * d, self.max_order
 
-            # NOTE: these pickle files were made using the save_power_series_to_pickle.ipynb notebook
+            # NOTE: these pickle files are made by scripts/generate_power_series_pickles.py
             filename = f'{n}D_{N}x{d}_up_to_{max_order}.pickle'
             current_file_path = Path(__file__).resolve()
             # currently this file sits in levisim/levisim/multiphysics/
@@ -633,21 +681,78 @@ class MultiTrap:
     def setup_levitated_physics(self, **kwargs):
         """
         Setup the physics of many beads levitated in tweezer traps
+
+        By default the tweezers and beads are the built-in lists below, cut to the first `num_traps`:
+        1064 nm tweezers at θ = 45° with phases φn = 0°, 90°, 20°, 30°, ..., 80° and slightly different
+        waists, and beads (default `Bead` material) of radius 60.1, 60.2, ..., 60.9 nm, all at the
+        node. Each list can be replaced through `MultiTrap` keyword arguments:
+
+            - tweezers: list of `Tweezer` instances, one per trap
+            - beads: list of `Bead` instances, one per trap
+            - trap_kwargs: list of dicts of extra `Trap` keyword arguments, one per trap, e.g.
+              `override_Ω_dict` to use measured mechanical frequencies
+            - φn_dict: {n: φn} tweezer phases [rad] for any of the traps n = 1, ..., num_traps; they
+              replace the phase of that trap's tweezer (given or built-in). The `Tweezer` instances
+              passed in are not modified: a trap whose phase is replaced gets a copy of its tweezer.
+
+        If `num_traps` is not given, it is the length of the first of these lists that is given.
         """
-        # roughly 42 degrees
-        θtw = 0.731991
-        θtw = 45*degrees
-        self.tweezers = [
-            Tweezer(θ=θtw),
-            Tweezer(wx0=950*nm, wy0=1050*nm, θ=θtw, φ=90*degrees),
-            Tweezer(wx0=975*nm, wy0=1025*nm, θ=θtw, φ=20*degrees),
-            Tweezer(wx0=965*nm, wy0=1015*nm, θ=θtw, φ=30*degrees),
-            Tweezer(wx0=940*nm, wy0=1020*nm, θ=θtw, φ=40*degrees),
-            Tweezer(wx0=930*nm, wy0=1010*nm, θ=θtw, φ=50*degrees),
-            Tweezer(wx0=915*nm, wy0=1055*nm, θ=θtw, φ=60*degrees),
-            Tweezer(wx0=925*nm, wy0=1045*nm, θ=θtw, φ=70*degrees),
-            Tweezer(wx0=935*nm, wy0=1035*nm, θ=θtw, φ=80*degrees),
-        ][:self.num_traps]
+        tweezers = kwargs.get('tweezers')
+        beads = kwargs.get('beads')
+        trap_kwargs = kwargs.get('trap_kwargs')
+        φn_overrides = kwargs.get('φn_dict')
+
+        def check_length(name, items):
+            if items is not None and len(items) != self.num_traps:
+                msg = f'{name} has {len(items)} entries but num_traps = {self.num_traps}: give one per trap'
+                logger.error(msg)
+                raise ValueError(msg)
+
+        check_length('tweezers', tweezers)
+        check_length('beads', beads)
+        check_length('trap_kwargs', trap_kwargs)
+
+        if tweezers is None:
+            # roughly 42 degrees
+            θtw = 0.731991
+            θtw = 45*degrees
+            builtin_tweezers = [
+                Tweezer(θ=θtw),
+                Tweezer(wx0=950*nm, wy0=1050*nm, θ=θtw, φ=90*degrees),
+                Tweezer(wx0=975*nm, wy0=1025*nm, θ=θtw, φ=20*degrees),
+                Tweezer(wx0=965*nm, wy0=1015*nm, θ=θtw, φ=30*degrees),
+                Tweezer(wx0=940*nm, wy0=1020*nm, θ=θtw, φ=40*degrees),
+                Tweezer(wx0=930*nm, wy0=1010*nm, θ=θtw, φ=50*degrees),
+                Tweezer(wx0=915*nm, wy0=1055*nm, θ=θtw, φ=60*degrees),
+                Tweezer(wx0=925*nm, wy0=1045*nm, θ=θtw, φ=70*degrees),
+                Tweezer(wx0=935*nm, wy0=1035*nm, θ=θtw, φ=80*degrees),
+            ]
+            if self.num_traps > len(builtin_tweezers):
+                msg = (
+                    f'there are {len(builtin_tweezers)} built-in tweezers but num_traps = {self.num_traps}:'
+                    ' pass tweezers=[...] (one Tweezer per trap)'
+                )
+                logger.error(msg)
+                raise ValueError(msg)
+            tweezers = builtin_tweezers[:self.num_traps]
+        else:
+            tweezers = list(tweezers)
+
+        if φn_overrides:
+            unknown = sorted(set(φn_overrides) - set(range(1, self.num_traps + 1)))
+            if unknown:
+                msg = f'φn_dict has trap indices {unknown} outside 1, ..., num_traps = {self.num_traps}'
+                logger.error(msg)
+                raise ValueError(msg)
+            for n, φn in φn_overrides.items():
+                tweezer = copy(tweezers[n - 1])
+                tweezer.φ = float(φn)
+                tweezers[n - 1] = tweezer
+            logger.debug(
+                'Tweezer phases replaced by φn_dict: {}',
+                {n: f'{φn / degrees:.3f}°' for n, φn in φn_overrides.items()},
+            )
+        self.tweezers = tweezers
         self.φn_dict = {ii + 1: tweezer.φ for ii, tweezer in enumerate(self.tweezers)}
 
         # NOTE: all mech-mech, and z-light couplings are 0 at the node
@@ -658,18 +763,31 @@ class MultiTrap:
         # the static light field sums each trap's 'drive' energy into the cavity
         # each of these cavity drive energies goes as cos(Φ), due to the linearised potential V_CS
         # z-light couplings also go with cos(Φ), due to the linearised potential V_CS
-        Φbead = node
-        self.beads = [
-            Bead(r=60.1*nm, Φ=Φbead),
-            Bead(r=60.2*nm, Φ=Φbead),
-            Bead(r=60.3*nm, Φ=Φbead),
-            Bead(r=60.4*nm, Φ=Φbead),
-            Bead(r=60.5*nm, Φ=Φbead),
-            Bead(r=60.6*nm, Φ=Φbead),
-            Bead(r=60.7*nm, Φ=Φbead),
-            Bead(r=60.8*nm, Φ=Φbead),
-            Bead(r=60.9*nm, Φ=Φbead),
-        ][:self.num_traps]
+        if beads is None:
+            Φbead = node
+            builtin_beads = [
+                Bead(r=60.1*nm, Φ=Φbead),
+                Bead(r=60.2*nm, Φ=Φbead),
+                Bead(r=60.3*nm, Φ=Φbead),
+                Bead(r=60.4*nm, Φ=Φbead),
+                Bead(r=60.5*nm, Φ=Φbead),
+                Bead(r=60.6*nm, Φ=Φbead),
+                Bead(r=60.7*nm, Φ=Φbead),
+                Bead(r=60.8*nm, Φ=Φbead),
+                Bead(r=60.9*nm, Φ=Φbead),
+            ]
+            if self.num_traps > len(builtin_beads):
+                msg = (
+                    f'there are {len(builtin_beads)} built-in beads but num_traps = {self.num_traps}:'
+                    ' pass beads=[...] (one Bead per trap)'
+                )
+                logger.error(msg)
+                raise ValueError(msg)
+            beads = builtin_beads[:self.num_traps]
+        self.beads = list(beads)
+
+        if trap_kwargs is None:
+            trap_kwargs = [{} for _ in range(self.num_traps)]
 
         # each particle/trap/tweezer has its own physics!
         self.traps = [
@@ -677,10 +795,43 @@ class MultiTrap:
                 tweezer=self.tweezers[_],
                 bead=self.beads[_],
                 gas=self.gas,
-                trap_index= _ + 1
+                trap_index=_ + 1,
+                **trap_kwargs[_],
             )
             for _ in range(self.num_traps)
         ]
+
+    def _cavity_kwargs_with_tweezer_frequency(self, cavity_kwargs):
+        """
+        The cavity keyword arguments, with `ωtw` set to the first tweezer's frequency unless given
+
+        The cavity mode is driven by the light the beads scatter from the tweezers, so its optical
+        frequency (ω = ωtw - Δ, hence k and the field per photon E0 in every coupling) must be the
+        tweezers'. `Cavity` alone defaults to `Tweezer().ω` (1064 nm), which used to apply even to
+        a MultiTrap of 1550 nm tweezers. One drive frequency is assumed for all traps, so a WARNING
+        is logged if the tweezers have different wavelengths, or if an explicit `ωtw` differs from
+        all of them by more than 1 ppm (multi-tone detunings shift it by only ~1e-9).
+        """
+        tweezer_ωs = np.array([tweezer.ω for tweezer in self.tweezers])
+        tweezer_λs_nm = ', '.join(f'{tweezer.λ / nm:.6g}' for tweezer in self.tweezers)
+        if not np.allclose(tweezer_ωs, tweezer_ωs[0], rtol=1e-12, atol=0):
+            logger.warning(
+                'The tweezers have different wavelengths (λ = {} nm), but the model has one cavity'
+                ' drive frequency: the cavity uses ωtw = {} (λ = {:.6g} nm) for every trap',
+                tweezer_λs_nm,
+                "cavity_kwargs['ωtw']" if 'ωtw' in cavity_kwargs else 'the first tweezer frequency',
+                2 * π * speed_of_light / cavity_kwargs.get('ωtw', tweezer_ωs[0]) / nm,
+            )
+        if 'ωtw' in cavity_kwargs:
+            ωtw = cavity_kwargs['ωtw']
+            if np.all(np.abs(tweezer_ωs / ωtw - 1) > 1e-6):
+                logger.warning(
+                    "cavity_kwargs['ωtw'] (λ = {:.6g} nm) differs from every tweezer frequency (λ = {} nm):"
+                    ' the cavity field and the couplings use the ωtw given',
+                    2 * π * speed_of_light / ωtw / nm, tweezer_λs_nm,
+                )
+            return cavity_kwargs
+        return {**cavity_kwargs, 'ωtw': tweezer_ωs[0]}
 
     def setup_linearised_coherent_scattering_physics(self, **kwargs):
         """
@@ -775,6 +926,32 @@ class MultiTrap:
         #   and checked against the CS literature before being added (as an opt-in, defaulting off,
         #   since it changes every off-node result) - see open questions in the Nov 2026 analytic PR.
 
+    # every toy_params key that setup_toy_parameters reads, besides those of the chosen ΩModel kind
+    TOY_PARAMETER_KEYS = frozenset({
+        'Ω_model', 'Ωz_to_Ωx_multiplier',
+        'P', 'T', 'm', 'r', 'ρ', 'vth', 'use_Γ_formula', 'toy_Γ', 'Γjn_dict',
+        'toy_gx', 'toy_gy', 'toy_gz', 'toy_gxy', 'toy_gxz', 'toy_gyz', 'gjn_dict',
+        'φ_odd_n', 'φ_even_n', 'φn_dict',
+    })
+
+    def warn_about_unknown_toy_parameters(self, params):
+        """
+        Logs a WARNING naming any toy_params key that nothing reads
+
+        Unknown keys used to be ignored silently, so a renamed or misspelt key (e.g. 'φ2' for
+        'φ_even_n', 'gs' for 'gjn_dict', or 'Ω_gap' with the 'pairs' model) changed the physics
+        without any message. Parameters of an ΩModel kind other than the chosen one count as
+        unknown, since they have no effect.
+        """
+        known = set(self.TOY_PARAMETER_KEYS) | set(ΩModel.KINDS[self.Ω_model_object.kind])
+        unknown = sorted(set(params) - known)
+        if unknown:
+            logger.warning(
+                'toy_params keys {} are not used by MultiTrap (Ω_model {!r}) and have no effect;'
+                ' check for renamed or misspelt keys', unknown, self.Ω_model_object.kind,
+            )
+        return unknown
+
     def setup_toy_parameters(self, **params):
         """
         Setup 'toy' parameters to insert into the model directly, without need to calculate them
@@ -787,6 +964,7 @@ class MultiTrap:
         # see ΩModel above, and plot_vertical_stack_varying_1_parameter.ipynb for more
         self.Ω_model_object = ΩModel.from_toy_params(params)
         self.Ω_model = self.Ω_model_object.kind
+        self.warn_about_unknown_toy_parameters(params)
         logger.debug('Setting up toy parameters with {!r}', self.Ω_model_object)
         # the model's parameters stay available as attributes, e.g. self.Ω_first for 'pairs'
         for name, value in self.Ω_model_object.params.items():
@@ -1941,7 +2119,8 @@ class MultiTrap:
         #   QuantumLinearTheoryMethod.NUMERICAL_HYBRIDISATION
         #   QuantumLinearTheoryMethod.POWER_SERIES_HYBRIDISATION
         # a(ω)  = χC(ω)  [ i ∑ Gjn·qjn(ω) + √κ·a_in]
-        # a†(ω) = χC*(-ω)[-i ∑ Gjn·qjn(ω) + √κ·a_in†]
+        # a†(ω) = χC*(-ω)[-i ∑ Gjn*·qjn(ω) + √κ·a_in†]
+        # (the creation operator couples through the conjugate Gjn*, since qjn is Hermitian)
 
         # where ∑Gjn·qjn(ω) is the phase-dependent light coupling multiplied by the position operator
         # where each qjn(ω) is a noise vector entry in the hybridised_positions column vector
@@ -2069,6 +2248,16 @@ class MultiTrap:
 
         if method.is_analytic:
             return self.analytic_hybridised_positions(method, ω)
+
+        # only the TNT LAM reaches here: it has no per-frequency noise vectors (it builds the
+        # position PSDs from T·N·T† in position_power_spectra_array), so say so instead of returning
+        # None, which failed later with an opaque matmul error in the light noise vectors
+        msg = (
+            f'{method!r} has no per-frequency noise vectors (it only gives position power spectra,'
+            ' through all_position_power_spectra): use another method for noise vectors and optical spectra'
+        )
+        logger.error(msg)
+        raise ValueError(msg)
 
     ################################################################################################
     # NOISE VECTORS FOR CALCULATING SPECTRA

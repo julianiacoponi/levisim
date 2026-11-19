@@ -28,6 +28,10 @@ __all__ = [
     'DEFAULT_cavity_kwargs',
     'DEFAULT_gas_kwargs',
     'DEFAULT_Ω_model_pairs',
+    'OFF_NODE_toy_params_equal_spacing',
+    'FORTRAN_Ω_model_equal_spacing_simple',
+    'DEFAULT_Ω_model_equal_spacing_simple',
+    'DEFAULT_Ω_model_equal_spacing',
 
     # to match the fortran code
     'FORTRAN_ω_range',

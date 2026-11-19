@@ -2,8 +2,6 @@
 Spectral density estimates (PSDs and CSDs) of recorded time traces, by Bartlett's method
 """
 
-import scipy.signal
-
 import numpy as np
 
 from scipy.optimize import curve_fit
@@ -283,6 +281,8 @@ class SpectralDensityEstimate:
         if window is None or (isinstance(window, str) and window in ('rectangular', 'boxcar')):
             return 1
         if isinstance(window, (str, tuple)):
+            # imported here, not at the top: scipy.signal takes about half a second to import
+            import scipy.signal
             w = scipy.signal.get_window(window, int(num_samples), fftbins=True)
         else:
             w = np.asarray(window, dtype=float)
