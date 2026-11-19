@@ -1941,7 +1941,8 @@ class MultiTrap:
         #   QuantumLinearTheoryMethod.NUMERICAL_HYBRIDISATION
         #   QuantumLinearTheoryMethod.POWER_SERIES_HYBRIDISATION
         # a(ω)  = χC(ω)  [ i ∑ Gjn·qjn(ω) + √κ·a_in]
-        # a†(ω) = χC*(-ω)[-i ∑ Gjn·qjn(ω) + √κ·a_in†]
+        # a†(ω) = χC*(-ω)[-i ∑ Gjn*·qjn(ω) + √κ·a_in†]
+        # (the creation operator couples through the conjugate Gjn*, since qjn is Hermitian)
 
         # where ∑Gjn·qjn(ω) is the phase-dependent light coupling multiplied by the position operator
         # where each qjn(ω) is a noise vector entry in the hybridised_positions column vector
