@@ -37,8 +37,8 @@ Maximum relative difference from LAM over each sweep, printed by
 `docs/guide/scripts/methods_agreement.py` with every PR in this stack applied.
 "Physical defaults" are traps built from the default tweezer, gas and cavity parameters
 (50-350 kHz, 301 points); the toy systems are the {mod}`~levisim.multiphysics.utils.shelf`
-parameter sets (250-320 kHz, 140 points). (5) is left out because its pickles live in the
-untracked `notebooks/` folder.
+parameter sets (250-320 kHz, 140 points). (5) is left out: it needs a pre-generated power-series
+pickle for each layout, and levisim ships only those for 1×2, 2×2 and 3×2.
 
 | System | (2) hom. | (2) PSD | (3) PSD | (4) hom. | (4) PSD | (6), (7) hom. | (6), (7) PSD |
 |---|---|---|---|---|---|---|---|
@@ -49,9 +49,12 @@ untracked `notebooks/` folder.
 | `OFF_NODE` pairs toy, 2×1 | 1.6e-15 | 0 | 7.8e-16 | 1.0e-14 | 9.8e-15 | 3.0e-15 | 3.1e-15 |
 | `OFF_NODE` pairs toy, 2×2 | 1.7e-15 | 0 | 8.9e-16 | 2.2e-14 | 2.3e-14 | 1.8e-14 | 2.8e-14 |
 
-Every method agrees with LAM to machine precision ($\lesssim 3\times10^{-14}$) in every case,
-including unequal tweezer phases and particles off the node with two or three axes each, where the
-intra-particle couplings $g_{jk}$ are non-zero. Until the analytic closed form was generalised to
+Every method agrees with LAM to machine precision ($\lesssim 3\times10^{-14}$) for every system in
+the table, including unequal tweezer phases and particles off the node with two or three axes each,
+where the intra-particle couplings $g_{jk}$ are non-zero. The round-off grows with the number of
+modes and with how closely the grid approaches the resonances: for the `OFF_NODE` pairs toy with
+3×2 axes on the 140-point grid the largest difference is $6\times10^{-14}$, and with 2×3 axes on
+the 1402-point `DEFAULT_ω_range` it is $3\times10^{-13}$. Until the analytic closed form was generalised to
 include $g_{jk}$, and its cancellation at exact resonances removed, (6) and (7) were off by up to
 $5.6\times10^{-3}$ (unequal phases) and by orders of magnitude (two axes per particle off the
 node). (3) raises `ValueError` if asked
