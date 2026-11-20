@@ -78,7 +78,7 @@ class LinearAmplifierMixin:
 
         for ii in range(2, self.num_operators):
             label_jn = self.noise_index_to_label[ii]
-            j, n = label_jn[0], label_jn[1:]
+            n = label_jn[1:]
 
             dim_jn = self.dimensions[label_jn]
             Γj = dim_jn.Γ
@@ -113,81 +113,27 @@ class LinearAmplifierMixin:
                 self.drift_matrix[ii, 1] = -iG
                 self.drift_matrix[ii, ii] = 1j*Ωj - Γj/2
 
-            # add the mech-to-mech couplings
-            igxy = 1j*dim_jn.gxy
-            igxz = 1j*dim_jn.gxz
-            igyz = 1j*dim_jn.gyz
-            if self.Cartesian_axes_per_trap == 2:
-                if j == 'x':
-                    # k = y
-                    if is_annihilation_operator:
-                        # takes bxn to byn,byn†
-                        self.drift_matrix[ii, ii + 2] = igxy
-                        self.drift_matrix[ii, ii + 3] = igxy
-                    else:
-                        # takes bxn† to byn,byn†
-                        self.drift_matrix[ii, ii + 1] = -igxy
-                        self.drift_matrix[ii, ii + 2] = -igxy
-                elif j == 'y':
-                    # k = x
-                    if is_annihilation_operator:
-                        # takes byn to bxn,bxn†
-                        self.drift_matrix[ii, ii - 2] = igxy
-                        self.drift_matrix[ii, ii - 1] = igxy
-                    else:
-                        # takes byn† to bxn,bxn†
-                        self.drift_matrix[ii, ii - 3] = -igxy
-                        self.drift_matrix[ii, ii - 2] = -igxy
-
-            if self.Cartesian_axes_per_trap == 3:
-                if j == 'x':
-                    # k, l = y, z
-                    if is_annihilation_operator:
-                        # takes bxn to byn,byn†
-                        self.drift_matrix[ii, ii + 2] = igxy
-                        self.drift_matrix[ii, ii + 3] = igxy
-                        # takes bxn to bzn,bzn†
-                        self.drift_matrix[ii, ii + 4] = igxz
-                        self.drift_matrix[ii, ii + 5] = igxz
-                    else:
-                        # takes bxn† to byn,byn†
-                        self.drift_matrix[ii, ii + 1] = -igxy
-                        self.drift_matrix[ii, ii + 2] = -igxy
-                        # takes bxn† to bzn,bzn†
-                        self.drift_matrix[ii, ii + 3] = -igxz
-                        self.drift_matrix[ii, ii + 4] = -igxz
-                elif j == 'y':
-                    # k, l = x, z
-                    if is_annihilation_operator:
-                        # takes byn to bxn,bxn†
-                        self.drift_matrix[ii, ii - 2] = igxy
-                        self.drift_matrix[ii, ii - 1] = igxy
-                        # takes byn to bzn,bzn†
-                        self.drift_matrix[ii, ii + 2] = igyz
-                        self.drift_matrix[ii, ii + 3] = igyz
-                    else:
-                        # takes byn† to bxn,bxn†
-                        self.drift_matrix[ii, ii - 3] = -igxy
-                        self.drift_matrix[ii, ii - 2] = -igxy
-                        # takes byn† to bzn,bzn†
-                        self.drift_matrix[ii, ii + 1] = -igyz
-                        self.drift_matrix[ii, ii + 2] = -igyz
-                elif j == 'z':
-                    # k, l = x, y
-                    if is_annihilation_operator:
-                        # takes bzn to bxn,bxn†
-                        self.drift_matrix[ii, ii - 4] = igxz
-                        self.drift_matrix[ii, ii - 3] = igxz
-                        # takes bzn to bxn,bxn†
-                        self.drift_matrix[ii, ii - 2] = igyz
-                        self.drift_matrix[ii, ii - 1] = igyz
-                    else:
-                        # takes bzn† to bxn,bxn†
-                        self.drift_matrix[ii, ii - 5] = -igxz
-                        self.drift_matrix[ii, ii - 4] = -igxz
-                        # takes bzn† to byn,byn†
-                        self.drift_matrix[ii, ii - 3] = -igyz
-                        self.drift_matrix[ii, ii - 2] = -igyz
+            # add the mech-to-mech couplings: row ii (bjn or bjn†) is driven by every dimension
+            # whose entry in the mechanical coupling matrix is non-zero, and by every other
+            # dimension of the same bead (whose entry is written even when it is zero, as it
+            # always has been). With H/ħ ∋ -gjk·qj·qk, dbj/dt ∋ +igjk·qk and dbj†/dt ∋ -igjk·qk,
+            # where qk = bk + bk† occupies columns (kk, kk + 1)
+            jj = self.label_to_index[label_jn]
+            for kk_dim, label_km in enumerate(self.labels):
+                if kk_dim == jj:
+                    continue
+                gjk = self.mechanical_coupling_matrix[jj, kk_dim]
+                same_bead = label_km[1:] == n
+                if not same_bead and gjk == 0:
+                    continue
+                kk = self.label_to_noise_index[label_km]
+                igjk = 1j*gjk
+                if is_annihilation_operator:
+                    self.drift_matrix[ii, kk] = igjk
+                    self.drift_matrix[ii, kk + 1] = igjk
+                else:
+                    self.drift_matrix[ii, kk] = -igjk
+                    self.drift_matrix[ii, kk + 1] = -igjk
 
         # c_in ≡ (
         #   √κ·a_in

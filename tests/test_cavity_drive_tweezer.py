@@ -41,7 +41,9 @@ def pair(ζ=0.35, φ2=0.0, axes=2, drive=True, **kwargs):
     return MultiTrap(
         tweezers=[TWEEZER_1064, TWEEZER_976], beads=BEADS, trap_kwargs=trap_kwargs, φn_dict={2: φ2},
         Cartesian_axes_per_trap=axes, gas_kwargs={'P': 5e-6*mbar},
-        cavity_kwargs={'L': 48.8e-3, 'w': 31*μm, 'κ': 57*kHz, 'Δ': -425*kHz}, **kwargs,
+        cavity_kwargs={'L': 48.8e-3, 'w': 31*μm, 'κ': 57*kHz, 'Δ': -425*kHz},
+        static_cavity_shifts=False,  # the Pontin et al. system as published, without static shifts
+        **kwargs,
     )
 
 
@@ -120,6 +122,7 @@ def test_dark_mode_at_the_bare_crossing_for_any_ζ(ζ):
         trap_kwargs=[{'override_Ω_dict': Ω}, {'override_Ω_dict': Ω, 'cavity_drive_tweezer': TWEEZER_1064, 'cavity_drive_field_ratio': ζ}],
         φn_dict={2: 0.0}, gas_kwargs={'P': 5e-6*mbar}, photon_recoil=False,
         cavity_kwargs={'L': 48.8e-3, 'w': 31*μm, 'κ': 57*kHz, 'Δ': -425*kHz},
+        static_cavity_shifts=False,  # the Pontin et al. system as published, without static shifts
     )
     Γgas = mtrap.dimensions['x1'].Γ
     damping = np.sort(-2 * mtrap.drift_eigenvalues.real)

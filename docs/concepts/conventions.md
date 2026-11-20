@@ -12,6 +12,9 @@ particle $n$ moves along up to three Cartesian axes $j \in \{x, y, z\}$, and eac
 frequency $\Omega_{j_n}$, mass $m_n$ and gas damping rate $\Gamma_{j_n}$. The tweezer light
 coherently scatters into one cavity mode $\hat a$ of linewidth $\kappa$, which couples every
 dimension to the same light field. There are $N$ dimensions in total, and $2N + 2$ operators.
+With physical parameters, $\Omega_{j_n}$ is the tweezer frequency plus the static shift of the
+mean cavity field (see [static cavity shifts](static_cavity_shifts.md)), and it is the frequency that
+sets each zero-point fluctuation.
 
 In the frame rotating at the tweezer frequency,
 

@@ -114,6 +114,7 @@ for Φ in np.linspace(0.5, 0.05, 10) * np.pi:       # from the node (π/2) towar
         cavity_kwargs=DEFAULT_cavity_kwargs,
         beads=[Bead(Φ=Φ)],                          # the trap position on the standing wave
         ω_range=np.arange(125, 165, 0.02) * kHz,
+        static_cavity_shifts=False,                 # as in the published figure
     )
     assert mtrap.is_stable
     S_xy = mtrap.position_cross_spectrum('x1', 'y1', QuantumLinearTheoryMethod.LINEAR_AMPLIFIER_MODEL).real
@@ -122,7 +123,7 @@ for Φ in np.linspace(0.5, 0.05, 10) * np.pi:       # from the node (π/2) towar
 
 [![Cross spectra from node to antinode, and the map of the mode rotation with the cancellation point](docs/guide/figures/showcase/prr5_mode_orientations.png)](https://julianiacoponi.github.io/levisim/showcase/prr5_mode_orientations.html)
 
-In (a) the two motions stay anticorrelated, with peaks of opposite sign at 133-136 kHz and 155-156 kHz, and the pattern flips sign between $`\Phi = 0.25\pi`$ and $`0.20\pi`$. In (b) the black contour, where the $`x`$ mode is not rotated at all, is the cancellation point: $`\Phi_\text{c} = 0.248\pi`$ at the default detuning of $`-2\pi \times 450`$ kHz, moving towards the node as the detuning approaches the mechanical frequencies ($`0.313\pi`$ at $`-2\pi \times 150`$ kHz). levisim does not include the static field's shift of the mechanical frequencies, which the paper shows cancelling at the same point, so it reproduces the rotation but not the frequency cancellation.
+In (a) the two motions stay anticorrelated, with peaks of opposite sign at 133-136 kHz and 155-156 kHz, and the pattern flips sign between $`\Phi = 0.25\pi`$ and $`0.20\pi`$. In (b) the black contour, where the $`x`$ mode is not rotated at all, is the cancellation point: $`\Phi_\text{c} = 0.248\pi`$ at the default detuning of $`-2\pi \times 450`$ kHz, moving towards the node as the detuning approaches the mechanical frequencies ($`0.313\pi`$ at $`-2\pi \times 150`$ kHz). The figure leaves out the static field's shift of the mechanical frequencies (`static_cavity_shifts=False`). levisim includes it by default, and then the net frequency shift of each mode, static stiffening minus optical spring, crosses zero at $`\Phi = 0.257\pi`$ ($`x`$) and $`0.255\pi`$ ($`y`$), beside the rotation's cancellation point, which is what the paper found.
 
 ### Sensing a directional noise bath (PRR 6, 2024)
 
