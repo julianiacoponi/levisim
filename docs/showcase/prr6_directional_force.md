@@ -26,7 +26,7 @@ show it as extra heating, which must be separated from the thermal part by a cal
 the same for $\psi$ and $-\psi$. In this paper we showed that the $x$-$y$ cross-correlation spectrum is a
 calibration-free signature of such a force and of its quadrant, since uncorrelated thermal noise
 leaves $S_{xy}$ at zero on average. I simulated all of it in levisim: the directed force enters the
-stochastic Runge-Kutta integration of `Simulation` as one random force shared between $x$ and $y$ in
+stochastic Runge-Kutta integration of `FreeSpaceSimulation` as one random force shared between $x$ and $y$ in
 proportion to $\cos\psi$ and $\sin\psi$, and I worked out the error analysis of the spectral estimates in
 the paper's appendix.
 

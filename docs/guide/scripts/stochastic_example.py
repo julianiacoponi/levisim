@@ -21,7 +21,7 @@ import matplotlib.pyplot as plt
 from levisim.analysis.spectral_density_estimate import SpectralDensityEstimate
 from levisim.core.plotting import set_plt_rcParams_to_xmgrace_style
 from levisim.core.units import Hz, kHz, nm, μs
-from levisim.data.simulation import Simulation
+from levisim.simulation import FreeSpaceSimulation
 from levisim.physics.trap import Trap
 
 FIGURES = Path(__file__).resolve().parents[1] / 'figures'
@@ -30,7 +30,7 @@ FIGURES = Path(__file__).resolve().parents[1] / 'figures'
 trap = Trap()  # defaults: 485 mW, 1064 nm tweezer; 60.1 nm bead; 4e-3 mbar; Γfb,x/y = 2.1, 2.5 kHz
 G_floor = 1e-27  # one-sided detection floor [m²/Hz]
 start = time.time()
-sim = Simulation(trap=trap, num_samples=400_000, Δt=0.1*μs, seed=2026, detection_floor=G_floor)
+sim = FreeSpaceSimulation(trap=trap, num_samples=400_000, Δt=0.1*μs, seed=2026, detection_floor=G_floor)
 runtime = time.time() - start
 
 Sxx = SpectralDensityEstimate(sim, 'xx', num_segments=40)

@@ -36,7 +36,7 @@ pip install -e ".[dev]"          # editable, with pytest, ruff and the build too
 
 ### Requirements and extras
 
-Either way this needs Python 3.10 or newer and installs the runtime dependencies (numpy ≥ 2.0, scipy, matplotlib, sympy, loguru, tqdm). Six optional extras add conveniences that nothing in the physics needs: `elk` (the Elasticsearch client, see [Logging](#logging)), `notify` (desktop notifications when a long test run starts and finishes), `video` (OpenCV, for the image-comparison helpers), `notebooks` (JupyterLab and what the notebooks import), `docs` (Sphinx and the theme, to build the documentation) and `dev` (pytest and ruff), e.g. `pip install "levisim[elk]"` or, from a clone, `pip install ".[elk,dev]"`.
+Either way this needs Python 3.10 or newer and installs the runtime dependencies (numpy ≥ 2.0, scipy, matplotlib, sympy, loguru, tqdm). Seven optional extras add conveniences that nothing in the physics needs: `fast` (numba: compiled time loops for the stochastic simulations, about 100 times faster per step, `pip install "levisim[fast]"`), `elk` (the Elasticsearch client, see [Logging](#logging)), `notify` (desktop notifications when a long test run starts and finishes), `video` (OpenCV, for the image-comparison helpers), `notebooks` (JupyterLab and what the notebooks import), `docs` (Sphinx and the theme, to build the documentation) and `dev` (pytest and ruff), e.g. `pip install "levisim[elk]"` or, from a clone, `pip install ".[elk,dev]"`.
 
 **Name shadowing.** Do not start Python or Jupyter in the directory that *contains* your clone. There the repository folder `levisim/`, which has no `__init__.py`, shadows the package, and `import levisim` silently gives an empty namespace package. The repo root itself, or `notebooks/`, is fine.
 
@@ -136,12 +136,12 @@ A white-noise force along a fixed direction $`\psi`$, applied in the experiment 
 import numpy as np
 from levisim.analysis.spectral_density_estimate import SpectralDensityEstimate
 from levisim.core.units import degrees, μs
-from levisim.data.simulation import Simulation
+from levisim.simulation import FreeSpaceSimulation
 from levisim.physics.trap import Trap
 
 for ψ in (45, -45):
     trap = Trap(ψ=ψ*degrees)       # a directed force of PSD β²·S_th along ψ, with β = √2
-    sim = Simulation(trap=trap, num_samples=400_000, Δt=0.1*μs, seed=2024)
+    sim = FreeSpaceSimulation(trap=trap, num_samples=400_000, Δt=0.1*μs, seed=2024)
     C_xy = SpectralDensityEstimate(sim, 'xy', num_segments=40)
     C_xy_theory = trap.theory.Cxy(2*np.pi*C_xy.freq_range)
 ```
@@ -240,7 +240,8 @@ Each of these notebooks in [`notebooks/papers/`](notebooks/papers/) builds a pub
 | `levisim/multiphysics/` | `MultiTrap` (the multiparticle cavity QLT, a base class and one mixin per family of methods in `multitrap/`), `Dimension`, the hybridisation power series, covariance dynamics, multi-tone and two-tone drives |
 | `levisim/multiphysics/enums/` | `QuantumLinearTheoryMethod`, `SpectrumType`, noise-vector and parameter enums |
 | `levisim/multiphysics/utils/` | `shelf` (default parameters and lazily built example systems), method comparison, animations |
-| `levisim/data/` | `Simulation` (stochastic simulation of a bead in a free-space tweezer), `Trace`, experiment data |
+| `levisim/simulation/` | `FreeSpaceSimulation` (stochastic simulation of a bead in a free-space tweezer) on the `StochasticSimulation` base (time axis, seeding, noise, integrators, recording) |
+| `levisim/data/` | `Trace`, experiment data; `Simulation`, the deprecated name of `FreeSpaceSimulation` |
 | `levisim/analysis/` | spectral density estimation and theory, Gaussian-state entanglement measures |
 | `tests/` | the pytest suite |
 | `fortran/` | the Fortran reference implementation and its reference `.dat` output (see `fortran/README.md`) |
@@ -343,7 +344,7 @@ The code pathway of each - which function computes which mathematical object, fo
 
 # Stochastic simulations of a bead in a free-space tweezer
 
-`levisim.data.Simulation` integrates the classical Langevin dynamics of a silica bead in a
+`levisim.FreeSpaceSimulation` integrates the classical Langevin dynamics of a silica bead in a
 free-space Gaussian tweezer (`Trap` = `Tweezer` + `Bead` + `Gas`), and
 `SpectralDensityEstimate` / `SpectralDensityTheory` analyse the resulting traces. The full guide,
 with derivations and a worked example, is [`docs/guide/stochastic_simulations.md`](docs/guide/stochastic_simulations.md).
@@ -388,11 +389,11 @@ $`mg`$ along $`-x`$; `Bead(permittivity_model='Malitson')` uses the fused-silica
 ```python
 from levisim.analysis.spectral_density_estimate import SpectralDensityEstimate
 from levisim.core.units import μs
-from levisim.data.simulation import Simulation
+from levisim.simulation import FreeSpaceSimulation
 from levisim.physics.trap import Trap
 
 trap = Trap()  # 485 mW, 1064 nm tweezer; 60.1 nm bead; 4e-3 mbar; β = √2, ψ = 45°
-sim = Simulation(trap=trap, num_samples=400_000, Δt=0.1*μs, seed=2026, detection_floor=1e-27)
+sim = FreeSpaceSimulation(trap=trap, num_samples=400_000, Δt=0.1*μs, seed=2026, detection_floor=1e-27)
 Sxx = SpectralDensityEstimate(sim, 'xx', num_segments=40)  # one-sided, fitted automatically
 print(trap.T_eff['x'], Sxx.temperature_via_fit)            # 1.235 K vs 1.174 K (one 40 ms run)
 ```
