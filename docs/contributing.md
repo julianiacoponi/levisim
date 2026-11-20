@@ -193,7 +193,13 @@ find:
 ```sh
 sphinx-build -b html docs docs/_build/html -w docs/_build/warnings.log
 python docs/check_sphinx_warnings.py docs/_build/warnings.log
+python docs/check_rendered_maths.py docs/_build/html
 ```
+
+The last line catches what Sphinx does not warn about: maths that MyST did not recognise as
+maths, which is built into the page as prose typeset as maths and LaTeX printed as text. The two
+causes so far are a `$$` block with no blank line before it (inside a list item it must also be
+indented to the item's text), and a `|` inside maths in a table cell (write `\lvert x \rvert`).
 
 The docstrings are mostly free-form physics notes rather than numpydoc, and they stay that way;
 they only need to be valid reStructuredText. The usual fixes are markup only:
@@ -216,8 +222,8 @@ type names to their documentation. The API pages are generated at build time int
 The pages are Markdown, parsed by MyST: `$...$` and `$$...$$` for maths, ` ```{directive} `
 or `:::{directive}` fences for Sphinx directives. Pages written for GitHub - the README and the
 two-tone study - keep GitHub's maths syntax (a dollar sign and a backtick on each side inline, and
-fenced `math` blocks), and `docs/conf.py` converts it as each file is read, so the same file
-renders on GitHub and on the site.
+fenced `math` blocks): `docs/conf.py` converts the inline maths as each file is read and has the
+fenced blocks read as `math` directives, so the same file renders on GitHub and on the site.
 
 **Publishing.** `.github/workflows/docs.yml` builds the site on every pull request, and on a
 push to `main` also deploys it to GitHub Pages at <https://julianiacoponi.github.io/levisim/>.
