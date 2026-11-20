@@ -22,7 +22,9 @@ import matplotlib.pyplot as plt
 
 from levisim.core.plotting import set_plt_rcParams_to_xmgrace_style
 from levisim.core.units import Hz, kHz, ms, μs
-from levisim.multiphysics.enums.quantum_linear_theory_method import QuantumLinearTheoryMethod
+from levisim.multiphysics.enums.quantum_linear_theory_method import (
+    QuantumLinearTheoryMethod,
+)
 from levisim.multiphysics.multitrap import MultiTrap
 from levisim.multiphysics.utils import shelf
 from levisim.simulation import Heterodyne, Homodyne, Position
