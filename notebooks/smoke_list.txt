@@ -28,6 +28,7 @@ papers/vijayan2024_cavity_mediated_interactions.ipynb    180   # [1 s]
 papers/pontin2025_pair_dark_modes.ipynb                  300   # [57 s]
 papers/pontin2026_optical_squeezing.ipynb                180   # [2 s]
 papers/deplano2026_stationary_entanglement.ipynb       180   # [7 s]
+papers/penny2023_sympathetic_cooling.ipynb               300   # [12 s with numba]
 
 # archive (outputs stripped)
 archive/animations/3x2_truncated_heatmap.ipynb                     180   # [6 s]
