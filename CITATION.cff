@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use levisim in your research, please cite it as below."
+title: "levisim: simulations of optically levitated nanoparticles"
+type: software
+authors:
+  - family-names: Iacoponi
+    given-names: Julian
+version: 0.1.0
+date-released: 2026-11-20
+license: GPL-3.0-or-later
+repository-code: "https://github.com/julianiacoponi/levisim"
+url: "https://julianiacoponi.github.io/levisim/"
+keywords:
+  - levitated optomechanics
+  - coherent scattering
+  - cavity optomechanics
+  - quantum linear theory
+  - optical tweezers

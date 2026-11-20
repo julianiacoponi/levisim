@@ -7,12 +7,18 @@
 ## Installation
 
 ```sh
+pip install levisim
+```
+
+installs the latest release from [PyPI](https://pypi.org/project/levisim/). For the development version, or to run the notebooks, tests and scripts (which live in the repository, not in the package), install from a clone:
+
+```sh
 git clone https://github.com/julianiacoponi/levisim.git
 cd levisim
 pip install .        # or `pip install -e .` to work on the code in place
 ```
 
-This needs Python 3.10 or newer and installs the runtime dependencies (numpy, scipy, matplotlib, sympy, loguru, tqdm). Four optional extras add conveniences that nothing in the physics needs: `elk` (the Elasticsearch client, see [Logging](#logging)), `notify` (desktop notifications when a long test run starts and finishes), `video` (OpenCV, for the image-comparison helpers) and `dev` (pytest and ruff), e.g. `pip install ".[elk,dev]"`.
+Either way this needs Python 3.10 or newer and installs the runtime dependencies (numpy ≥ 2.0, scipy, matplotlib, sympy, loguru, tqdm). Six optional extras add conveniences that nothing in the physics needs: `elk` (the Elasticsearch client, see [Logging](#logging)), `notify` (desktop notifications when a long test run starts and finishes), `video` (OpenCV, for the image-comparison helpers), `notebooks` (JupyterLab and what the notebooks import), `docs` (Sphinx and the theme, to build the documentation) and `dev` (pytest and ruff), e.g. `pip install "levisim[elk]"` or, from a clone, `pip install ".[elk,dev]"`.
 
 **Name shadowing.** Do not start Python or Jupyter in the directory that *contains* your clone. There the repository folder `levisim/`, which has no `__init__.py`, shadows the package, and `import levisim` silently gives an empty namespace package. The repo root itself, or `notebooks/`, is fine.
 

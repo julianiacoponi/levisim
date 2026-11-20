@@ -1,0 +1,86 @@
+# Builds levisim's sdist and wheel, checks them, and publishes them with PyPI trusted publishing
+# (no API token is stored anywhere). See docs/contributing.md, 'Releasing'.
+#
+# - Publishing a GitHub release whose tag is vX.Y.Z uploads to PyPI.
+# - Running the workflow by hand (Actions -> release -> Run workflow) uploads to TestPyPI.
+#
+# One-time setup, on pypi.org and test.pypi.org (Account settings -> Publishing -> Add a new pending
+# publisher): project `levisim`, owner `julianiacoponi`, repository `levisim`, workflow
+# `release.yml`, environment `pypi` (TestPyPI: `testpypi`). Create the two environments under the
+# repository's Settings -> Environments (optionally requiring your approval before each run).
+name: release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build sdist and wheel
+        run: |
+          python -m pip install --upgrade build twine
+          python -m build
+          python -m twine check --strict dist/*
+      - name: Check the version is consistent everywhere
+        # pyproject.toml, CITATION.cff and a dated CHANGELOG.md entry must agree; for a release, the
+        # tag must also be v<version>. Nothing is uploaded if any of these disagree.
+        run: |
+          version=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          echo "pyproject.toml version: ${version}"
+          grep -qx "version: ${version}" CITATION.cff || { echo "CITATION.cff version is not ${version}"; exit 1; }
+          grep -qE "^date-released: [0-9]{4}-[0-9]{2}-[0-9]{2}$" CITATION.cff || { echo "CITATION.cff has no date-released"; exit 1; }
+          grep -qE "^## \[${version}\] - [0-9]{4}-[0-9]{2}-[0-9]{2}$" CHANGELOG.md || { echo "CHANGELOG.md has no dated entry for ${version}"; exit 1; }
+          if [ "${{ github.event_name }}" = "release" ]; then
+            test "v${version}" = "${GITHUB_REF_NAME}" || { echo "tag ${GITHUB_REF_NAME} != v${version}"; exit 1; }
+          fi
+      - name: Install the wheel in a clean environment and smoke-test it
+        run: |
+          python -m venv /tmp/venv
+          /tmp/venv/bin/pip install dist/*.whl
+          cd /tmp && /tmp/venv/bin/python -c "import levisim, sys; print(levisim.__version__); sys.exit(0)"
+          /tmp/venv/bin/levisim-logs --help > /dev/null
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish-testpypi:
+    if: github.event_name == 'workflow_dispatch'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/levisim
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  publish-pypi:
+    if: github.event_name == 'release'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/levisim
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1

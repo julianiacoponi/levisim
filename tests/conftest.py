@@ -30,7 +30,7 @@ def pytest_configure(config):
     )
     config.addinivalue_line(
         'markers',
-        'needs_power_series: test needs a power-series pickle under notebooks/',
+        'needs_power_series: test needs a power-series pickle (shipped in levisim/multiphysics/power_series_data/)',
     )
 
 

@@ -30,7 +30,12 @@ from levisim.multiphysics.multitrap.base import (  # noqa: F401
     PROGRESS_BAR,
 )
 from levisim.multiphysics.multitrap.linear_amplifier_mixin import LinearAmplifierMixin
-from levisim.multiphysics.multitrap.hybridisation_mixin import HybridisationMixin
+from levisim.multiphysics.multitrap.hybridisation_mixin import (  # noqa: F401
+    POWER_SERIES_DATA_DIR,
+    POWER_SERIES_PICKLE_DIR,
+    HybridisationMixin,
+    find_power_series_file,
+)
 from levisim.multiphysics.multitrap.analytic_mixin import AnalyticMixin
 
 

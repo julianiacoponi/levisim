@@ -46,7 +46,7 @@ class HybridisationTerm(namedtuple('_HybridisationTermFields', ['sign', 'pairs']
 
     Still a namedtuple subclass, so it is immutable, hashable (`pairs` is stored as a tuple of
     tuples) and pickles by name. The power-series pickles under
-    notebooks/multiphysics/power-series/pickle/ were written when HybridisationTerm was a plain
+    levisim/multiphysics/power_series_data/ were written when HybridisationTerm was a plain
     namedtuple with `pairs` as a list; protocol-4 unpickling calls HybridisationTerm.__new__,
     which converts those lists to tuples, so the old files load as instances of this class.
     [·]

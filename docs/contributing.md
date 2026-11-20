@@ -130,6 +130,45 @@ ruff check --select F821,F811,F541,F632,E711,E712,E714,E722 levisim tests
 - Changes written with an LLM say so in the commit message and the pull request description,
   pointing to `DISCLAIMER.md` (see [Provenance](provenance.md)).
 
+## Releasing
+
+Releases go to PyPI from GitHub Actions (`.github/workflows/release.yml`) by [trusted
+publishing](https://docs.pypi.org/trusted-publishers/), so no API token is stored anywhere: PyPI
+trusts uploads that come from that workflow file, in this repository, running in the GitHub
+environment named `pypi`.
+
+One-off setup, by the repository owner:
+
+1. On pypi.org, *Your account → Publishing → Add a new pending publisher → GitHub*, fill in:
+   PyPI project name `levisim`; owner `julianiacoponi`; repository name `levisim`; workflow name
+   `release.yml` (the file name only, not its path); environment name `pypi`. The project is
+   created on PyPI by the first successful upload.
+2. In the repository's *Settings → Environments*, have an environment called `pypi`. Adding
+   yourself as a required reviewer means every upload waits for your approval in the Actions run,
+   and limiting its deployment branches and tags to `v*` tags means only a release can use it.
+3. Optional, for rehearsals: the same on test.pypi.org (a separate account), with environment name
+   `testpypi`, and a `testpypi` environment in the repository.
+
+Each release:
+
+1. Bump `version` in `pyproject.toml` (`levisim.__version__` follows it once installed), add a
+   dated `## [X.Y.Z] - YYYY-MM-DD` entry to `CHANGELOG.md`, and update `version` and
+   `date-released` in `CITATION.cff`. `tests/test_packaging.py` checks that these agree on every
+   push, and the release workflow refuses to upload if they do not.
+2. Optionally rehearse: *Actions → release → Run workflow* on `main` builds, checks and uploads to
+   TestPyPI; then `pip install -i https://test.pypi.org/simple/ --extra-index-url
+   https://pypi.org/simple/ levisim`. TestPyPI, like PyPI, never accepts the same version twice.
+3. Merge to `main`, then *Releases → Draft a new release*: create the tag `vX.Y.Z` on `main`, title
+   it `levisim X.Y.Z`, and publish. Publishing runs the workflow, which builds the sdist and wheel,
+   checks them (`twine check --strict`, a clean install, the version checks above) and, after your
+   approval if the environment asks for it, uploads them to PyPI.
+
+The package ships the three smallest power-series pickles (`levisim/multiphysics/
+power_series_data/`, about 270 KB) so `load_in_power_series=True` works from a pip install;
+regenerate them with `python scripts/generate_power_series_pickles.py` (and confirm with
+`--check`) if the series code changes. The `package` job in the tests workflow builds the wheel on
+every push, installs it in a clean environment and loads a series from it.
+
 ## Building these docs
 
 ```sh

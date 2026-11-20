@@ -2,7 +2,14 @@
 
 ## Installation
 
-`levisim` is installed from a clone of the repository:
+The latest release is on [PyPI](https://pypi.org/project/levisim/):
+
+```sh
+pip install levisim
+```
+
+The notebooks, tests and scripts are not part of the package, so to run them, or to use the
+development version, install from a clone of the repository instead:
 
 ```sh
 git clone https://github.com/julianiacoponi/levisim.git
@@ -10,10 +17,14 @@ cd levisim
 pip install .        # or `pip install -e .` to edit the code in place
 ```
 
-This installs the runtime dependencies too. Optional extras: `elk` (ship logs to Elasticsearch,
-see [Logging](guide/logging.md)), `notify` (desktop notifications from long test runs), `video`
-(OpenCV, for the image-comparison helpers) and `dev` (pytest and ruff), e.g.
-`pip install '.[dev]'`.
+Both need Python 3.10 or newer and install the runtime dependencies too. Optional extras: `elk`
+(ship logs to Elasticsearch, see [Logging](guide/logging.md)), `notify` (desktop notifications
+from long test runs), `video` (OpenCV, for the image-comparison helpers), `notebooks` (JupyterLab
+and what the notebooks import), `docs` (Sphinx, to build these pages) and `dev` (pytest and ruff),
+e.g. `pip install 'levisim[elk]'` or, from a clone, `pip install '.[dev]'`.
+
+`levisim.__version__` says which version is installed; `CHANGELOG.md` in the repository lists what
+changed in each.
 
 Alternatively, skip installing altogether and work from the repo root: the tests are configured
 to find the in-tree package (see [Testing](testing.md)), and scripts and notebooks can do the same
@@ -66,6 +77,13 @@ fig.savefig('quickstart_homodyne.png')
 
 The full script, which also marks each motion's trap frequency, is
 `docs/guide/scripts/quickstart_homodyne.py`; it runs in about a second after import.
+
+`DEFAULT_cavity_kwargs` and `DEFAULT_gas_kwargs` are the standard parameter sets kept in
+{mod}`~levisim.multiphysics.utils.shelf`. Leaving `cavity_kwargs` out does not give the same cavity:
+`Cavity()`'s own defaults are $L$ = 1.223 cm, finesse 30 000 and $\Delta/2\pi$ = −180 kHz
+($\kappa/2\pi$ ≈ 409 kHz), against 0.96 cm, 40 000 and −450 kHz ($\kappa/2\pi$ ≈ 390 kHz) here, with
+the same 61 µm waist. Couplings, linewidths and stability differ between the two, so say which set
+a number refers to.
 
 ```{figure} guide/figures/quickstart_homodyne.png
 :width: 90%

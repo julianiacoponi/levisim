@@ -36,8 +36,8 @@ The suite runs on every push and pull request through GitHub Actions
 | `test_output_modes.py` | covariance of filtered (propagating) cavity-output modes: frequency integration against a cascaded filter cavity, several cavity modes on one particle, and the worked example of Deplano et al. (2026), Eq. (S45) |
 
 Two markers are registered in `tests/conftest.py`: `slow` (more than about 10 s) and
-`needs_power_series` (needs a power-series pickle; the three small ones the suite uses are
-tracked in the repo).
+`needs_power_series` (needs a power-series pickle; the three small ones the suite uses ship with
+the package, in `levisim/multiphysics/power_series_data/`).
 
 ## The Fortran reference
 
