@@ -71,3 +71,14 @@ def test_multitrap_loads_a_series_from_power_series_dir(tmp_path):
         load_in_power_series=True, power_series_dir=tmp_path,
     )
     assert len(mtrap.deranged_determinant_by_order) > 0
+
+
+def test_citation_and_changelog_agree_with_the_version():
+    """The release workflow refuses to upload unless these agree, so check them on every push"""
+    import re
+    version = read_pyproject()['project']['version']
+    citation = (REPO_ROOT / 'CITATION.cff').read_text()
+    assert f'\nversion: {version}\n' in citation
+    assert re.search(r'^date-released: \d{4}-\d{2}-\d{2}$', citation, re.M)
+    changelog = (REPO_ROOT / 'CHANGELOG.md').read_text()
+    assert re.search(rf'^## \[{re.escape(version)}\] - \d{{4}}-\d{{2}}-\d{{2}}$', changelog, re.M)
