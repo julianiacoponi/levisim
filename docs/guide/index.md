@@ -6,6 +6,7 @@
 cavity_spectra
 stability
 stochastic_simulations
+paul_traps
 cavity_simulations
 logging
 ../two_tone_entanglement/README
@@ -19,6 +20,9 @@ logging
   two-particle system.
 - [Stochastic simulations of a bead in a free-space tweezer](stochastic_simulations.md): the
   Langevin simulator, its spectral estimates and their comparison with theory.
+- [Paul and hybrid traps](paul_traps.md): the `PaulTrap` element (full rf force and secular
+  stiffness), Mathieu parameters and the exact stability region, micromotion, sag and stray fields,
+  electrode noise and heating, and hybrid Paul-optical traps in `Trap` and `MultiTrap`.
 - [Time traces of particles in a cavity](cavity_simulations.md): `CavitySimulation` and
   `MultiTrap.simulate`, the exact linear model, its homodyne, heterodyne, photon-flux and position
   records, and their validation against the `MultiTrap` spectra.

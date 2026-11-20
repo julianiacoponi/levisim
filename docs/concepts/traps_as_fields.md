@@ -59,6 +59,8 @@ linearised frequency domain, and a test can compare the two.
 | `Feedback(Γ_fbx, Γ_fby, Γ_fbz)` | $-\Gamma_{\mathrm{fb},j}\,p_j$ | 0 | - (loop noise not modelled) |
 | `PhotonRecoil(tweezer)` | scattering force along $+z$, `Trap.F_scattering` | central differences | - |
 | `Kick` | $F_0(\cos\theta, \sin\theta, 0)$ while active | 0 | - |
+| `PaulTrap(V_rf, Ω_rf, r0, U_dc, geometry, ...)` | full rf + dc quadrupole force $-Q[c^\mathrm{dc}_j + c^\mathrm{rf}_j\cos\Omega_\mathrm{rf}t](r_j - c_j)$ | secular (pseudopotential) stiffness | electrode voltage noise $Q\,E_\mathrm{noise}$ |
+| `UniformElectricField(E)` | $Q\mathbf{E}$ | 0 | - |
 
 The tweezer's `noise` is the force spectral density
 $S_j = \frac{\pi\hbar}{15\varepsilon_0}\left(\frac{\mathrm{Re}(\alpha_\mathrm{eff}) E_0}{2\pi}\right)^2 k^5 c_j$,
@@ -132,13 +134,15 @@ supply a numba-compilable force function and a packed parameter array.
 
 ## Adding a new kind of trap
 
-A new trap is a new element. Two are planned:
+A new trap is a new element. The first non-optical one is in place, and one more is planned:
 
-- A **Paul trap** has a time-dependent `force`, $Q\,\mathbf{E}_\mathrm{rf}(\mathbf{r})\cos\Omega_\mathrm{rf}t$
-  plus the static part, so the time-domain simulation shows the micromotion and the Mathieu stability
-  boundary. Its `stiffness` returns the secular (pseudopotential) stiffness, to lowest order in the
-  Mathieu parameters, which is what `MultiTrap` and $\Omega_j$ use. Its `noise` is the electrode
-  voltage noise as a force noise $Q\,E_\mathrm{noise}$.
+- The **Paul trap** (`PaulTrap`, see the guide [Paul and hybrid traps](../guide/paul_traps.md)) has a
+  time-dependent `force`, $Q\,\mathbf{E}_\mathrm{rf}(\mathbf{r})\cos\Omega_\mathrm{rf}t$ plus the static
+  part, so the time-domain simulation shows the micromotion and the Mathieu stability boundary. Its
+  `stiffness` returns the secular (pseudopotential) stiffness, to lowest order in the Mathieu
+  parameters, which is what `MultiTrap` and $\Omega_j$ use, and `Trap.static_force` takes its
+  time-averaged `secular_force` (elements declare this with `is_time_dependent`). Its `noise` is the
+  electrode voltage noise as a force noise $Q\,E_\mathrm{noise}$, which `FreeSpaceSimulation` adds.
 - A **magnetic trap** for a diamagnetic particle is conservative, with
   `potential` $U = -\chi V\lvert\mathbf{B}\rvert^2/2\mu_0$; its `force` is $-\nabla U$ and its
   `stiffness` the Hessian of $U$, from a local expansion of the field or by finite differences.
