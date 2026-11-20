@@ -17,7 +17,7 @@ import numpy as np
 
 from levisim.core.constants import e, g, kB, ε0, π
 from levisim.core.units import aN, fg, nm
-from levisim.physics.material import Material, _as_tensor
+from levisim.physics.material import Material, _as_tensor, _is_isotropic
 
 # trapping position phase along the cavity axis: antinode, halfnode, node = 0, π/4, π/2
 _NODE = π/2
@@ -204,10 +204,15 @@ class Particle:
 
     def to_lab_frame(self, tensor):
         """
-        A body-frame 3×3 tensor T in the lab frame, R T Rᵀ (a scalar is returned unchanged)
+        A body-frame 3×3 tensor T in the lab frame, R T Rᵀ (a scalar, or a multiple of the identity,
+        is returned unchanged)
         [units of T]
         """
         if np.ndim(tensor) == 0:
+            return tensor
+        tensor = np.asarray(tensor)
+        if _is_isotropic(tensor):
+            # R (c𝟙) Rᵀ = c𝟙 exactly, without the round-off of the products
             return tensor
         R = self.rotation_matrix
         return R @ np.asarray(tensor) @ R.T

@@ -591,7 +591,10 @@ class Trap:
         [2π·Hz]
         """
         if not self._uses_sphere_gas_damping:
-            return float(np.trace(self.Γth_tensor) / 3)
+            tensor = self.Γth_tensor
+            if np.all(tensor == tensor[0, 0] * np.eye(3)):
+                return float(tensor[0, 0])
+            return float(np.trace(tensor) / 3)
         # NOTE: many publications in our field use varying different expressions...
         # my choice is derived from: http://dx.doi.org/10.1016/j.physleta.2010.06.041
         # 2010-06-19 -- Cavalleri et al. -- Gas damping force noise on a macroscopic test body in an infinite gas reservoir
