@@ -32,7 +32,7 @@ Choose the level by what the message tells a reader:
 
 | Level | Use it for | Examples in levisim |
 |---|---|---|
-| `TRACE` | per-frequency or inner-loop detail | each Runge-Kutta step of a `Simulation(rk_loop_debug=True)`; each temporary PNG deleted by the comparison helpers |
+| `TRACE` | per-frequency or inner-loop detail | each Runge-Kutta step of a `FreeSpaceSimulation(rk_loop_debug=True)`; each temporary PNG deleted by the comparison helpers |
 | `DEBUG` | intermediate values that help when debugging: parameters, the branch a method takes, term counts, run times | every `info_str` of a new `MultiTrap`; `Numerical H for MultiTrap(2×2): inverting the 4×4 derangement matrix D = I - R numerically at each ω; ...`; `⏱️ "MultiTrap.homodyne_spectrum" executed in 0.1125 s` |
 | `INFO` | setup and progress milestones a user may want to follow | `Built MultiTrap(2×2): 4 dimensions (x1, y1, x2, y2) from toy parameters (Ω_model 'pairs'); ...`; `🧮 Calculating homodyne spectrum via LAM over 1600 ω points`; `Simulating 100000 time steps ...` and `Simulated 100000 samples ...`; loading or generating a power series |
 | `SUCCESS` | a requested result produced, or a check passed | `✅ All relative difference checks passed`; `Test.notify_end` when the test passed |
@@ -69,7 +69,7 @@ Choose the level by what the message tells a reader:
 - **Warnings must be cheap and must not change any result.** For example, the drift-matrix
   stability check is one `eigvals` of the (2N + 2)-square drift matrix per `MultiTrap`, and the
   spectrum methods check for non-finite values once per call, never per ω.
-- `debug=True` arguments (`Simulation(debug=True, rk_loop_debug=True)`,
+- `debug=True` arguments (`FreeSpaceSimulation(debug=True, rk_loop_debug=True)`,
   `SpectralDensityEstimate.fit_PSD(debug=True)`, `timer(..., debug=True)`) add DEBUG or TRACE
   records; they print nothing. Lower the console level to see them.
 
