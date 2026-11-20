@@ -42,6 +42,11 @@ jobs:
         # equivalent of sphinx-build -W --keep-going); docstring warnings are listed by object
         run: python docs/check_sphinx_warnings.py docs/_build/warnings.log
 
+      - name: Check that the maths was recognised
+        # Sphinx does not warn when MyST misreads a $$ block (one without a blank line before it)
+        # or a | inside maths in a table cell: the page is built with prose typeset as maths
+        run: python docs/check_rendered_maths.py docs/_build/html
+
       - name: Upload the site for GitHub Pages
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-pages-artifact@v3

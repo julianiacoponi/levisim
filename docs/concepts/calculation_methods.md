@@ -446,6 +446,7 @@ $\Uparrow$
 $\Uparrow$
 
 - `light_noise_vectors` $\leftarrow$ $\hat{a}, \hat{a}^\dagger$ in terms of the collective modes, where $\bar{g}$ is the total collective coupling rate (`gbar`)
+
 $$
 \hat{a} = \chi_{\text{c}}(\omega)
 \begin{bmatrix}

@@ -55,6 +55,7 @@ exclude_patterns = [
     '_generated',
     'requirements.txt',
     'check_sphinx_warnings.py',
+    'check_rendered_maths.py',
     'Thumbs.db',
     '.DS_Store',
 ]
@@ -64,8 +65,10 @@ myst_enable_extensions = ['dollarmath', 'amsmath', 'colon_fence', 'deflist']
 # GitHub-style #heading-slug anchors, so the in-page tables of contents written for GitHub work
 myst_heading_anchors = 4
 # ```mermaid fences (which GitHub renders) become sphinxcontrib-mermaid directives, so the README's
-# flowchart of the calculation methods renders on the site too
-myst_fence_as_directive = ['mermaid']
+# flowchart of the calculation methods renders on the site too. ```math fences (GitHub's display
+# maths) become math directives: unlike a $$ block, which MyST only recognises after a blank line,
+# a fence may follow a line of text directly, as it may on GitHub
+myst_fence_as_directive = ['mermaid', 'math']
 
 # autodoc / autosummary: one page per public module, generated at build time into _autosummary/
 autosummary_generate = True
@@ -202,12 +205,11 @@ copybutton_prompt_is_regexp = True
 # GitHub-flavoured maths -> MyST maths
 # ----------------------------------------------------------------------------------------------
 # The README and the two-tone study pages are written for GitHub, whose maths syntax is
-# $`x`$ inline and ```math fenced blocks. MyST's dollarmath wants $x$ and $$...$$. Rather than
-# keep two copies, the source text is converted in memory as Sphinx reads it (the files on disk
-# are untouched, so they still render on GitHub).
+# $`x`$ inline and ```math fenced blocks. MyST's dollarmath wants $x$ inline. Rather than keep
+# two copies, the inline maths is converted in memory as Sphinx reads it (the files on disk are
+# untouched, so they still render on GitHub). The ```math fences need no conversion: they are
+# read as math directives (myst_fence_as_directive above).
 _GITHUB_INLINE_MATH = re.compile(r'\$`(.+?)`\$')
-# a ```math fence, possibly indented (e.g. inside a list item); the closing fence has the same indent
-_GITHUB_BLOCK_MATH = re.compile(r'^([ \t]*)```math[ \t]*\n(.*?)\n\1```[ \t]*$', re.S | re.M)
 _HEADING = re.compile(r'^(#{1,6})([ \t].*)$')
 
 # pages written for GitHub, rendered as they are on disk apart from these in-memory conversions
@@ -215,8 +217,7 @@ GITHUB_PAGES = ('two_tone_entanglement/',)
 
 
 def github_math_to_myst(text):
-    """Converts GitHub maths syntax ($`x`$ and ```math fences) to MyST dollarmath ($x$ and $$)"""
-    text = _GITHUB_BLOCK_MATH.sub(lambda m: f'{m.group(1)}$$\n{m.group(2)}\n{m.group(1)}$$', text)
+    """Converts GitHub inline maths ($`x`$) to MyST dollarmath ($x$)"""
     return _GITHUB_INLINE_MATH.sub(lambda m: '$' + m.group(1).strip() + '$', text)
 
 

@@ -1261,7 +1261,7 @@ def calculate_temperature_from_position_PSD(mtrap, vals, ii, label):
 def get_latex_labels(mtrap, hat=False, PSD=False):
     r"""
     Returns a list of latex strings of dimension labels
-    e.g. $x_1$ or $\hat{x}_1$
+    e.g. ``$x_1$`` or ``$\hat{x}_1$``
     """
     subscripted_labels = [f'{label[0]}_{{{label[1:]}}}' for label in mtrap.labels]
     latex_labels = [rf'${subscripted_label}$' for subscripted_label in subscripted_labels]
