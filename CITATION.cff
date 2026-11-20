@@ -9,6 +9,7 @@ version: 0.1.0
 date-released: 2026-11-20
 license: GPL-3.0-or-later
 repository-code: "https://github.com/julianiacoponi/levisim"
+repository-artifact: "https://pypi.org/project/levisim/"
 url: "https://julianiacoponi.github.io/levisim/"
 keywords:
   - levitated optomechanics

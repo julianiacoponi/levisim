@@ -1,8 +1,9 @@
 # levisim notebooks
 
 Jupyter notebooks that use levisim, from short demos to the research notebooks behind the thesis.
-They import levisim from the repository, so install it first (`pip install -e .` from the repository
-root) and run them from their own folder; any files they write go to an `output/` folder next to
+They import levisim from the repository, so install it first (`pip install -e ".[notebooks]"` from the
+repository root, an editable install with JupyterLab) and run them from their own folder. They follow
+`main`; to run them against a release instead, check out its tag (e.g. `git checkout v0.1.0`) first; any files they write go to an `output/` folder next to
 them, which git ignores.
 
 | Folder | What is in it | Outputs in git |

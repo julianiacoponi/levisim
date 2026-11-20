@@ -17,7 +17,7 @@
   measures (log-negativity, discord, Duan and Hillery–Zubairy witnesses) for two-tone schemes.
 
 ```sh
-pip install levisim
+pip install levisim              # or: pip install --upgrade levisim
 ```
 
 ```python

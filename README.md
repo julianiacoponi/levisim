@@ -1,22 +1,40 @@
 # `levisim`
 
+[![PyPI](https://img.shields.io/pypi/v/levisim)](https://pypi.org/project/levisim/)
+[![Python](https://img.shields.io/pypi/pyversions/levisim)](https://pypi.org/project/levisim/)
+[![tests](https://github.com/julianiacoponi/levisim/actions/workflows/tests.yml/badge.svg)](https://github.com/julianiacoponi/levisim/actions/workflows/tests.yml)
+[![docs](https://github.com/julianiacoponi/levisim/actions/workflows/docs.yml/badge.svg)](https://julianiacoponi.github.io/levisim/)
+[![licence: GPL v3+](https://img.shields.io/badge/licence-GPL--3.0--or--later-blue)](LICENSE)
+
 `levisim` simulates levitated optomechanics. Its core is the quantum linear theory (QLT) of several optically levitated nanoparticles coupled by coherent scattering to one shared cavity mode: given the tweezers, the beads, the gas and the cavity, `MultiTrap` calculates the homodyne and heterodyne spectra of the cavity output and the power and cross spectral densities of every particle's motion, by any of seven calculation methods that can be checked against each other. Around that core are a stochastic (Runge-Kutta) simulator of a bead in a free-space tweezer, covariance-matrix tools for steady-state entanglement under a two-tone drive, and a Fortran reference implementation that the Python spectra are tested against.
 
 **Documentation:** <https://julianiacoponi.github.io/levisim/> - a user guide, the calculation methods in full, and an API reference generated from the docstrings.
 
 ## Installation
 
+### From PyPI
+
 ```sh
-pip install levisim
+pip install levisim              # the latest release
+pip install --upgrade levisim    # move to a newer release
+python -c "import levisim; print(levisim.__version__)"
 ```
 
-installs the latest release from [PyPI](https://pypi.org/project/levisim/). For the development version, or to run the notebooks, tests and scripts (which live in the repository, not in the package), install from a clone:
+The package is everything under `levisim/`, including the three small power-series pickles that `load_in_power_series=True` uses; the releases and what changed in each are on [PyPI](https://pypi.org/project/levisim/) and in [`CHANGELOG.md`](CHANGELOG.md).
+
+### From a clone (development, notebooks, tests)
+
+The notebooks, tests and scripts live in the repository, not in the package. To run them, or to work on the code, install from a clone in editable mode, so that changes to the source take effect without reinstalling:
 
 ```sh
 git clone https://github.com/julianiacoponi/levisim.git
 cd levisim
-pip install .        # or `pip install -e .` to work on the code in place
+pip install -e ".[dev]"          # editable, with pytest, ruff and the build tools
 ```
+
+`pip install .` (without `-e`) gives a normal, non-editable install of the clone instead. The notebooks follow `main`; to run them against a release, check out its tag first, e.g. `git checkout v0.1.0`.
+
+### Requirements and extras
 
 Either way this needs Python 3.10 or newer and installs the runtime dependencies (numpy ≥ 2.0, scipy, matplotlib, sympy, loguru, tqdm). Six optional extras add conveniences that nothing in the physics needs: `elk` (the Elasticsearch client, see [Logging](#logging)), `notify` (desktop notifications when a long test run starts and finishes), `video` (OpenCV, for the image-comparison helpers), `notebooks` (JupyterLab and what the notebooks import), `docs` (Sphinx and the theme, to build the documentation) and `dev` (pytest and ruff), e.g. `pip install "levisim[elk]"` or, from a clone, `pip install ".[elk,dev]"`.
 
