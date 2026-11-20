@@ -15,6 +15,8 @@ from pathlib import Path
 # make the in-tree package importable for autodoc, whether or not it is pip-installed
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
+# local extensions (docs/_ext): showcase_plotly builds the interactive showcase figures
+sys.path.insert(0, str(Path(__file__).resolve().parent / '_ext'))
 
 # ----------------------------------------------------------------------------------------------
 # project
@@ -38,6 +40,7 @@ extensions = [
     'sphinx.ext.intersphinx',
     'sphinx_copybutton',
     'sphinxcontrib.mermaid',
+    'showcase_plotly',
 ]
 
 # myst_nb parses .md and .ipynb ('myst-nb'). '.rst' must come first: autosummary writes its stub
@@ -49,6 +52,7 @@ templates_path = ['_templates']
 html_static_path = ['_static']
 exclude_patterns = [
     '_build',
+    '_generated',
     'requirements.txt',
     'check_sphinx_warnings.py',
     'Thumbs.db',

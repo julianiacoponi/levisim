@@ -61,15 +61,151 @@ Frequencies are angular throughout: `kHz` is $`2\pi \times 10^3`$ rad/s, so divi
 
 **`MultiTrap` options.** A physical `MultiTrap` can also take its own `tweezers=[...]` and `beads=[...]` (one per particle), extra `Trap` arguments per particle (`trap_kwargs=[...]`, e.g. measured frequencies) and tweezer phases (`φn_dict`). Photon-recoil heating of the scattered tweezer light is added to the bath of each motion by default (`photon_recoil=False` leaves the gas bath alone); it raises the noise but not the drift matrix, so frequencies, linewidths and stability do not depend on it. See the guide page *Spectra of several particles in one cavity*.
 
+<!-- SHOWCASE-START -->
+## Three papers in levisim
+
+levisim grew out of the calculations for three of my papers, and each of them is a short example. The schematics are renders of my Blender scenes for the thesis; every figure links to an interactive version on the documentation site, where it is recomputed at each build and where hovering gives the values. The scripts that draw the figures are in [`docs/guide/scripts/showcase/`](docs/guide/scripts/showcase/), and each snippet below is the part of its script that does the physics.
+
+### Mode orientations and the cancellation point (PRR 5, 2023)
+
+A. Pontin, H. Fu, J. H. Iacoponi, P. F. Barker and T. S. Monteiro, *Controlling mode orientations and frequencies in levitated cavity optomechanics*, Phys. Rev. Research **5**, 013013 (2023), [doi:10.1103/PhysRevResearch.5.013013](https://doi.org/10.1103/PhysRevResearch.5.013013).
+
+<p align="center"><img src="docs/guide/figures/schematics/prr5_geometry.png" width="62%" alt="A nanosphere on the cavity standing wave, its x-y modes rotated by the cavity backaction and the static scattered field"></p>
+
+The two transverse motions of a nanosphere in a cavity are coupled twice over: through the cavity dynamics, with couplings $`g_x, g_y \propto \sin\Phi`$ that rotate the normal modes away from the tweezer axes, and through the static coherent-scattering field, with a direct coupling $`g_{xy} \propto \cos\Phi`$ that rotates them back. In this paper we found the trap position at which the two cancel, where the modes keep their unperturbed orientation and the $`x`$-$`y`$ cross spectrum $`S_{xy}`$ vanishes while the particle is still cavity-cooled; the analysis of that cancellation point was my part of it. levisim computes $`S_{xy}`$ as the particle moves along the standing wave, and reads the orientation of each normal mode from the eigenvectors of the drift matrix:
+
+```python
+import numpy as np
+from levisim.core.units import kHz
+from levisim.multiphysics.enums import QuantumLinearTheoryMethod
+from levisim.multiphysics.multitrap import MultiTrap
+from levisim.multiphysics.utils.shelf import DEFAULT_cavity_kwargs, DEFAULT_gas_kwargs
+from levisim.physics.bead import Bead
+
+for Φ in np.linspace(0.5, 0.05, 10) * np.pi:       # from the node (π/2) towards the antinode (0)
+    mtrap = MultiTrap(
+        num_traps=1,
+        Cartesian_axes_per_trap=2,
+        gas_kwargs=DEFAULT_gas_kwargs,
+        cavity_kwargs=DEFAULT_cavity_kwargs,
+        beads=[Bead(Φ=Φ)],                          # the trap position on the standing wave
+        ω_range=np.arange(125, 165, 0.02) * kHz,
+    )
+    assert mtrap.is_stable
+    S_xy = mtrap.position_cross_spectrum('x1', 'y1', QuantumLinearTheoryMethod.LINEAR_AMPLIFIER_MODEL).real
+    eigenvalues, eigenvectors = np.linalg.eig(mtrap.drift_matrix)   # basis (a, a†, b_x, b_x†, b_y, b_y†)
+```
+
+[![Cross spectra from node to antinode, and the map of the mode rotation with the cancellation point](docs/guide/figures/showcase/prr5_mode_orientations.png)](https://julianiacoponi.github.io/levisim/showcase/prr5_mode_orientations.html)
+
+In (a) the two motions stay anticorrelated, with peaks of opposite sign at 133-136 kHz and 155-156 kHz, and the pattern flips sign between $`\Phi = 0.25\pi`$ and $`0.20\pi`$. In (b) the black contour, where the $`x`$ mode is not rotated at all, is the cancellation point: $`\Phi_\text{c} = 0.248\pi`$ at the default detuning of $`-2\pi \times 450`$ kHz, moving towards the node as the detuning approaches the mechanical frequencies ($`0.313\pi`$ at $`-2\pi \times 150`$ kHz). levisim does not include the static field's shift of the mechanical frequencies, which the paper shows cancelling at the same point, so it reproduces the rotation but not the frequency cancellation.
+
+### Sensing a directional noise bath (PRR 6, 2024)
+
+J. M. H. Gosling, A. Pontin, J. H. Iacoponi, P. F. Barker and T. S. Monteiro, *Sensing directional noise baths in levitated optomechanics*, Phys. Rev. Research **6**, 013129 (2024), [doi:10.1103/PhysRevResearch.6.013129](https://doi.org/10.1103/PhysRevResearch.6.013129).
+
+<p align="center"><img src="docs/guide/figures/schematics/prr6_setup_b.png" width="46%" alt="A nanoparticle in a tweezer between four electrodes"></p>
+
+A white-noise force along a fixed direction $`\psi`$, applied in the experiment by four electrodes around a feedback-cooled particle, only heats the motion as far as the power spectral densities can tell, by the same amount for $`\psi`$ and $`-\psi`$; the $`x`$-$`y`$ co-spectrum, which thermal noise leaves at zero, shows the force and its quadrant without any calibration. I simulated all of this paper in levisim, including the directed force, which the stochastic Runge-Kutta integrator applies as one random force shared between $`x`$ and $`y`$ in proportion to $`\cos\psi`$ and $`\sin\psi`$, and the error analysis of the spectral estimates in its appendix:
+
+```python
+import numpy as np
+from levisim.analysis.spectral_density_estimate import SpectralDensityEstimate
+from levisim.core.units import degrees, μs
+from levisim.data.simulation import Simulation
+from levisim.physics.trap import Trap
+
+for ψ in (45, -45):
+    trap = Trap(ψ=ψ*degrees)       # a directed force of PSD β²·S_th along ψ, with β = √2
+    sim = Simulation(trap=trap, num_samples=400_000, Δt=0.1*μs, seed=2024)
+    C_xy = SpectralDensityEstimate(sim, 'xy', num_segments=40)
+    C_xy_theory = trap.theory.Cxy(2*np.pi*C_xy.freq_range)
+```
+
+[![PSDs that cannot tell the sign of the force direction, and co-spectra that can](docs/guide/figures/showcase/prr6_directional_force.png)](https://julianiacoponi.github.io/levisim/showcase/prr6_directional_force.html)
+
+The points are the simulations (40 ms each) and the lines the theory. The PSDs in (a) rise above their thermal parts (shaded) identically for $`\psi = \pm 45°`$, while the co-spectra in (b), with lobes of $`\pm 4.3 \times 10^{-23}`$ m²/Hz at the $`y`$ and $`x`$ resonances (135.8 and 156.3 kHz), are mirror images of each other.
+
+### A mechanical mode comb and its collective bright mode (PRR 8, 2026)
+
+J. H. Iacoponi, M. Rademacher and T. S. Monteiro, *Nanoparticle arrays levitated in a cavity for quantum sensing*, Phys. Rev. Research **8**, 033286 (2026), [doi:10.1103/wrd3-t5cf](https://doi.org/10.1103/wrd3-t5cf).
+
+<p align="center"><img src="docs/guide/figures/schematics/prr8_array.png" width="72%" alt="An array of tweezers along one cavity mode"></p>
+
+An array of particles in one cavity mode, with their mechanical frequencies spread into an even comb, is reorganised by the light into one collective bright mode, which takes nearly all of the coupling to the cavity and is pulled far below the comb, and a comb of nearly dark modes that keep the bare frequencies and narrow linewidths. levisim simulates everything in this paper, whose closed-form spectra are its analytic methods (6) and (7):
+
+```python
+import numpy as np
+from levisim.core.units import kHz
+from levisim.multiphysics.enums import QuantumLinearTheoryMethod
+from levisim.multiphysics.multitrap import MultiTrap
+from levisim.multiphysics.utils.shelf import DEFAULT_cavity_kwargs, DEFAULT_gas_kwargs
+
+mtrap = MultiTrap(
+    num_traps=8,
+    Cartesian_axes_per_trap=2,
+    gas_kwargs=DEFAULT_gas_kwargs,
+    cavity_kwargs=DEFAULT_cavity_kwargs,
+    toy_params=dict(Ω_model='equal spacing', Ω_mid=300*kHz, Ω_span=100*kHz, toy_gx=-40*kHz, toy_gy=-40*kHz),
+    ω_range=np.arange(100, 400, 0.05) * kHz,
+)
+assert mtrap.is_stable
+S_het = mtrap.heterodyne_spectrum(QuantumLinearTheoryMethod.LINEAR_AMPLIFIER_MODEL)
+eigenvalues = mtrap.drift_eigenvalues   # the bright mode is the broadest mechanical one
+```
+
+[![Heterodyne spectrum of an eight-particle comb, and the bright mode leaving the comb as particles are added](docs/guide/figures/showcase/prr8_mode_comb.png)](https://julianiacoponi.github.io/levisim/showcase/prr8_mode_comb.html)
+
+With 16 motions spaced 6.67 kHz apart about 300 kHz and $`g/2\pi = 40`$ kHz each, the bright mode sits at 156.9 kHz with a linewidth of 90.8 kHz, against 286.7 kHz and 17.4 kHz for a single particle, and the narrowest dark mode is 0.42 kHz wide.
+
+## Stability, and the other systems this could model
+
+Underneath every spectrum, levisim solves the linear Langevin equations $`\dot{\hat{\mathbf c}} = \mathbf A\hat{\mathbf c} + \hat{\mathbf c}_\text{in}`$ of a network of damped resonators, and such a network has a steady state only if every eigenvalue $`\lambda`$ of the drift matrix $`\mathbf A`$ has $`\mathrm{Re}\,\lambda < 0`$. Its stationary spectra do not reveal a failure of this condition, since a Lorentzian is the same for a growing mode as for a decaying one, which is why every `MultiTrap` reports them explicitly (see the stability note under the [quickstart](#quickstart)). Unequal tweezer phases are the usual cause, because they give the cavity-mediated coupling between particles a non-reciprocal part $`\propto \sin(\phi_2 - \phi_1)`$ that can anti-damp a hybridised pair of motions:
+
+```python
+import numpy as np
+from levisim.core.units import degrees
+from levisim.multiphysics.multitrap import MultiTrap
+from levisim.multiphysics.utils.shelf import DEFAULT_cavity_kwargs, DEFAULT_gas_kwargs
+
+for φ2 in np.arange(0, 180.01, 0.2) * degrees:
+    mtrap = MultiTrap(
+        num_traps=2,
+        Cartesian_axes_per_trap=2,
+        gas_kwargs=DEFAULT_gas_kwargs,
+        cavity_kwargs=DEFAULT_cavity_kwargs,
+        φn_dict={2: φ2},
+    )
+    eigenvalues, growth_rate = mtrap.drift_eigenvalues, mtrap.max_growth_rate
+```
+
+[![Drift eigenvalues crossing into the unstable half-plane as the second tweezer phase is swept](docs/guide/figures/showcase/stability_tweezer_phase.png)](https://julianiacoponi.github.io/levisim/showcase/stability_tweezer_phase.html)
+
+For the quickstart's two particles, one hybridised $`y`$ mode near 135 kHz crosses $`\mathrm{Re}\,\lambda = 0`$ at $`\phi_2 = 54.40°`$ and comes back at $`125.60°`$, growing at up to $`+2.68 \times 10^3`$ s⁻¹ at 90°. The concepts page [*Eigenvalue stability of coupled resonators*](docs/concepts/stability.md) derives all of this, from the drift matrix to exceptional points and non-reciprocal coupling.
+
+Nothing in this analysis, nor in levisim's frequency-domain solution, is specific to levitated particles: only the way $`\mathbf A`$ and the noise correlations are filled in is. The same page lists the systems the code could be adapted to, roughly in increasing order of effort: multimode optomechanics (membrane-in-the-middle cavities and arrays of optomechanical crystals), clamped MEMS/NEMS resonator networks, circuit optomechanics and electromechanics, coupled superconducting resonators and parametric amplifiers, trapped ions and atomic ensembles in cavities, non-Hermitian and PT-symmetric lattices, the librational modes of levitated rotors, and cavity magnomechanics.
+<!-- SHOWCASE-END -->
+
 ## Notebooks
 
 [`notebooks/`](notebooks/) holds worked examples as Jupyter notebooks, indexed with run times in [`notebooks/README.md`](notebooks/README.md):
 
 - [`demos/`](notebooks/demos/): six short walk-throughs of the API - the quickstart system in full, the seven calculation methods side by side, the stochastic free-space simulator, two-tone entanglement, the derangement power series, and parameter sweeps with stability checks;
 - [`showcase/`](notebooks/showcase/): a hundred particles in one cavity mode, solved by independent routes;
-- [`papers/`](notebooks/papers/): published experiments (Delić et al. 2020, Piotrowski et al. 2023, Vijayan et al. 2024) rebuilt from their stated parameters and compared with the papers' numbers.
+- [`papers/`](notebooks/papers/): published experiments rebuilt from their stated parameters and compared with the papers' numbers (listed [below](#published-experiments-reproduced-in-levisim)).
 
 These three folders are stored with their outputs and rendered in the documentation's [notebook gallery](https://julianiacoponi.github.io/levisim/notebooks.html) (source: [`docs/notebooks.md`](docs/notebooks.md)). The research notebooks behind the thesis (`multiphysics/`, `physics/`, `archive/`) are stored without outputs.
+
+## Published experiments reproduced in levisim
+
+Each of these notebooks in [`notebooks/papers/`](notebooks/papers/) builds a published experiment from its stated parameters and compares levisim's results with the paper's numbers and figures, ending with a list of the agreements and discrepancies (see [`notebooks/papers/README.md`](notebooks/papers/README.md)):
+
+- U. Delić, M. Reisenbauer, K. Dare, D. Grass, V. Vuletić, N. Kiesel and M. Aspelmeyer, *Cooling of a levitated nanoparticle to the motional quantum ground state*, Science **367**, 892 (2020), [doi:10.1126/science.aba3993](https://doi.org/10.1126/science.aba3993): [`delic2020_ground_state_cooling.ipynb`](notebooks/papers/delic2020_ground_state_cooling.ipynb);
+- J. Piotrowski, D. Windey, J. Vijayan, C. Gonzalez-Ballestero, A. de los Ríos Sommer, N. Meyer, R. Quidant, O. Romero-Isart, R. Reimann and L. Novotny, *Simultaneous ground-state cooling of two mechanical modes of a levitated nanoparticle*, Nat. Phys. **19**, 1009 (2023), [doi:10.1038/s41567-023-01956-1](https://doi.org/10.1038/s41567-023-01956-1): [`piotrowski2023_two_mode_ground_state.ipynb`](notebooks/papers/piotrowski2023_two_mode_ground_state.ipynb);
+- J. Vijayan, J. Piotrowski, C. Gonzalez-Ballestero, K. Weber, O. Romero-Isart and L. Novotny, *Cavity-mediated long-range interactions in levitated optomechanics*, Nat. Phys. **20**, 859 (2024), [doi:10.1038/s41567-024-02405-3](https://doi.org/10.1038/s41567-024-02405-3): [`vijayan2024_cavity_mediated_interactions.ipynb`](notebooks/papers/vijayan2024_cavity_mediated_interactions.ipynb);
+- A. Pontin, Q. Deplano, A. Ranfagni, F. Marino and F. Marin, *Strong coupling and dark modes in the motion of a pair of levitated nanoparticles*, Phys. Rev. Lett. **135**, 073602 (2025), [doi:10.1103/t33b-f1b2](https://doi.org/10.1103/t33b-f1b2): [`pontin2025_pair_dark_modes.ipynb`](notebooks/papers/pontin2025_pair_dark_modes.ipynb);
+- A. Pontin, Q. Deplano, F. Marino and F. Marin, *Optical squeezing mediated by levitated oscillators at their quantum ground state*, Phys. Rev. A **114**, 053704 (2026), [doi:10.1103/hms3-yb2h](https://doi.org/10.1103/hms3-yb2h): [`pontin2026_optical_squeezing.ipynb`](notebooks/papers/pontin2026_optical_squeezing.ipynb);
+- Q. Deplano, A. Pontin, F. Marino and F. Marin, *Stationary entanglement of a levitated oscillator with an optical field*, Science **394**, 113 (2026), [doi:10.1126/science.aeh1375](https://doi.org/10.1126/science.aeh1375): [`deplano2026_stationary_entanglement.ipynb`](notebooks/papers/deplano2026_stationary_entanglement.ipynb).
 
 ## Repository layout
 
