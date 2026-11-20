@@ -218,7 +218,7 @@ These are the best $`E_N(1|2)`$ in Deplano et al.'s geometry, with no intra-part
 Neither is fixed here.
 
 1. **`FocussingOptics._fw` apodisation.** It uses $`\exp(-\sin^2\theta/(f_0^2\sin\theta_{max}))`$, where Novotny & Hecht (Eq. 3.52) have $`\sin^2\theta_{max}`$. This is equivalent to an effective filling factor $`f_0\sqrt{\sin\theta_{max}}`$, 12% lower than stated at NA 0.77. Its effect on the trap is small: $`\Omega_\perp/\Omega_\parallel`$ = 1.172 vs 1.164 at NA 0.775. `FocalExpansion(apodisation='novotny')` gives the textbook form for comparison.
-2. **Off-node CS frequency corrections.** `Dimension.mech_mech_coupling` gives the carrier field's $`xy`$ (and $`xz`$, $`yz`$) coupling but not the diagonal frequency shifts of the same rank-one stiffness. Those are as large ($`\tan\theta`$ and $`\cot\theta`$ times $`g_{xy}`$ for $`x`$ and $`y`$) and are the `TODO: sort CS frequency corrections` in `dimension.py`. `two_tone_traps` includes both.
+2. **Off-node CS frequency corrections.** `Dimension.mech_mech_coupling` gives the carrier field's $`xy`$ (and $`xz`$, $`yz`$) coupling but not the diagonal frequency shifts of the same rank-one stiffness. Those are as large ($`\tan\theta`$ and $`\cot\theta`$ times $`g_{xy}`$ for $`x`$ and $`y`$) and are the `TODO: sort CS frequency corrections` in `dimension.py`. `two_tone_traps` includes both. (Since fixed in `MultiTrap`, which now adds these static shifts by default; see `MultiTrap.setup_static_cavity_shifts`.)
 
 ## 8. Code map
 

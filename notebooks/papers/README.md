@@ -69,8 +69,9 @@ polarisation (Piotrowski et al. 2023, Eq. (4); Gonzalez-Ballestero et al. 2019, 
   master-equation theory of coherent-scattering cooling. Its recoil-heating coefficients and
   polarisation dependence are cross-checked through Piotrowski et al. (2023), which uses them. A full
   reproduction needs the static coherent-scattering frequency shifts and equilibrium displacements
-  (its Fig. 3 and Eq. (92)), which levisim does not model yet. This is a natural follow-up if those
-  become an opt-in.
+  (its Fig. 3 and Eq. (92)). `MultiTrap` now includes the shifts (on by default,
+  `static_cavity_shifts`) but still linearises about the trap centre, so the equilibrium
+  displacements are the missing piece (`coherent_scattering.static_cavity_force` gives their size).
 - **M. Toroš, U. Delić, F. Hales and T. S. Monteiro, PRR 3, 023071 (2021)** ([doi:10.1103/PhysRevResearch.3.023071](https://doi.org/10.1103/PhysRevResearch.3.023071)),
   2D coherent-scattering cooling theory. It shares its lineage with levisim's model, so it would not
   be an independent check.
