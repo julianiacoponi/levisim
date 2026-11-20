@@ -6,7 +6,8 @@ Skipped when miepython is not installed.
 import numpy as np
 import pytest
 
-miepython = pytest.importorskip('miepython')
+# ImportError, not only ModuleNotFoundError: miepython needs numba, which may fail to import
+miepython = pytest.importorskip('miepython', exc_type=ImportError)
 
 from levisim.core.constants import π
 from levisim.core.units import nm, μm
