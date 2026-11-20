@@ -5,6 +5,9 @@
    :undoc-members:
    :show-inheritance:
    :ignore-module-all:
+{%- if fullname == 'levisim.multiphysics.multitrap' %}
+   :inherited-members:
+{%- endif %}
 
 {% block modules %}
 {% if modules %}

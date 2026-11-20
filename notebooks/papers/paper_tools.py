@@ -5,11 +5,11 @@ Everything here is a thin layer over levisim's public API. The published systems
 built with levisim directly: `MultiTrap(tweezers=[...], beads=[...], trap_kwargs=[...])` takes the
 paper's `Tweezer` and `Bead` instances (and per-trap `Trap` keyword arguments such as measured
 frequencies through `override_Ω_dict`), drives the cavity at the first tweezer's wavelength, and
-`MultiTrap(photon_recoil=True)` adds photon-recoil heating (`Trap.photon_recoil_heating_rates`) to
-the gas bath of every mode. What remains here:
+adds photon-recoil heating (`Trap.photon_recoil_heating_rates`) to the gas bath of every mode
+(`MultiTrap(photon_recoil=True)`, the default with physical parameters). What remains here:
 
 - `toy_multitrap` and `add_heating`: a toy-parameter `MultiTrap` with given frequencies, couplings
-  and *total* heating rates (a paper's fitted rates). `photon_recoil=True` needs physical
+  and *total* heating rates (a paper's fitted rates). Photon recoil needs physical
   parameters, so for toy systems the extra heating is still imposed here, by raising each mode's
   bath occupation, n → n + Γ_heat/Γ, which is exact for a heating term that adds no damping (the
   same way levisim includes photon recoil).
@@ -76,7 +76,7 @@ def add_heating(mtrap, heating):
     raising n_j by Γ_heat/Γ_j. Both noise factors of the pair (n + 1, n) are raised, and the noise
     matrix is rebuilt, so spectra and `steady_state_covariance` see the new bath.
 
-    Physical systems get photon-recoil heating from levisim itself, `MultiTrap(photon_recoil=True)`,
+    Physical systems get photon-recoil heating from levisim itself (`MultiTrap(photon_recoil=True)`, the default),
     which raises the bath occupation in the same way. This helper is for toy systems, where a
     paper's fitted total heating rate is imposed (see `toy_multitrap`).
     """

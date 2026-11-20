@@ -25,6 +25,7 @@ trap frequency $\Omega_{j_n}$.
 getting_started
 concepts/conventions
 concepts/calculation_methods
+concepts/stability
 guide/index
 notebooks
 ```
