@@ -9,7 +9,7 @@ docstring, which is the reference in the code.
 $N_\text{p}$ particles are each held in an optical tweezer inside one optical cavity. Each
 particle $n$ moves along up to three Cartesian axes $j \in \{x, y, z\}$, and each such
 "dimension" $j_n$ is a harmonic oscillator with phonon operators $\hat b_{j_n}$, $\hat b_{j_n}^\dagger$,
-frequency $\Omega_{j_n}$, mass $M_n$ and gas damping rate $\Gamma_{j_n}$. The tweezer light
+frequency $\Omega_{j_n}$, mass $m_n$ and gas damping rate $\Gamma_{j_n}$. The tweezer light
 coherently scatters into one cavity mode $\hat a$ of linewidth $\kappa$, which couples every
 dimension to the same light field. There are $N$ dimensions in total, and $2N + 2$ operators.
 
@@ -82,7 +82,7 @@ $\mu_{j_n}(\omega) \equiv \chi_{j_n}(\omega) - \chi_{j_n}^*(-\omega)$ (`dim.μm`
 - **Positions are dimensionless**, in units of the zero-point fluctuation:
   $\hat q_{j_n} = \hat b_{j_n} + \hat b_{j_n}^\dagger$, so the physical position is
   $\hat x_{j_n} = x_{\text{zpf},j_n} \hat q_{j_n}$ with
-  $x_{\text{zpf},j_n} = \sqrt{\hbar / (2 M_n \Omega_{j_n})}$, and $\langle \hat q^2 \rangle = 2n + 1$ for
+  $x_{\text{zpf},j_n} = \sqrt{\hbar / (2 m_n \Omega_{j_n})}$, and $\langle \hat q^2 \rangle = 2n + 1$ for
   a thermal state of $n$ phonons.
 - **Light** is in photon-number units: the input noise $\hat a_\text{in}$ has
   $\langle \hat a_\text{in}(\omega) \hat a^\dagger_\text{in}(\omega') \rangle \propto (n_\text{c} + 1)$ with

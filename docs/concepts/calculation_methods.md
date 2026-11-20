@@ -70,9 +70,9 @@ The aim of this document is to clarify the various code pathways and mathematica
 #### Definitions
 - $N$ is the total number of mechanical degrees of freedom ('dimensions'), each with 2 quantum operators for phonon annihilation and creation $\hat{b}_{j_n}, \hat{b}_{j_n}^\dagger$ for each Cartesian axis of motion $j \in {x, y, z}$ of the $n^\text{th}$ trapped particle
 - $2N + 2$ is the total number of quantum operators (including 2 for cavity photon annihilation and creation $\hat{a}, \hat{a}^\dagger$)
-- $M_n$ is the mass of the particle in the $n^\text{th}$ trap
+- $m_n$ is the mass of the particle in the $n^\text{th}$ trap
 - $\Omega_{j_n}$ is the resonant frequency for the $j_n$ mechanical degree of freedom, as calculated by the linearised physics model of the multiparticle cavity trap
-- $\hat{q}_{j_{n}}$ is the dimensionless position operator, i.e. in units of the zero-point motion $q_{j_n, \text{zpf}} \equiv \sqrt{\frac{\hbar}{2} \cdot \frac{1}{M_n\Omega_{j_n}}}$
+- $\hat{q}_{j_{n}}$ is the dimensionless position operator, i.e. in units of the zero-point motion $q_{j_n, \text{zpf}} \equiv \sqrt{\frac{\hbar}{2} \cdot \frac{1}{m_n\Omega_{j_n}}}$
 - $\Gamma_{j_n}$ is the damping / loss rate for the $j_n$ mechanical degree of freedom, assumed to be solely due to gas damping (i.e. does not account for optical sources)
 - $\kappa$ is the optical damping / loss rate for light inside the cavity
 
@@ -90,25 +90,33 @@ The aim of this document is to clarify the various code pathways and mathematica
 
 ##### for hybridisation methods
 
-- `x1D_noise_vector`: $\mathbf{\hat{x}}_{\text{1D}}(\omega) \equiv (\ldots, \hat{q}_{j_n, \text{1D}}(\omega), \ \ldots) =$ solutions to the Heisenberg-Langevin equations for each dimension treated separately
+- `x1D_noise_vector`: $\mathbf{\hat{x}}_{\text{1D}}(\omega) \equiv (\ldots, \hat{q}_{j_n, \text{1D}}(\omega), \ \ldots)^\top$, the column vector of the solutions to the Heisenberg-Langevin equations for each dimension treated on its own, with every coupling to the other dimensions left out
 
-- `derangement_matrix`:
-$$
-\mathbf{D}(\omega)
-\equiv
-\mathbf{I} - \mathbf{R}(\omega)
-=
-\begin{pmatrix}
-  1 & -R_{ab}(\omega) & -R_{ac}(\omega) & \ldots
-  \\
-  -R_{ba}(\omega) & 1 & -R_{bc}(\omega) & \ldots
-  \\
-  -R_{ca}(\omega) & -R_{cb}(\omega) & 1 & \ldots
-  \\
-  \ldots & \ldots & \ldots & \ldots
-\end{pmatrix}
-$$
-has 1s on diagonal and (the negative of) the hybridisation functions $R_{j_n k_m}(\omega)$ (shown in the matrix with subscript relabelling to $abc$... for simplicity) that relates the 1D solutions of the $k_m$ degree of freedom to the $j_n$ degree of freedom via $\hat{q}_{j_n}(\omega) = \sum_{k_m \neq j_n} R_{j_n k_m}(\omega) \hat{q}_{k_m}(\omega) + \hat{q}_{j_n, \text{1D}}(\omega)$
+- `derangement_matrix`: $\mathbf{D}(\omega) \equiv \mathbf{I} - \mathbf{R}(\omega)$, which has 1s on the diagonal and minus the hybridisation functions $R_{j_n k_m}(\omega)$ off it (relabelled $a, b, c, \ldots$ below for brevity)
+
+  $$
+  \mathbf{D}(\omega)
+  =
+  \begin{pmatrix}
+    1 & -R_{ab}(\omega) & -R_{ac}(\omega) & \cdots
+    \\
+    -R_{ba}(\omega) & 1 & -R_{bc}(\omega) & \cdots
+    \\
+    -R_{ca}(\omega) & -R_{cb}(\omega) & 1 & \cdots
+    \\
+    \vdots & \vdots & \vdots & \ddots
+  \end{pmatrix}
+  $$
+
+  The hybridisation function $R_{j_n k_m}(\omega)$ gives how much of the full (hybridised) $k_m$ position appears in the $j_n$ position, so that each position is its 1D solution plus contributions from every other dimension,
+
+  $$
+  \hat{q}_{j_n}(\omega) = \hat{q}_{j_n, \text{1D}}(\omega) + \sum_{k_m \neq j_n} R_{j_n k_m}(\omega) \, \hat{q}_{k_m}(\omega),
+  $$
+
+  i.e. $\mathbf{\hat{x}} = \mathbf{R} \cdot \mathbf{\hat{x}} + \mathbf{\hat{x}}_{\text{1D}}$, or $\mathbf{D} \cdot \mathbf{\hat{x}} = \mathbf{\hat{x}}_{\text{1D}}$
+
+- `hybridisation_matrix`: $\mathbf{H}(\omega) \equiv \mathbf{D}^{-1}(\omega)$, which gives the hybridised positions from the 1D solutions, $\mathbf{\hat{x}} = \mathbf{H} \cdot \mathbf{\hat{x}}_{\text{1D}}$. Numerical Hybridisation inverts $\mathbf{D}$ numerically at each frequency; Power Series Hybridisation builds $\mathbf{H} = \mathrm{adj} \, \mathbf{D} / \det \mathbf{D}$ from the pre-generated power series of the deranged determinant and adjugate (`deranged_determinant`, `deranged_adjugate_matrix_entry`), written as sums over the derangement cycles (determinant) and path-cycles (off-diagonal adjugate entries) of the $R_{j_n k_m}$
 
 ---
 
