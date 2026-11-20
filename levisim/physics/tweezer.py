@@ -22,7 +22,7 @@ class Tweezer(ForceElement):
     Defines an optical tweezer: a focussed, elliptical Gaussian beam
 
     A Tweezer is the optical `ForceElement` of a `Trap`: `force` is the time-averaged gradient force
-    (the same arithmetic as `Trap.Ftw`), `potential` the dipole energy -(Re α_eff/2)|E|², `stiffness`
+    (the same arithmetic as `Trap.Ftw`), `potential` the dipole energy ``-(Re α_eff/2)|E|²``, `stiffness`
     the Hessian (closed form at the focus) and `noise` the photon-recoil force noise.
     """
 
@@ -315,7 +315,7 @@ class Tweezer(ForceElement):
 
     def potential(self, r, particle):
         """
-        Dipole energy of the particle in the (time-averaged) tweezer field, -(Re α_eff / 2) |E(r)|²
+        Dipole energy of the particle in the (time-averaged) tweezer field, ``-(Re α_eff / 2) |E(r)|²``
         (`Trap.Utw`)
         [J]
         """
