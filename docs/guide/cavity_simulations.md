@@ -146,6 +146,71 @@ symmetrised in $\omega$. The rotation inside each sample interval is integrated 
 auxiliary integrals rotate at $\Omega_\mathrm{het}$), so $\Omega_\mathrm{het}$ may be a sizeable
 fraction of the sample rate.
 
+## Fabry-Perot ports
+
+`Cavity` takes optional per-port rates: `κ_ports=(κ_1, κ_2)` for the two mirrors and `κ_loss` for
+everything else (scattering, absorption), so that $\kappa = \kappa_1 + \kappa_2 + \kappa_\mathrm{loss}$
+(κ is then set from them; an explicit κ must agree). Each port and the loss channel has its own
+vacuum input. `detected_port` (default 0) is the port whose output the `MultiTrap` spectra describe.
+The default is one port carrying all of κ, which is what every spectrum assumed before; with it no
+number changes (checked bit for bit against the previous version, see the pull request).
+
+The output of port $j$ is $a_{\mathrm{out},j} = -\sqrt{\kappa_j}\,a + a_{\mathrm{in},j}$. Writing the
+total input noise as $\sqrt{\kappa}\,a_\mathrm{in} = \sum_j \sqrt{\kappa_j}\,a_{\mathrm{in},j}$, port
+$j$'s output is $\sqrt{\eta_j}\,a_\mathrm{out} + \sqrt{1 - \eta_j}\,v$ with $\eta_j = \kappa_j/\kappa$
+and a vacuum $v$ independent of the single-port output $a_\mathrm{out}$. A port therefore acts on
+every output spectrum as a detection efficiency, $S \to \eta_j S + (1 - \eta_j)$, which is what
+`MultiTrap.at_detected_port` applies to `homodyne_spectrum`, `heterodyne_spectrum` and
+`homodyne_and_heterodyne_spectra` (and `quadrature_squeezing.output_quadrature_spectra` to its
+spectral matrix). `QuadratureSystem.from_multitrap` instead keeps one pair of noise columns per port
+and loss channel, so that a simulation can record several ports at once, with their correlations:
+
+```python
+mtrap = MultiTrap(..., cavity_kwargs={**DEFAULT_cavity_kwargs, 'κ_ports': (0.6*κ, 0.3*κ), 'κ_loss': 0.1*κ})
+sim = mtrap.simulate(detection=[Homodyne(port=0, label='transmitted'), Homodyne(port=1, label='reflected')])
+```
+
+The tests check that each port's simulated record matches `MultiTrap.homodyne_spectrum` with that
+port detected, and that `output_modes` (filtered output modes, `stack_cavity_modes`) sees the
+detected port.
+
+## Detection realism
+
+Every optical record takes:
+
+- `η`: detection efficiency. The detected field is $\sqrt{\eta}\,a_\mathrm{out} + \sqrt{1-\eta}\,a_\mathrm{vac}$
+  with a vacuum private to the record, so the shot-noise-normalised signal scales as
+  $S - 1 \to \eta\,(S - 1)$.
+- `phase_noise`: a `PhaseNoise` of the local oscillator, added to the detection phase and held
+  constant over each sample: `PhaseNoise.white(S_φ)` (one-sided PSD in rad²/Hz),
+  `PhaseNoise.random_walk(D)` (phase diffusion, rad²/s) or `PhaseNoise.ornstein_uhlenbeck(σ, τ)`. A
+  phase that is slow against the spectral features averages the spectrum over its distribution:
+  with a static Gaussian error of variance $\sigma^2$ per trajectory, the ensemble-averaged spectrum
+  is `quadrature_squeezing.phase_noise_averaged(..., σ²)` (a test, with $\sigma = 0.5$ rad and 256
+  trajectories). Only the detected fluctuations are rotated; the term that LO phase noise makes from
+  a static output field, $\propto \lvert\bar\alpha_\mathrm{out}\rvert\,\delta\phi$, is not part of the
+  linearised record.
+- `electronic_noise`: white noise added to the record, as a one-sided PSD in the record's final
+  units (the same one-sided convention as `detection_floor`).
+- `volts`: a `VoltageConversion(power, responsivity, transimpedance_gain)`. The record becomes
+  $V = G\sqrt{e\,\mathcal{R}P}\,h$, whose one-sided shot-noise level is $2eIG^2$ with $I = \mathcal{R}P$,
+  $P$ the local-oscillator power (or, for `PhotonNumber`, the mean detected power). The efficiency,
+  including the photodiode's quantum efficiency, is set by `η`; $\mathcal{R}$ only sets the shot-noise
+  current.
+
+A record in volts goes through the same analysis as measured data. `sim.save_matfile(path)` writes
+the records of one trajectory in the layout that `levisim.data.Experiment` loads (`Length`,
+`Tinterval`, one column per channel) and returns the channel map:
+
+```python
+channels = sim.save_matfile('run.mat')                 # {'homodyne': 'A', ...}
+experiment = Experiment('run.mat', channel_dict=channels)
+SpectralDensityEstimate(experiment, ('homodyne', 'homodyne'), num_segments=8)
+```
+
+`sim.record_spectrum` includes η, the electronic noise, the detection floor and the conversion to
+volts; it does not include LO phase noise.
+
 ## Validation
 
 `tests/test_cavity_simulation.py` holds the fast versions of the validation ladder:
