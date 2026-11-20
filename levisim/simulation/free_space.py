@@ -101,10 +101,12 @@ class FreeSpaceSimulation(StochasticSimulation):
     def noise_spectral_densities(self):
         """
         Two-sided force spectral densities of the four independent noises (thermal x, y, z and
-        directed), (Sth, Sth, Sth, Sdir)
+        directed), (Sth,x, Sth,y, Sth,z, Sdir): Sth on every axis for a sphere, Trap.Sth_j for a
+        non-spherical particle whose gas damping differs between axes
         [N²/Hz]
         """
-        return np.array([self.trap.Sth, self.trap.Sth, self.trap.Sth, self.trap.Sdir])
+        Sth = self.trap.Sth_j
+        return np.array([Sth['x'], Sth['y'], Sth['z'], self.trap.Sdir])
 
     def record(self, X):
         """

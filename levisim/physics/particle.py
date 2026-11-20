@@ -5,7 +5,10 @@ A `Particle` combines a `Material` with a shape. It supplies what the dynamics n
 particle: mass m, volume V, body-frame inertia tensor I, charge q, polarisability tensor α (with
 an optional radiation-reaction correction) and the gas-damping tensors. `Sphere` is the only shape
 implemented here; `Bead` (levisim.physics.bead) is a `Sphere` that keeps the original keyword
-arguments and numbers. Non-spherical shapes, orientation dynamics and their drag tensors come later.
+arguments and numbers. The non-spherical shapes (Spheroid, Ellipsoid, Cylinder, Rod, Disk, Dumbbell)
+are in levisim.physics.shapes and `TabulatedParticle` in levisim.physics.tabulated. A particle has a
+fixed orientation (a unit quaternion) that turns body-frame tensors into lab-frame ones; rotational
+dynamics come later.
 """
 
 from functools import cached_property
@@ -18,6 +21,108 @@ from levisim.physics.material import Material, _as_tensor
 
 # trapping position phase along the cavity axis: antinode, halfnode, node = 0, π/4, π/2
 _NODE = π/2
+
+# levisim's tweezer polarisation direction (lab frame): every Tweezer propagates along z and is
+# polarised along y (see levisim.physics.coherent_scattering)
+TWEEZER_POLARISATION = np.array([0.0, 1.0, 0.0])
+
+
+def _radiation_reaction(α, k):
+    """α (𝟙 - i k³/(6πε0) α)⁻¹ for a 3×3 polarisability α [Fm²] at wavenumber k [1/m]"""
+    return α @ np.linalg.inv(np.eye(3) - 1j * (k**3 / (6*π*ε0)) * α)
+
+
+def as_unit_quaternion(orientation):
+    """
+    The orientation as a float array (w, x, y, z), checked to be a unit quaternion (to 1e-8)
+    [·]
+    """
+    q = np.asarray(orientation, dtype=float)
+    if q.shape != (4,) or not np.all(np.isfinite(q)) or not np.isclose(np.linalg.norm(q), 1.0):
+        raise ValueError(f'orientation must be a unit quaternion (w, x, y, z), not {orientation}')
+    return q
+
+
+def quaternion_to_rotation_matrix(orientation):
+    """
+    Rotation matrix R (body frame → lab frame) of the unit quaternion q = (w, x, y, z)
+
+    ::
+
+        R = [[1 - 2(y² + z²), 2(xy - wz),     2(xz + wy)    ],
+             [2(xy + wz),     1 - 2(x² + z²), 2(yz - wx)    ],
+             [2(xz - wy),     2(yz + wx),     1 - 2(x² + y²)]]
+
+    A body-frame vector v has lab-frame components R v; a body-frame tensor T is R T Rᵀ in the lab.
+    q = (cos(θ/2), sin(θ/2) n̂) rotates by θ about the unit axis n̂. The quaternion is normalised
+    before use, so R is orthogonal to round-off.
+    [·]
+    """
+    w, x, y, z = np.asarray(orientation, dtype=float) / np.linalg.norm(orientation)
+    return np.array([
+        [1 - 2*(y*y + z*z), 2*(x*y - w*z), 2*(x*z + w*y)],
+        [2*(x*y + w*z), 1 - 2*(x*x + z*z), 2*(y*z - w*x)],
+        [2*(x*z - w*y), 2*(y*z + w*x), 1 - 2*(x*x + y*y)],
+    ])
+
+
+def rotation_matrix_to_quaternion(R):
+    """
+    Unit quaternion (w, x, y, z) with w ≥ 0 of a proper rotation matrix R (body frame → lab frame),
+    the inverse of `quaternion_to_rotation_matrix` (Shepperd's method)
+    [·]
+    """
+    R = np.asarray(R, dtype=float)
+    if R.shape != (3, 3) or not np.allclose(R @ R.T, np.eye(3), atol=1e-10) or np.linalg.det(R) <= 0:
+        raise ValueError('R must be a proper rotation matrix (orthogonal, det +1)')
+    trace = np.trace(R)
+    i = int(np.argmax([trace, R[0, 0], R[1, 1], R[2, 2]]))
+    if i == 0:
+        w = 0.5 * np.sqrt(1 + trace)
+        x, y, z = (R[2, 1] - R[1, 2]) / (4*w), (R[0, 2] - R[2, 0]) / (4*w), (R[1, 0] - R[0, 1]) / (4*w)
+    elif i == 1:
+        x = 0.5 * np.sqrt(1 + 2*R[0, 0] - trace)
+        w, y, z = (R[2, 1] - R[1, 2]) / (4*x), (R[0, 1] + R[1, 0]) / (4*x), (R[0, 2] + R[2, 0]) / (4*x)
+    elif i == 2:
+        y = 0.5 * np.sqrt(1 + 2*R[1, 1] - trace)
+        w, x, z = (R[0, 2] - R[2, 0]) / (4*y), (R[0, 1] + R[1, 0]) / (4*y), (R[1, 2] + R[2, 1]) / (4*y)
+    else:
+        z = 0.5 * np.sqrt(1 + 2*R[2, 2] - trace)
+        w, x, y = (R[1, 0] - R[0, 1]) / (4*z), (R[0, 2] + R[2, 0]) / (4*z), (R[1, 2] + R[2, 1]) / (4*z)
+    q = np.array([w, x, y, z])
+    q = q / np.linalg.norm(q)
+    return -q if q[0] < 0 else q
+
+
+def axis_angle_quaternion(axis, angle):
+    """
+    Unit quaternion (w, x, y, z) of a rotation by `angle` [rad] about `axis` (a 3-vector, or one of
+    'x', 'y', 'z'); e.g. axis_angle_quaternion('x', -π/2) turns the body z axis onto the lab y axis
+    [·]
+    """
+    if isinstance(axis, str):
+        axis = {'x': (1, 0, 0), 'y': (0, 1, 0), 'z': (0, 0, 1)}[axis]
+    n = np.asarray(axis, dtype=float)
+    n = n / np.linalg.norm(n)
+    return np.concatenate([[np.cos(angle / 2)], np.sin(angle / 2) * n])
+
+
+def body_axis_to_quaternion(direction):
+    """
+    A unit quaternion whose rotation takes the body z axis onto `direction` (a lab-frame 3-vector)
+    by the shortest rotation; e.g. body_axis_to_quaternion((0, 1, 0)) aligns a spheroid's symmetry
+    axis with levisim's tweezer polarisation y
+    [·]
+    """
+    d = np.asarray(direction, dtype=float)
+    d = d / np.linalg.norm(d)
+    c = float(d[2])
+    if c > 1 - 1e-15:
+        return np.array([1.0, 0.0, 0.0, 0.0])
+    if c < -1 + 1e-15:
+        return np.array([0.0, 1.0, 0.0, 0.0])
+    axis = np.cross([0.0, 0.0, 1.0], d)
+    return axis_angle_quaternion(axis, np.arccos(np.clip(c, -1, 1)))
 
 
 class Particle:
@@ -32,12 +137,19 @@ class Particle:
     - charge: net charge in units of the elementary charge e (an integer for a real particle) [·]
     - λ: vacuum wavelength at which a dispersive permittivity is evaluated for `εr`, `n` and `α` [m]
     - Φ: trapping position phase along the cavity axis, Φ = k·x0 [·] (π/2: node, 0: antinode)
-    - orientation: unit quaternion (w, x, y, z) of the body frame relative to the lab frame. A
-      placeholder for the rotation work: it is stored but not used by any calculation yet.
+    - orientation: unit quaternion (w, x, y, z) of the body frame relative to the lab frame (see
+      `quaternion_to_rotation_matrix`). It turns the body-frame tensors into lab-frame ones
+      (`lab_polarisability_tensor`, `lab_inertia_tensor`, ...). It is fixed (there are no
+      rotational dynamics yet) but may be reassigned.
 
     Subclasses define the shape through `V`, `A`, `inertia_tensor` and `static_polarisability_tensor`,
-    and may define the gas-damping tensors. Derived quantities are cached on first access, as in
-    the original `Bead`.
+    and may define the gas-damping tensors. Body-frame quantities are cached on first access, as in
+    the original `Bead`; lab-frame quantities are computed from the current orientation.
+
+    A non-spherical particle is trapped translationally through its polarisability projected on the
+    tweezer polarisation (levisim's lab y axis) in the current orientation: `α` is that projection of
+    the static tensor, and `effective_polarisability_along` applies the radiation reaction to the
+    whole lab-frame tensor before projecting.
     """
     def __init__(
         self,
@@ -66,12 +178,39 @@ class Particle:
         # [·]
         self.Φ = float(Φ)
 
-        # Orientation of the body frame (unit quaternion w, x, y, z); placeholder, unused so far
+        # Orientation of the body frame (unit quaternion w, x, y, z)
         # [·]
-        orientation = np.asarray(orientation, dtype=float)
-        if orientation.shape != (4,) or not np.isclose(np.linalg.norm(orientation), 1.0):
-            raise ValueError(f'orientation must be a unit quaternion (w, x, y, z), not {orientation}')
         self.orientation = orientation
+
+    @property
+    def orientation(self):
+        """
+        Unit quaternion (w, x, y, z) of the body frame relative to the lab frame
+        [·]
+        """
+        return self._orientation
+
+    @orientation.setter
+    def orientation(self, value):
+        self._orientation = as_unit_quaternion(value)
+
+    @property
+    def rotation_matrix(self):
+        """
+        Rotation matrix R (body frame → lab frame) of the current orientation
+        [·]
+        """
+        return quaternion_to_rotation_matrix(self._orientation)
+
+    def to_lab_frame(self, tensor):
+        """
+        A body-frame 3×3 tensor T in the lab frame, R T Rᵀ (a scalar is returned unchanged)
+        [units of T]
+        """
+        if np.ndim(tensor) == 0:
+            return tensor
+        R = self.rotation_matrix
+        return R @ np.asarray(tensor) @ R.T
 
     ################################################################################################
     # MATERIAL PROPERTIES
@@ -187,7 +326,58 @@ class Particle:
         if not radiation_reaction:
             return α
         k = 2*π / λ
-        return α @ np.linalg.inv(np.eye(3) - 1j * (k**3 / (6*π*ε0)) * α)
+        return _radiation_reaction(α, k)
+
+    def lab_polarisability_tensor(self, λ=None, radiation_reaction=False):
+        """
+        Polarisability tensor in the lab frame, R α Rᵀ, at vacuum wavelength λ (default: the
+        particle's λ), optionally with the radiation reaction (see `polarisability_tensor`;
+        R α_eff Rᵀ = (R α Rᵀ)(𝟙 - i k³/(6πε0) R α Rᵀ)⁻¹, so the order does not matter)
+        [complex Fm²]
+        """
+        return self.to_lab_frame(_as_tensor(self.polarisability_tensor(λ, radiation_reaction=radiation_reaction)))
+
+    @property
+    def has_scalar_polarisability(self):
+        """
+        Whether `α` is one scalar for every field direction (an isotropic sphere). `Tweezer` then uses
+        levisim's original scalar arithmetic; otherwise the tensor projections
+        [bool]
+        """
+        return False
+
+    @property
+    def α(self):
+        """
+        Static polarisability seen by light polarised along levisim's tweezer polarisation (lab y)
+        in the current orientation, ŷ·(R α_body Rᵀ)·ŷ, at the particle's wavelength λ. It is the
+        scalar that `Trap` and `MultiTrap` use for the coherent-scattering drive `Ed` and the cavity
+        terms; the tweezer itself uses `effective_polarisability_along`.
+        [Fm²]
+        """
+        value = TWEEZER_POLARISATION @ self.lab_polarisability_tensor() @ TWEEZER_POLARISATION
+        return value.real if np.imag(value) == 0 else complex(value)
+
+    def effective_polarisability_tensor(self, k):
+        """
+        Lab-frame polarisability with the radiation reaction at the wavenumber k [1/m] of the light,
+        from the static tensor at the particle's wavelength λ (as `Tweezer.effective_polarisability`
+        does for a sphere): α_eff = α_lab (𝟙 - i k³/(6πε0) α_lab)⁻¹
+        [complex Fm²]
+        """
+        return _radiation_reaction(self.lab_polarisability_tensor(), k)
+
+    def effective_polarisability_along(self, direction, k):
+        """
+        Effective polarisability for light polarised along the real unit lab-frame vector
+        `direction` at wavenumber k [1/m]: ê·α_eff·ê, with the radiation reaction applied to the whole
+        tensor first. For a fixed orientation the time-averaged dipole energy in the field E ê is
+        -(1/4) Re(ê·α_eff·ê)|E|² (the induced dipole's components perpendicular to ê do no work),
+        so this sets the translational trap frequencies.
+        [complex Fm²]
+        """
+        e = np.asarray(direction, dtype=float)
+        return complex(e @ self.effective_polarisability_tensor(k) @ e)
 
     ################################################################################################
     # GAS DAMPING
@@ -201,7 +391,7 @@ class Particle:
             f'{type(self).__name__} has no translational gas-damping tensor yet (only Sphere does)'
         )
 
-    def rotational_damping_tensor(self, gas, accommodation=1.0):
+    def rotational_damping_tensor(self, gas, accommodation=1.0, surface_temperature_ratio=1.0):
         """
         Rotational gas damping-rate tensor Γ_rot, in the body frame
         [2π·Hz]
@@ -209,6 +399,55 @@ class Particle:
         raise NotImplementedError(
             f'{type(self).__name__} has no rotational gas-damping tensor yet (only Sphere does)'
         )
+
+    def lab_translational_damping_tensor(self, gas, accommodation=1.0, surface_temperature_ratio=1.0):
+        """
+        Centre-of-mass gas damping-rate tensor in the lab frame, R Γ_cm Rᵀ
+        [2π·Hz]
+        """
+        return self.to_lab_frame(self.translational_damping_tensor(gas, accommodation, surface_temperature_ratio))
+
+    def lab_rotational_damping_tensor(self, gas, accommodation=1.0, surface_temperature_ratio=1.0):
+        """
+        Rotational gas damping-rate tensor in the lab frame, R Γ_rot Rᵀ
+        [2π·Hz]
+        """
+        return self.to_lab_frame(self.rotational_damping_tensor(gas, accommodation, surface_temperature_ratio))
+
+    def translational_diffusion_tensor(self, gas, accommodation=1.0, surface_temperature_ratio=1.0):
+        """
+        Centre-of-mass momentum diffusion tensor D_cm in the body frame, d〈P_i P_j〉/dt = 2 D_ij
+        (Martinetz et al., Phys. Rev. E 97, 052112 (2018)). With a surface at the gas temperature
+        (γs = 1) it is D_cm = kB T m_n Γ_cm (their Eq. (47a)), the default here.
+        [N²·s]
+        """
+        if surface_temperature_ratio != 1.0:
+            raise NotImplementedError(
+                f'{type(self).__name__} gives the diffusion tensor for γs = 1 only (D = kB T m_n Γ_cm)'
+            )
+        Γ = self.translational_damping_tensor(gas, accommodation, surface_temperature_ratio)
+        return kB * gas.T * self.m * Γ
+
+    def rotational_diffusion_tensor(self, gas, accommodation=1.0, surface_temperature_ratio=1.0):
+        """
+        Angular-momentum diffusion tensor D_rot in the body frame, d〈J_i J_j〉/dt = 2 D_ij; with γs = 1
+        it is D_rot = kB T Γ_rot I (Martinetz et al. 2018, Eq. (47b)), the default here
+        [N²·m²·s]
+        """
+        if surface_temperature_ratio != 1.0:
+            raise NotImplementedError(
+                f'{type(self).__name__} gives the diffusion tensor for γs = 1 only (D = kB T Γ_rot I)'
+            )
+        Γ = self.rotational_damping_tensor(gas, accommodation, surface_temperature_ratio)
+        return kB * gas.T * Γ @ self.inertia_tensor
+
+    @property
+    def lab_inertia_tensor(self):
+        """
+        Moment of inertia tensor about the centre of mass in the lab frame, R I Rᵀ
+        [kg·m²]
+        """
+        return self.to_lab_frame(self.inertia_tensor)
 
     ################################################################################################
     # INFORMATION PRINTING FUNCTIONS
@@ -356,6 +595,26 @@ class Sphere(Particle):
         """
         return self._clausius_mossotti(self.V, self.εr)
 
+    @property
+    def has_scalar_polarisability(self):
+        """
+        Whether `α` is a scalar (an isotropic material)
+        [bool]
+        """
+        return np.ndim(self.α) == 0
+
+    def effective_polarisability_along(self, direction, k):
+        """
+        Effective polarisability for light polarised along `direction` at wavenumber k [1/m]. For an
+        isotropic material this is the scalar α/(1 - i k³α/(6πε0)) whatever the direction, with
+        exactly the arithmetic of the original `Trap.α_eff`; for an anisotropic material (a 3×3 `α`)
+        it is ê·α_eff·ê of the rotated tensor (see `Particle.effective_polarisability_along`).
+        [complex Fm²]
+        """
+        if self.has_scalar_polarisability:
+            return self.α / (1 - 1j * (k**3 / (6*π*ε0)) * self.α)
+        return super().effective_polarisability_along(direction, k)
+
     def static_polarisability_tensor(self, λ=None):
         """
         Clausius-Mossotti polarisability tensor (body frame) at vacuum wavelength λ (default: the
@@ -388,7 +647,7 @@ class Sphere(Particle):
         gas_factor = (gas.m * gas.vth * gas.P) / (kB * gas.T)
         return geometric_factor * particle_factor * gas_factor * np.eye(3)
 
-    def rotational_damping_tensor(self, gas, accommodation=1.0):
+    def rotational_damping_tensor(self, gas, accommodation=1.0, surface_temperature_ratio=1.0):
         """
         Rotational gas damping-rate tensor of the sphere in the free-molecular regime
         [2π·Hz]
@@ -397,7 +656,8 @@ class Sphere(Particle):
 
             Γ_rot = 10 αc n_g R² √(2π m_g kB T) / (3M) 𝟙 = (5/4) αc · m_g v̄ P/(kB T) / (ρ R) 𝟙
 
-        Only diffusely reflected gas molecules (αc > 0) exert a torque on a sphere.
+        Only diffusely reflected gas molecules (αc > 0) exert a torque on a sphere; the result does
+        not depend on the surface temperature ratio γs (accepted for a uniform signature).
         """
         gas_factor = (gas.m * gas.vth * gas.P) / (kB * gas.T)
         return (5/4) * accommodation * gas_factor / (self.ρ * self.r) * np.eye(3)

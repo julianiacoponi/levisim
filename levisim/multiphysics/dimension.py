@@ -116,7 +116,8 @@ class Dimension:
             self.Ω = self.mechanical_frequency(self.axis)
 
         if self.Γ is None:
-            self.Γ = self.trap.Γth
+            # the gas damping of this axis (Trap.Γth for a sphere)
+            self.Γ = self.trap.Γth_j[self.axis]
 
         # Light-mech coupling goes H/ħ = -X·L
         # X = b† + b
