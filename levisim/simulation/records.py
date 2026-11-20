@@ -277,8 +277,11 @@ class OpticalRecord(Record):
     def finish(self, values, sim):
         K, N, _ = values.shape
         θ = self.detection_phases(sim, K)
+        self.phase_noise_samples = None
         if self.phase_noise is not None:
-            θ = θ + self.phase_noise.sample(sim.standard_normals((K, N)), sim.Δt)
+            # kept, shape (K, num_samples), so the spectrum can be compared with the phases actually drawn
+            self.phase_noise_samples = self.phase_noise.sample(sim.standard_normals((K, N)), sim.Δt)
+            θ = θ + self.phase_noise_samples
         h = values[..., 0] * np.cos(θ) + values[..., 1] * np.sin(θ)
         h = h * self.scale(sim)
         if self.electronic_noise:
