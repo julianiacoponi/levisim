@@ -9,6 +9,7 @@ from levisim.core.units import (
     degrees,
     Hz, kHz,
 )
+from levisim.physics.coherent_scattering import hessian_to_coupling_rate
 
 
 __all__ = [
@@ -111,7 +112,8 @@ class Dimension:
             self.m = self.trap.bead.m
 
         if self.Ω is None:
-            self.Ω = self.trap.Ωj[self.axis]
+            # the tweezer frequency, plus the static cavity shift if MultiTrap(static_cavity_shifts=True)
+            self.Ω = self.mechanical_frequency(self.axis)
 
         if self.Γ is None:
             self.Γ = self.trap.Γth
@@ -251,6 +253,7 @@ class Dimension:
             f'{Φ_str}'
             f'\n'
             f'\n    Ω{self.label} = {self.Ω / kHz:.5f} kHz'
+            f'\n    static cavity shift δΩ{self.label} = {self.static_cavity_shift / kHz:.5f} kHz'
             f'\n    Γ{self.label} = {self.Γ / Hz:.5e} Hz'
             f'\n'
             f'\n    n{self.label} = {self.noise_phonons_exact:.5e} phonons (exact)'
@@ -365,7 +368,14 @@ class Dimension:
         if axes == 'xy':
             x_zpf = self.zero_point_fluctuation(axes[0])
             y_zpf = self.zero_point_fluctuation(axes[1])
-            return -A0 * ωdsinθ * (kc * x_zpf) * (kc * y_zpf) * np.sin(θtw) * np.cos(θtw) * np.cos(Φ)
+            gxy = -A0 * ωdsinθ * (kc * x_zpf) * (kc * y_zpf) * np.sin(θtw) * np.cos(θtw) * np.cos(Φ)
+            if getattr(self.multitrap, 'static_cavity_shifts', False):
+                # the cavity's dispersive potential also couples x and y (its stiffness is along the
+                # cavity axis, which lies between them); see MultiTrap.setup_static_cavity_shifts
+                K_xy = self.multitrap.static_cavity_hessians[self.trap_index][0, 1]
+                if K_xy != 0:
+                    gxy = gxy + hessian_to_coupling_rate(K_xy, x_zpf, y_zpf)
+            return gxy
 
         if axes == 'xz':
             x_zpf = self.zero_point_fluctuation(axes[0])
@@ -379,20 +389,42 @@ class Dimension:
             kz = (kc - 1 / self.trap.drive_tweezer.zR)
             return -P0 * ωdsinθ * (kc * y_zpf) * (kz * z_zpf) * np.cos(θtw) * np.sin(Φ)
 
+    def mechanical_frequency(self, axis):
+        """
+        The frequency of this bead's oscillator along `axis`: the tweezer frequency `Trap.Ωj`,
+        shifted by the static cavity field when `MultiTrap(static_cavity_shifts=True)` (see
+        `MultiTrap.setup_static_cavity_shifts`)
+        [2π·Hz]
+        """
+        if getattr(self.multitrap, 'static_cavity_shifts', False):
+            return self.multitrap.static_shifted_Ωj[self.trap_index][axis]
+        return self.trap.Ωj[axis]
+
+    @property
+    def static_cavity_shift(self):
+        """
+        The static cavity shift of this dimension's frequency, Ω - Ωtw (zero for toy parameters
+        or with static_cavity_shifts=False)
+        [2π·Hz]
+        """
+        if self.multitrap.toy_params:
+            return 0.0
+        return self.Ω - self.trap.Ωj[self.axis]
+
     def zero_point_fluctuation(self, axis):
         """
         Zero-point fluctuation of the position of the oscillator, per axis
         [m]
         """
-        # NOTE: this deliberately uses the bare tweezer frequency trap.Ωj[axis], the same Ω that
-        # Dimension.Ω (and so the mechanical susceptibilities) uses. The zero-point fluctuation sets the
-        # scale of bjn, so it must use the frequency of the oscillator whose bjn appears in the
-        # Langevin equations; the dynamical optical spring is already in those equations and must not
-        # be folded in here. Static coherent-scattering frequency shifts are not modelled (see the NOTE
-        # at the end of MultiTrap.setup_linearised_coherent_scattering_physics); if they are added,
-        # they must change Dimension.Ω and this together. (The old commented-out line called
-        # self.Ω_CS, which no longer exists anywhere in levisim.)
-        return np.sqrt(ħ/2 / (self.trap.bead.m * self.trap.Ωj[axis]))
+        # NOTE: this deliberately uses the same Ω as Dimension.Ω (and so the mechanical
+        # susceptibilities): the tweezer frequency trap.Ωj[axis], shifted by the static cavity
+        # field if MultiTrap(static_cavity_shifts=True). The zero-point fluctuation sets the scale of
+        # bjn, so it must use the frequency of the oscillator whose bjn appears in the Langevin
+        # equations - including the static shifts, which are part of that oscillator's potential -
+        # whereas the dynamical optical spring is already in those equations and must not be folded
+        # in here. (The old commented-out line called self.Ω_CS, which no longer exists anywhere in
+        # levisim.)
+        return np.sqrt(ħ/2 / (self.trap.bead.m * self.mechanical_frequency(axis)))
 
     ################################################################################################
     # FREQUENCY RESPONSE FUNCTIONS

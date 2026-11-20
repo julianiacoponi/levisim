@@ -213,7 +213,7 @@ class HybridisationMixin:
     def hybridisation_function_value(self, label_jn, label_km, ω):
         """
         The hybridisation function Rjn,km(ω): the response of dimension jn to dimension km, via
-        the cavity (on- and off-bead) and the direct mechanical coupling gjk = `mechanical_coupling_matrix`[jn, km]
+        the cavity (on- and off-bead) and the direct mechanical coupling gjk = ``mechanical_coupling_matrix[jn, km]``
         (on-bead only)
         [complex ·]
         """

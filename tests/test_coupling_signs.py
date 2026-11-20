@@ -37,10 +37,12 @@ def assert_same_spectra(a, b, rtol=1e-12):
 
 
 def test_full_period_of_bead_positions_builds_and_couplings_follow_the_standing_wave():
-    at_node = build([π/2]).dimensions
-    at_antinode = build([0.0]).dimensions
+    # without the static cavity shifts, which change each dimension's Ω (and so its zero-point
+    # fluctuation) with Φ; tests/test_static_cavity_shifts.py checks the couplings with them
+    at_node = build([π/2], static_cavity_shifts=False).dimensions
+    at_antinode = build([0.0], static_cavity_shifts=False).dimensions
     for Φ in np.linspace(0, 2*π, 24, endpoint=False):
-        dimensions = build([Φ]).dimensions
+        dimensions = build([Φ], static_cavity_shifts=False).dimensions
         assert dimensions['x1'].g == pytest.approx(at_node['x1'].g * np.sin(Φ), rel=1e-12, abs=1e-12 * abs(at_node['x1'].g))
         assert dimensions['y1'].g == pytest.approx(at_node['y1'].g * np.sin(Φ), rel=1e-12, abs=1e-12 * abs(at_node['y1'].g))
         assert dimensions['z1'].g == pytest.approx(at_antinode['z1'].g * np.cos(Φ), rel=1e-12, abs=1e-12 * abs(at_antinode['z1'].g))
