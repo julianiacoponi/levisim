@@ -204,6 +204,9 @@ class MultiTrapBase:
         self.G_dict = {label: dim.G for label, dim in self.dimensions.items()}
         self.G_array = np.array(list(self.G_dict.values()))
 
+        # direct mechanical couplings between dimensions, in one matrix (see its docstring)
+        self.mechanical_coupling_matrix = self.build_mechanical_coupling_matrix()
+
 
         # ------------------------------------------------------------------------------------------
         # PHOTON RECOIL HEATING (on by default with physical parameters)
@@ -594,6 +597,35 @@ class MultiTrapBase:
     ################################################################################################
     # SETUP FUNCTIONS
     # ----------------------------------------------------------------------------------------------
+    def build_mechanical_coupling_matrix(self):
+        """
+        The direct mechanical couplings between the dimensions, as one matrix
+
+        Entry [j, k] is the rate gjk at which dimension k drives dimension j, in levisim's g
+        convention: the term -gjk·qj·qk of H/ħ (qj = bj + bj†), so that ::
+
+            dbj/dt ∋ +i·gjk·qk,   dbj†/dt ∋ -i·gjk·qk
+
+        Both axes are ordered as `self.labels`. The matrix is real and need not be symmetric (a
+        non-reciprocal coupling has gjk ≠ gkj). It is what the drift matrix, the hybridisation
+        functions and the analytic methods read their mechanical couplings from.
+
+        Built from the Dimensions, it holds the couplings between the axes of one bead (gxy, gxz
+        and gyz, from the coherent-scattering expansion or the toy parameters toy_gxy, toy_gxz,
+        toy_gyz) and zeros elsewhere: with two axes per trap only gxy is used, with three all of
+        them, with one none. Dimensions of different beads are not coupled directly.
+        [2π·Hz]
+        """
+        couplings = np.zeros((self.num_dimensions, self.num_dimensions))
+        dims = [self.dimensions[label] for label in self.labels]
+        for jj, dim_j in enumerate(dims):
+            for kk, dim_k in enumerate(dims):
+                if jj == kk or dim_j.trap_index != dim_k.trap_index:
+                    continue
+                axes = ''.join(sorted(dim_j.axis + dim_k.axis))
+                couplings[jj, kk] = getattr(dim_j, f'g{axes}')
+        return couplings
+
     def setup_levitated_physics(self, **kwargs):
         """
         Setup the physics of many beads levitated in tweezer traps

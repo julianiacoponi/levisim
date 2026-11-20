@@ -213,7 +213,8 @@ class HybridisationMixin:
     def hybridisation_function_value(self, label_jn, label_km, ω):
         """
         The hybridisation function Rjn,km(ω): the response of dimension jn to dimension km, via
-        the cavity (on- and off-bead) and the mech-mech coupling gjk (on-bead only)
+        the cavity (on- and off-bead) and the direct mechanical coupling gjk = `mechanical_coupling_matrix`[jn, km]
+        (on-bead only)
         [complex ·]
         """
 
@@ -238,25 +239,13 @@ class HybridisationMixin:
             gjn = dim_jn.g
             gkm = dim_km.g
 
+        # the direct mechanical coupling: the rate at which km drives jn
+        # (MultiTrapBase.mechanical_coupling_matrix)
+        gjk_matrix = self.mechanical_coupling_matrix[self.label_to_index[label_jn], self.label_to_index[label_km]]
+
         # on-bead, intra-particle hybridisation
         if m == n:
-            if jk in ['xy', 'yx']:
-                gxy = dim_jn.gxy
-                gxy_copy = dim_km.gxy
-                assert gxy == gxy_copy
-                gjk = gxy
-
-            if jk in ['xz', 'zx']:
-                gxz = dim_jn.gxz
-                gxz_copy = dim_km.gxz
-                assert gxz == gxz_copy
-                gjk = gxz
-
-            if jk in ['yz', 'zy']:
-                gyz = dim_jn.gyz
-                gyz_copy = dim_km.gyz
-                assert gyz == gyz_copy
-                gjk = gyz
+            gjk = gjk_matrix
 
             if self.compare_Rjk_calculations:
                 if jk in ['xy', 'yx']:
@@ -270,7 +259,16 @@ class HybridisationMixin:
 
         # off-bead, inter-particle hybridisation
         else:
-            # no mech-mech coupling if not in the same tweezer trap
+            # NOTE: the power-series (and analytic) hybridisation is derived for direct mechanical
+            # couplings within one bead only; inter-bead couplings are a later generalisation
+            if gjk_matrix != 0:
+                msg = (
+                    f'mechanical_coupling_matrix couples {label_jn} to {label_km}, which belong to different'
+                    ' beads: the hybridisation functions do not yet support inter-bead mechanical'
+                    ' couplings (use the LINEAR_AMPLIFIER_MODEL method)'
+                )
+                logger.error(msg)
+                raise NotImplementedError(msg)
             gjk = 0
 
             if self.compare_Rjk_calculations:
