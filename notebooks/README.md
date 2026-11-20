@@ -37,7 +37,7 @@ them, which git ignores.
 [`smoke_list.txt`](smoke_list.txt) lists the notebooks that the `notebooks` GitHub workflow
 (`.github/workflows/notebooks.yml`) executes on every pull request that touches `notebooks/` or
 `levisim/`, each with a time limit: the demos, the paper reproductions, and every research or
-archive notebook that runs in about half a minute or less (28 notebooks, about 4 minutes of
+archive notebook that runs in about half a minute or less (29 notebooks, about 4 minutes of
 execution on a laptop). Add a notebook there if it runs that fast.
 
 ## Every notebook
@@ -70,6 +70,9 @@ two. ✓ marks the notebooks in the CI smoke run ([`smoke_list.txt`](smoke_list.
 | [`delic2020_ground_state_cooling`](papers/delic2020_ground_state_cooling.ipynb) | Delić et al., Science 367, 892 (2020): ground-state cooling by coherent scattering | ~5 s | ✓ |
 | [`piotrowski2023_two_mode_ground_state`](papers/piotrowski2023_two_mode_ground_state.ipynb) | Piotrowski et al., Nat. Phys. 19, 1009 (2023): two modes in the ground state | ~5 s | ✓ |
 | [`vijayan2024_cavity_mediated_interactions`](papers/vijayan2024_cavity_mediated_interactions.ipynb) | Vijayan et al., Nat. Phys. 20, 859 (2024): cavity-mediated coupling of two particles | ~5 s | ✓ |
+| [`pontin2025_pair_dark_modes`](papers/pontin2025_pair_dark_modes.ipynb) | Pontin et al., PRL 135, 073602 (2025): strong coupling and dark modes of two particles in a bichromatic tweezer | ~60 s | ✓ |
+| [`pontin2026_optical_squeezing`](papers/pontin2026_optical_squeezing.ipynb) | Pontin et al., Phys. Rev. A 114, 053704 (2026): sub-shot-noise light from two ground-state modes, squeezing maps against phase and frequency | ~5 s | ✓ |
+| [`deplano2026_stationary_entanglement`](papers/deplano2026_stationary_entanglement.ipynb) | Deplano et al., Science 394, 113 (2026): entanglement of the motion with a propagating (filtered) output mode of a second cavity mode | ~10 s | ✓ |
 
 **[`multiphysics/`](multiphysics/)** (outputs stripped)
 

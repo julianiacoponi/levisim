@@ -606,7 +606,13 @@ class MultiTrapBase:
             - tweezers: list of `Tweezer` instances, one per trap
             - beads: list of `Bead` instances, one per trap
             - trap_kwargs: list of dicts of extra `Trap` keyword arguments, one per trap, e.g.
-              `override_Ω_dict` to use measured mechanical frequencies
+              `override_Ω_dict` to use measured mechanical frequencies, or `cavity_drive_tweezer`
+              and `cavity_drive_field_ratio` for a bead that scatters into the cavity the light of
+              another tweezer than the one trapping it (e.g. a bead in a 976 nm trap, which the
+              cavity does not resonate with, scattering the out-of-focus field ζ·E0 of a 1064 nm
+              tweezer; see `Trap.cavity_drive_field`). The coherent-scattering couplings then use
+              that tweezer's wavelength, polarisation angle θ and Rayleigh range, and the cavity
+              frequency follows the cavity-drive tweezers
             - φn_dict: {n: φn} tweezer phases [rad] for any of the traps n = 1, ..., num_traps; they
               replace the phase of that trap's tweezer (given or built-in). The `Tweezer` instances
               passed in are not modified: a trap whose phase is replaced gets a copy of its tweezer.
@@ -722,21 +728,29 @@ class MultiTrapBase:
 
     def _cavity_kwargs_with_tweezer_frequency(self, cavity_kwargs):
         """
-        The cavity keyword arguments, with `ωtw` set to the first tweezer's frequency unless given
+        The cavity keyword arguments, with `ωtw` set to the first cavity-drive tweezer's frequency
+        unless given
 
-        The cavity mode is driven by the light the beads scatter from the tweezers, so its optical
+        The cavity-drive tweezer of a trap is its own tweezer unless `trap_kwargs` gives it a
+        `cavity_drive_tweezer` (see `Trap.drive_tweezer`). The cavity mode is driven by the light the
+        beads scatter from these tweezers, so its optical
         frequency (ω = ωtw - Δ, hence k and the field per photon E0 in every coupling) must be the
         tweezers'. `Cavity` alone defaults to `Tweezer().ω` (1064 nm), which used to apply even to
         a MultiTrap of 1550 nm tweezers. One drive frequency is assumed for all traps, so a WARNING
         is logged if the tweezers have different wavelengths, or if an explicit `ωtw` differs from
         all of them by more than 1 ppm (multi-tone detunings shift it by only ~1e-9).
         """
-        tweezer_ωs = np.array([tweezer.ω for tweezer in self.tweezers])
-        tweezer_λs_nm = ', '.join(f'{tweezer.λ / nm:.6g}' for tweezer in self.tweezers)
+        # the light each bead scatters into the cavity: its trapping tweezer's, unless a trap was
+        # given a cavity_drive_tweezer (e.g. a bead held by 976 nm light that scatters 1064 nm light)
+        drive_tweezers = [trap.drive_tweezer for trap in self.traps]
+        tweezer_ωs = np.array([tweezer.ω for tweezer in drive_tweezers])
+        tweezer_λs_nm = ', '.join(f'{tweezer.λ / nm:.6g}' for tweezer in drive_tweezers)
         if not np.allclose(tweezer_ωs, tweezer_ωs[0], rtol=1e-12, atol=0):
             logger.warning(
-                'The tweezers have different wavelengths (λ = {} nm), but the model has one cavity'
-                ' drive frequency: the cavity uses ωtw = {} (λ = {:.6g} nm) for every trap',
+                'The cavity-drive tweezers have different wavelengths (λ = {} nm), but the model has'
+                ' one cavity drive frequency: the cavity uses ωtw = {} (λ = {:.6g} nm) for every trap.'
+                ' A tweezer far from any cavity resonance scatters nothing into the mode; give that'
+                ' trap the cavity_drive_tweezer whose light it does scatter (Trap keyword arguments)',
                 tweezer_λs_nm,
                 "cavity_kwargs['ωtw']" if 'ωtw' in cavity_kwargs else 'the first tweezer frequency',
                 2 * π * speed_of_light / cavity_kwargs.get('ωtw', tweezer_ωs[0]) / nm,
@@ -798,14 +812,16 @@ class MultiTrapBase:
         for trap in self.traps:
             # Cavity drive energy for a particular bead in a particular tweezer trap
             # [J]
-            trap.Ed = 0.5 * trap.bead.α * trap.tweezer.E0 * self.cavity.E0
+            # (the field the bead scatters is its trapping tweezer's focal field E0 by default, or
+            # cavity_drive_field_ratio × E0 of another tweezer: see Trap.cavity_drive_field)
+            trap.Ed = 0.5 * trap.bead.α * trap.cavity_drive_field * self.cavity.E0
             # Cavity drive frequency for a particular bead in a particular tweezer trap
             # [2π·Hz]
             trap.ωd = trap.Ed / ħ
 
         # ∑ ωd·sin(θ)·cos(Φ)
         self.ωd_total = sum(
-            [trap.ωd * np.sin(trap.tweezer.θ) * np.cos(trap.bead.Φ) for trap in self.traps]
+            [trap.ωd * np.sin(trap.drive_tweezer.θ) * np.cos(trap.bead.Φ) for trap in self.traps]
         )
         α_prefactor = self.ωd_total / (self.cavity.Δ**2 + (self.cavity.κ/2)**2)
         self.Ed_total = ħ * self.ωd_total

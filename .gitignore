@@ -13,8 +13,9 @@ __pycache__/
 
 # images generated for in-code comparisons
 *.png
-# the figures of the docs pages, made by the scripts next to them
+# the figures of the docs pages, made by the scripts next to them (and the schematics in figures/schematics/)
 !docs/**/figures/*.png
+!docs/**/figures/**/*.png
 
 # notebooks are tracked (see notebooks/README.md). Research and archive notebooks are committed
 # with their outputs stripped (nbstripout in .pre-commit-config.yaml); demo and paper notebooks
@@ -51,3 +52,5 @@ dist/
 docs/_build/
 docs/_autosummary/
 docs/_notebooks/
+# the interactive showcase figures that docs/_ext/showcase_plotly.py writes at build time
+docs/_generated/
