@@ -72,6 +72,7 @@ two. ✓ marks the notebooks in the CI smoke run ([`smoke_list.txt`](smoke_list.
 | [`vijayan2024_cavity_mediated_interactions`](papers/vijayan2024_cavity_mediated_interactions.ipynb) | Vijayan et al., Nat. Phys. 20, 859 (2024): cavity-mediated coupling of two particles | ~5 s | ✓ |
 | [`pontin2025_pair_dark_modes`](papers/pontin2025_pair_dark_modes.ipynb) | Pontin et al., PRL 135, 073602 (2025): strong coupling and dark modes of two particles in a bichromatic tweezer | ~60 s | ✓ |
 | [`pontin2026_optical_squeezing`](papers/pontin2026_optical_squeezing.ipynb) | Pontin et al., Phys. Rev. A 114, 053704 (2026): sub-shot-noise light from two ground-state modes, squeezing maps against phase and frequency | ~5 s | ✓ |
+| [`deplano2026_stationary_entanglement`](papers/deplano2026_stationary_entanglement.ipynb) | Deplano et al., Science 394, 113 (2026): entanglement of the motion with a propagating (filtered) output mode of a second cavity mode | ~10 s | ✓ |
 
 **[`multiphysics/`](multiphysics/)** (outputs stripped)
 
