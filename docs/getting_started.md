@@ -5,17 +5,24 @@
 The latest release is on [PyPI](https://pypi.org/project/levisim/):
 
 ```sh
-pip install levisim
+pip install levisim              # the latest release
+pip install --upgrade levisim    # move to a newer release
+python -c "import levisim; print(levisim.__version__)"
 ```
 
-The notebooks, tests and scripts are not part of the package, so to run them, or to use the
-development version, install from a clone of the repository instead:
+The notebooks, tests and scripts are not part of the package, so to run them, or to work on the
+code, install from a clone of the repository in editable mode, so that changes to the source take
+effect without reinstalling:
 
 ```sh
 git clone https://github.com/julianiacoponi/levisim.git
 cd levisim
-pip install .        # or `pip install -e .` to edit the code in place
+pip install -e ".[dev]"          # editable, with pytest, ruff and the build tools
 ```
+
+`pip install .` (without `-e`) gives a normal, non-editable install of the clone instead. The
+notebooks follow `main`; to run them against a release, check out its tag first, e.g.
+`git checkout v0.1.0`.
 
 Both need Python 3.10 or newer and install the runtime dependencies too. Optional extras: `elk`
 (ship logs to Elasticsearch, see [Logging](guide/logging.md)), `notify` (desktop notifications

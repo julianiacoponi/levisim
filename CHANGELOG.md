@@ -4,6 +4,13 @@ All notable changes to `levisim` are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/) (0.x: the API may still change between minor versions).
 
+## [Unreleased]
+
+### Changed
+- Installation instructions for the PyPI release (upgrade, version check, editable install of a
+  clone with `pip install -e ".[dev]"`, running the notebooks against a release tag), badges in the
+  README, the PyPI link in `CITATION.cff`, and the release notes for the `testpypi` environment.
+
 ## [0.1.0] - 2026-11-20
 
 First release on PyPI. Compared with the code before October 2026:

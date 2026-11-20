@@ -147,7 +147,9 @@ One-off setup, by the repository owner:
    yourself as a required reviewer means every upload waits for your approval in the Actions run,
    and limiting its deployment branches and tags to `v*` tags means only a release can use it.
 3. Optional, for rehearsals: the same on test.pypi.org (a separate account), with environment name
-   `testpypi`, and a `testpypi` environment in the repository.
+   `testpypi`, and a `testpypi` environment in the repository. A rehearsal runs from the branch
+   `main` (not from a tag), so that environment must allow the branch `main`; with only a `v*` tag
+   rule GitHub refuses the upload job ("Branch "main" is not allowed to deploy to testpypi").
 
 Each release:
 
@@ -161,7 +163,12 @@ Each release:
 3. Merge to `main`, then *Releases → Draft a new release*: create the tag `vX.Y.Z` on `main`, title
    it `levisim X.Y.Z`, and publish. Publishing runs the workflow, which builds the sdist and wheel,
    checks them (`twine check --strict`, a clean install, the version checks above) and, after your
-   approval if the environment asks for it, uploads them to PyPI.
+   approval if the environment asks for it, uploads them to PyPI. The upload step also signs each
+   file with a digital attestation (provenance tying it to this workflow and commit), which PyPI
+   shows on the project page; the "Generating and uploading digital attestations" notice in the
+   run is that, not a problem.
+4. Check the release: `pip install --upgrade levisim` in a fresh environment, then
+   `python -c "import levisim; print(levisim.__version__)"`.
 
 The package ships the three smallest power-series pickles (`levisim/multiphysics/
 power_series_data/`, about 270 KB) so `load_in_power_series=True` works from a pip install;
