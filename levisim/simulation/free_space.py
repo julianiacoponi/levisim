@@ -237,18 +237,24 @@ class FreeSpaceSimulation(StochasticSimulation):
         x, y, z, px, py, pz = X
         m = self.trap.bead.m
         Γx, Γy, Γz = self.trap.Γx, self.trap.Γy, self.trap.Γz
+        # the trap's elements by role (cached until the list of elements changes)
+        plan = self.trap._element_plan
 
         # allow for manually input frequencies
         if self.trap.override_Ω_dict:
             Ftwx = -m * (self.trap.override_Ω_dict['x'])**2 * x
             Ftwy = -m * (self.trap.override_Ω_dict['y'])**2 * y
             Ftwz = -m * (self.trap.override_Ω_dict['z'])**2 * z
+        elif plan['single_tweezer']:
+            Ftwx, Ftwy, Ftwz = self.trap.Ftw(x, y, z)
         else:
-            # the 'field' elements: exactly trap.Ftw(x, y, z) for a single-tweezer trap
+            # the sum of the 'field' elements' forces, in the order of Trap.fields
             Ftwx, Ftwy, Ftwz = self.trap.field_force(x, y, z, t)
 
-        # as always, the last kick active at t wins (Trap.kick_force)
-        F_kick_x, F_kick_y = self.trap.kick_force(t)
+        F_kick_x, F_kick_y = 0, 0
+        if plan['kicks']:
+            # as always, the last kick active at t wins (Trap.kick_force)
+            F_kick_x, F_kick_y = self.trap.kick_force(t)
 
         dynamics = np.array([
             px / m,
@@ -260,10 +266,10 @@ class FreeSpaceSimulation(StochasticSimulation):
         ])
 
         # opt-in forces, added only when enabled so that the default arithmetic is unchanged
-        if self.trap.photon_recoil:
+        if plan['recoils']:
             # scattering force along the beam propagation axis, +z (see Trap.F_scattering)
             dynamics[5] += self.trap.F_photon_recoil(x, y, z)
-        if self.gravity_elements:
+        if self.gravity_field is not None or 'gravity' in plan['groups']:
             # m g ≈ 16.5 aN for the default 1.68 fg bead, along gravity_direction (default -x)
             dynamics[3:] += self.F_gravity
 
@@ -311,8 +317,10 @@ class FreeSpaceSimulation(StochasticSimulation):
         The Gravity force elements acting in this simulation: the one of the gravity keyword (if on)
         and any 'gravity' elements of the trap's fields
         """
-        own = [self.gravity_field] if self.gravity_field is not None else []
-        return own + self.trap.fields_in_group('gravity')
+        trap_gravity = self.trap._element_plan['groups'].get('gravity', [])
+        if self.gravity_field is None:
+            return trap_gravity
+        return [self.gravity_field, *trap_gravity]
 
     @property
     def F_gravity(self):
@@ -325,9 +333,10 @@ class FreeSpaceSimulation(StochasticSimulation):
         elements = self.gravity_elements
         if not elements:
             return self.trap.bead.weight * self.gravity_direction
-        F = elements[0].force(np.zeros(3), 0.0, self.trap.bead)
+        # gravity elements are uniform: the position does not enter
+        F = elements[0].force(None, 0.0, self.trap.bead)
         for element in elements[1:]:
-            F = F + element.force(np.zeros(3), 0.0, self.trap.bead)
+            F = F + element.force(None, 0.0, self.trap.bead)
         return F
 
     def temperature_via_variance(self, axis, Ωj=None):

@@ -30,6 +30,36 @@ class MissingOpticalFieldError(ValueError):
     """Raised when an optical-only quantity is asked of a Trap whose fields hold no optical element"""
 
 
+class FieldList(list):
+    """
+    The list of a Trap's force elements: a plain list that counts its modifications (`version`), so
+    that the Trap can cache how its elements are grouped and rebuild that only after a change
+    """
+
+    version = 0
+
+    def _modified(self):
+        self.version += 1
+
+
+def _counting(name):
+    method = getattr(list, name)
+
+    def wrapper(self, *args, **kwargs):
+        result = method(self, *args, **kwargs)
+        self._modified()
+        return result
+    wrapper.__name__ = name
+    wrapper.__doc__ = method.__doc__
+    return wrapper
+
+
+for _name in ('append', 'extend', 'insert', 'remove', 'pop', 'clear', 'sort', 'reverse',
+              '__setitem__', '__delitem__', '__iadd__', '__imul__'):
+    setattr(FieldList, _name, _counting(_name))
+del _name
+
+
 class Trap:
     """
     Combined physics of a levitated particle in a trap made of force elements, i.e. of
@@ -194,18 +224,56 @@ class Trap:
     ################################################################################################
     # FORCE ELEMENTS
     # ----------------------------------------------------------------------------------------------
+    @property
+    def fields(self):
+        """
+        The force elements acting on the particle, in order (a list; see levisim.physics.fields)
+        """
+        return self._fields
+
+    @fields.setter
+    def fields(self, value):
+        self._fields = FieldList(value)
+
+    @property
+    def _element_plan(self):
+        """
+        The elements of `fields` sorted by role (optical element, simulation groups, kicks, recoil),
+        recomputed only when the list of elements changes, so the simulation loop does not rescan it
+        """
+        fields = self._fields
+        cached = self.__dict__.get('_element_plan_cache')
+        if cached is not None and cached[0] is fields and cached[1] == fields.version:
+            return cached[2]
+        groups = {}
+        for element in self.fields:
+            groups.setdefault(element.simulation_group, []).append(element)
+        optical = [element for element in self.fields if element.is_optical]
+        field_group = groups.get('field', [])
+        plan = {
+            # the cache holds the elements themselves, so their ids cannot be reused while cached
+            'elements': tuple(self.fields),
+            'groups': groups,
+            'tweezer': optical[0] if optical else None,
+            'single_tweezer': len(field_group) == 1 and bool(optical) and field_group[0] is optical[0],
+            'kicks': [element for element in self.fields if isinstance(element, Kick)],
+            'recoils': [element for element in self.fields if isinstance(element, PhotonRecoil)],
+        }
+        self.__dict__['_element_plan_cache'] = (fields, fields.version, plan)
+        return plan
+
     def fields_of_type(self, element_type):
         """The elements of `fields` that are instances of element_type, in order"""
         return [element for element in self.fields if isinstance(element, element_type)]
 
     def fields_in_group(self, group):
         """The elements of `fields` whose simulation_group is group, in order"""
-        return [element for element in self.fields if element.simulation_group == group]
+        return list(self._element_plan['groups'].get(group, ()))
 
     @property
     def has_optical_field(self):
         """Whether any element of `fields` is optical (is_optical)"""
-        return any(element.is_optical for element in self.fields)
+        return self._element_plan['tweezer'] is not None
 
     @property
     def tweezer(self):
@@ -214,9 +282,9 @@ class Trap:
 
         Raises MissingOpticalFieldError (a ValueError) if the trap has no optical element.
         """
-        for element in self.fields:
-            if element.is_optical:
-                return element
+        tweezer = self._element_plan['tweezer']
+        if tweezer is not None:
+            return tweezer
         names = ', '.join(element.label for element in self.fields) or 'none'
         raise MissingOpticalFieldError(
             f'This Trap has no optical field (its fields: {names}). Optical-only quantities (tweezer, '
@@ -290,7 +358,7 @@ class Trap:
     @property
     def kicks(self):
         """The Kick elements of `fields` (step-like impulses), in order"""
-        return self.fields_of_type(Kick)
+        return list(self._element_plan['kicks'])
 
     @kicks.setter
     def kicks(self, value):
@@ -303,7 +371,7 @@ class Trap:
         a PhotonRecoil element; setting it adds one for the trap's tweezer, or removes them
         [bool]
         """
-        return bool(self.fields_of_type(PhotonRecoil))
+        return bool(self._element_plan['recoils'])
 
     @photon_recoil.setter
     def photon_recoil(self, value):
@@ -317,8 +385,10 @@ class Trap:
         Restores a pickled Trap; a Trap pickled before the force elements (with tweezer, Γ_fbx, ...,
         photon_recoil and kicks as attributes) is converted to the equivalent fields
         """
-        if 'fields' not in state:
-            state = dict(state)
+        state = dict(state)
+        if 'fields' in state:
+            state['_fields'] = state.pop('fields')
+        if '_fields' not in state:
             fields = [
                 state.pop('tweezer'),
                 Feedback(state.pop('Γ_fbx', 0.0), state.pop('Γ_fby', 0.0), state.pop('Γ_fbz', 0.0)),
@@ -326,9 +396,15 @@ class Trap:
             if state.pop('photon_recoil', False):
                 fields.append(PhotonRecoil(fields[0]))
             fields.extend(state.pop('kicks', []))
-            state['fields'] = fields
+            state['_fields'] = fields
             state.setdefault('linearisation_point', np.zeros(3))
+        state['_fields'] = FieldList(state['_fields'])
+        state.pop('_element_plan_cache', None)
         self.__dict__.update(state)
+
+    def __getstate__(self):
+        """The instance state without the (derived) element-plan cache"""
+        return {key: value for key, value in self.__dict__.items() if key != '_element_plan_cache'}
 
     @property
     def info(self):
@@ -1390,7 +1466,7 @@ class Trap:
         (the sum over the PhotonRecoil elements), else 0
         [N]
         """
-        recoils = self.fields_of_type(PhotonRecoil)
+        recoils = self._element_plan['recoils']
         if not recoils:
             return 0
         if len(recoils) == 1 and recoils[0].tweezer is self.tweezer:
@@ -1424,9 +1500,10 @@ class Trap:
         For a trap whose only field element is its tweezer this is exactly Ftw(x, y, z).
         [N]
         """
-        elements = self.fields_in_group('field')
-        if len(elements) == 1 and elements[0].is_optical and elements[0] is self.tweezer:
+        plan = self._element_plan
+        if plan['single_tweezer']:
             return self.Ftw(x, y, z)
+        elements = plan['groups'].get('field', [])
         if not elements:
             return (0.0, 0.0, 0.0)
         F = self.element_force(elements[0], x, y, z, t)
@@ -1441,7 +1518,7 @@ class Trap:
         [N]
         """
         F_kick_x, F_kick_y = 0, 0
-        for kick in self.kicks:
+        for kick in self._element_plan['kicks']:
             if kick.start <= t < kick.end:
                 # K = p_kick / pth
                 kick.p = kick.K * self.gas.pth
