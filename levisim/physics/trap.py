@@ -810,7 +810,8 @@ class Trap:
         the diagonal is zero. For a conservative trap the matrix is symmetric.
         """
         zpf = np.array([self.x_zpf, self.y_zpf, self.z_zpf])
-        return -self.intra_trap_coupling_stiffness * np.outer(zpf, zpf) / ħ
+        # (0.0 - ... rather than unary minus, so that uncoupled entries are +0.0, not -0.0)
+        return 0.0 - self.intra_trap_coupling_stiffness * np.outer(zpf, zpf) / ħ
 
     @cached_property
     def intra_trap_couplings(self):
