@@ -100,10 +100,10 @@ def make_options_trap():
 @pytest.mark.parametrize('RK_method', ['vector_4', 'vector_2'])
 def test_all_options_seeded_and_picklable(RK_method):
     """Every optional feature runs through the base class; the instance pickles and keeps its numbers"""
-    kwargs = dict(
-        num_samples=300, Δt=Δt, seed=2, RK_method=RK_method, gravity=True,
-        detection_floor={'x': 1e-27}, store_momenta=True, store_radial=True,
-    )
+    kwargs = {
+        'num_samples': 300, 'Δt': Δt, 'seed': 2, 'RK_method': RK_method, 'gravity': True,
+        'detection_floor': {'x': 1e-27}, 'store_momenta': True, 'store_radial': True,
+    }
     a = FreeSpaceSimulation(trap=make_options_trap(), **kwargs)
     b = FreeSpaceSimulation(trap=make_options_trap(), **kwargs)
     assert np.array_equal(a.X, b.X)

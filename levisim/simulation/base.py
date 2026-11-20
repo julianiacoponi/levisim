@@ -4,7 +4,7 @@ physical system
 
 A subclass describes the system through a small set of hooks (see `StochasticSimulation`); the base
 class owns the time axis, the random numbers and their seeding, the chunked noise generation, the
-choice of integrator, the recording into `Trace` objects (including a white detection
+choice of integrator and backend, the recording into `Trace` objects (including a white detection
 floor), saving and the summary printed by `info`.
 """
 
@@ -21,6 +21,7 @@ from levisim.core.units import (
 )
 from levisim.core.utils import generate_time_array, save_variable_to_pickle
 from levisim.data.trace import Trace
+from levisim.simulation.backends import BACKENDS, resolve_backend
 from levisim.simulation.integrators import get_integrator
 
 __all__ = [
@@ -40,6 +41,11 @@ class StochasticSimulation:
             Heun), or an Integrator instance (see levisim.simulation.integrators)
         seed [None]: None uses numpy's legacy global RandomState (reproducible with np.random.seed);
             an int (or SeedSequence / Generator) uses np.random.default_rng(seed)
+        backend ['auto']: 'numpy' (the reference time loop), 'numba' (compiled kernels, needs
+            `pip install levisim[fast]`; ImportError without numba) or 'auto' (numba when it is
+            installed and the run has at least AUTO_NUMBA_MIN_STEPS = 2¹⁵ steps, NumPy otherwise).
+            Both consume the same random numbers; trajectories agree to round-off. A configuration
+            without a compiled kernel falls back to NumPy. self.backend_used says which ran.
         detection_floor [0]: one-sided white noise PSD added to the recorded traces only (a number,
             or a dict per trace label) [trace units²/Hz]
         zero_mean [True]: subtract each trace's mean
@@ -55,6 +61,9 @@ class StochasticSimulation:
     - `noise_spectral_densities()`: the two-sided spectral densities S_k of the independent noises
     - `record(X)`: turn the integrated states (shape (num_samples + 1, len(X0))) into Traces,
       using `make_trace` and `add_detection_floor`, and fill `self.traces`
+    - optionally `compiled_integrate(integrator, G, S, X0, time_array)`: a compiled time loop that
+      consumes the random numbers exactly as `integrator.integrate` does (return None when the
+      configuration has no kernel, and NumPy is used)
     """
 
     default_num_samples = 1*megasamples
@@ -70,6 +79,9 @@ class StochasticSimulation:
         self.num_samples = int(kwargs.get('num_samples', self.default_num_samples))
         self.Δt = float(kwargs.get('Δt', self.default_Δt))
         self.RK_method = kwargs.get('RK_method', 'vector_4')
+        self.backend = kwargs.get('backend', 'auto')
+        if self.backend not in BACKENDS:
+            raise ValueError(f"Unknown backend={self.backend!r}; use 'auto', 'numpy' or 'numba'")
         self.detection_floor = kwargs.get('detection_floor', 0)  # one-sided PSD, units²/Hz
         self.seed = kwargs.get('seed', None)
         self.rng = None if self.seed is None else np.random.default_rng(self.seed)
@@ -113,6 +125,12 @@ class StochasticSimulation:
     def record(self, X):
         """Turns the integrated states X into Traces and fills self.traces"""
         raise NotImplementedError
+
+    def compiled_integrate(self, integrator, G, S, X0, time_array):
+        """
+        A compiled time loop for this configuration, or None if there is none (the NumPy loop is
+        then used). Must consume the random numbers exactly as `integrator.integrate` does.
+        """
 
     # ------------------------------------------------------------------------------------------
     # random numbers
@@ -171,15 +189,25 @@ class StochasticSimulation:
         )
         start_time = time.perf_counter()
 
-        X = integrator.integrate(
-            self.drift, G, S, X0, time_array, self.Δt, self._noise_chunks,
-            debug=self.debug, trace_steps=self.rk_loop_debug,
-        )
+        X = None
+        self.backend_used = 'numpy'
+        if resolve_backend(self.backend, self.num_samples) == 'numba':
+            X = self.compiled_integrate(integrator, G, S, X0, time_array)
+            if X is None:
+                log = logger.warning if self.backend == 'numba' else logger.debug
+                log('No compiled kernel for this {} configuration: using the NumPy loop', type(self).__name__)
+            else:
+                self.backend_used = 'numba'
+        if X is None:
+            X = integrator.integrate(
+                self.drift, G, S, X0, time_array, self.Δt, self._noise_chunks,
+                debug=self.debug, trace_steps=self.rk_loop_debug,
+            )
 
         elapsed_seconds = time.perf_counter() - start_time
         logger.debug(
-            'Integrated {} steps in {:.3f} s ({:.2f} μs per step)',
-            self.num_samples, elapsed_seconds, 1e6 * elapsed_seconds / max(self.num_samples, 1),
+            'Integrated {} steps in {:.3f} s ({:.2f} μs per step, {} backend)',
+            self.num_samples, elapsed_seconds, 1e6 * elapsed_seconds / max(self.num_samples, 1), self.backend_used,
         )
 
         self.X = X

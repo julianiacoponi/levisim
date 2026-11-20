@@ -6,6 +6,7 @@ tweezer trap (formerly `levisim.data.Simulation`)
 import numpy as np
 
 from levisim.core.constants import kB
+from levisim.core.logger import logger
 from levisim.core.units import (
     Hz,
     mbar,
@@ -47,6 +48,8 @@ class FreeSpaceSimulation(StochasticSimulation):
         zero_mean [True]: subtract each trace's mean
         store_momenta [False]: also store px, py, pz traces [kg·m/s] (self.px etc., traces 'px', ...)
         store_radial [False]: also store the radial trace r = √(x² + y²) [m] (self.r, traces 'r')
+        backend ['auto']: 'auto', 'numpy' or 'numba' (compiled loop, `pip install levisim[fast]`),
+            see StochasticSimulation; every option above has a compiled kernel
         save, save_dir, save_description, save_fmt: optional pickling of the instance
 
     The time axis, seeding, noise generation, integrators and recording are shared with every
@@ -127,6 +130,43 @@ class FreeSpaceSimulation(StochasticSimulation):
                 np.hypot(self.position_values['x'], self.position_values['y']), 'r', units,
             )
             self.traces['r'] = self.r
+
+    def compiled_integrate(self, integrator, G, S, X0, time_array):
+        """
+        The numba time loop (levisim.simulation.backends.numba_free_space), or None when this
+        configuration must use the NumPy loop: a subclass that overrides the physics methods, a Trap
+        or Tweezer subclass that overrides the forces, a custom integrator, or rk_loop_debug
+        """
+        reason = self._compiled_kernel_unsupported_reason(integrator, G, X0)
+        if reason:
+            logger.debug('FreeSpaceSimulation: NumPy loop instead of numba ({})', reason)
+            return None
+        from levisim.simulation.backends.numba_free_space import integrate_free_space
+        return integrate_free_space(self, integrator, G, S, X0, time_array)
+
+    def _compiled_kernel_unsupported_reason(self, integrator, G, X0):
+        """Why the compiled kernel cannot reproduce this configuration ('' if it can)"""
+        from levisim.physics.tweezer import Tweezer
+        from levisim.simulation.integrators import Heun, KasdinRK4
+        cls = type(self)
+        for name in ('dynamics_vector', 'drift', 'noise_matrix', 'noise_matrix_RK4',
+                     'noise_spectral_densities', 'initial_state', 'F_gravity'):
+            if getattr(cls, name) is not getattr(FreeSpaceSimulation, name):
+                return f'{cls.__name__} overrides {name}'
+        for obj, base, names in (
+            (self.trap, Trap, ('Ftw', 'Utw', 'F_scattering', 'F_photon_recoil')),
+            (self.trap.tweezer, Tweezer, ('w', 'wx', 'wy', 'wz', 'ellipse', 'E_field_amplitude')),
+        ):
+            for name in names:
+                if getattr(type(obj), name) is not getattr(base, name):
+                    return f'{type(obj).__name__} overrides {name}'
+        if type(integrator) not in (KasdinRK4, Heun):
+            return f'no compiled kernel for {integrator!r}'
+        if self.rk_loop_debug:
+            return 'rk_loop_debug logs every step'
+        if np.shape(G) != (6, 4) or len(X0) != 6:
+            return 'unexpected state or noise dimensions'
+        return ''
 
     # ------------------------------------------------------------------------------------------
     # physics
