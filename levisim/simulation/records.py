@@ -15,7 +15,7 @@ sinc²(fΔt) and does not alias white noise: a white input of two-sided level S 
 level S exactly.
 
 Conventions (levisim's, see `MultiTrapBase.homodyne_quadrature`)
----------------------------------------------------------------
+-----------------------------------------------------------------
 - Output field of a cavity port j with rate κ_j: a_out = -√κ_j·a + a_in,j.
 - Output quadratures X_out = a_out + a_out† and P_out = i(a_out − a_out†); note that P_out is
   minus the quadrature i(a† − a) of the state vector u (`levisim.multiphysics.covariance`).
@@ -120,7 +120,7 @@ class PhaseNoise:
       averaged over an ensemble then equals
       `levisim.multiphysics.quadrature_squeezing.phase_noise_averaged` with σθ2 = σ².
 
-    Only the detected fluctuations are rotated: the large term ∝ |ᾱ_out|·sin(θ - θ_α)·δφ that LO
+    Only the detected fluctuations are rotated: the large term ∝ abs(ᾱ_out)·sin(θ - θ_α)·δφ that LO
     phase noise produces from a static output field is not part of the linearised record.
     """
 
@@ -371,8 +371,8 @@ class PhotonNumber(OpticalRecord):
     Fluctuation of the output photon flux about its static value, linearised
 
     With the static output field ᾱ_out = -√κ_j·α (α the static intracavity field, `cavity.A0`,
-    `cavity.P0` of the MultiTrap) the flux is Φ = |ᾱ_out + δa_out|² ≈ |ᾱ_out|² + |ᾱ_out|·h(θ_α), a
-    homodyne of the fluctuations at the amplitude angle θ_α = -arg ᾱ_out. Direct detection has
+    `cavity.P0` of the MultiTrap) the flux is ``Φ = |ᾱ_out + δa_out|² ≈ |ᾱ_out|² + |ᾱ_out|·h(θ_α)``,
+    a homodyne of the fluctuations at the amplitude angle θ_α = -arg ᾱ_out. Direct detection has
     no local oscillator, so phase noise does not apply.
 
     units: 'shot noise' (default; h(θ_α), vacuum level 1) or 'photons/s' (√(η·Φ̄)·h, whose

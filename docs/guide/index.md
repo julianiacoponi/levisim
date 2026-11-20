@@ -6,6 +6,7 @@
 cavity_spectra
 stability
 stochastic_simulations
+cavity_simulations
 logging
 ../two_tone_entanglement/README
 ../two_tone_entanglement/polarisation_and_two_particles
@@ -18,6 +19,9 @@ logging
   two-particle system.
 - [Stochastic simulations of a bead in a free-space tweezer](stochastic_simulations.md): the
   Langevin simulator, its spectral estimates and their comparison with theory.
+- [Time traces of particles in a cavity](cavity_simulations.md): `CavitySimulation` and
+  `MultiTrap.simulate`, the exact linear model, its homodyne, heterodyne, photon-flux and position
+  records, and their validation against the `MultiTrap` spectra.
 - [Logging](logging.md): where levisim's log records go, what each level means, reading the
   JSON-lines log file, and browsing it in Kibana with `levisim-logs` (no Docker) or Docker.
 - [Steady-state entanglement with a two-tone drive](../two_tone_entanglement/README.md): whether a
