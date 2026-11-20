@@ -86,7 +86,7 @@ def mathieu_characteristic_exponent(a, q):
     Characteristic exponent β of y'' + (a + 2q cos 2τ) y = 0 in the first stability region, from the
     Floquet monodromy matrix: cos(πβ) = Δ/2 with Δ its trace (numerically exact, to ~1e-10)
 
-    Returns β in [0, 1] when |Δ| ≤ 2 and the point lies in the first stability region
+    Returns β in [0, 1] when ``|Δ|`` ≤ 2 and the point lies in the first stability region
     (`mathieu_first_region_stable`), and nan otherwise (unstable, or a higher stability region).
     The secular angular frequency is β Ω_rf/2.
     [·]
@@ -100,9 +100,9 @@ def mathieu_characteristic_exponent(a, q):
 
 def mathieu_floquet_multiplier(a, q):
     """
-    Largest modulus |λ| of the Floquet multipliers of y'' + (a + 2q cos 2τ) y = 0 over one drive period
-    (λ² - Δλ + 1 = 0, Δ the monodromy trace): 1 where the motion is stable, > 1 where it grows by |λ|
-    per rf period, i.e. at the rate ln|λ| · Ω_rf/2π [1/s]
+    Largest modulus ``|λ|`` of the Floquet multipliers of y'' + (a + 2q cos 2τ) y = 0 over one drive period
+    (λ² - Δλ + 1 = 0, Δ the monodromy trace): 1 where the motion is stable, > 1 where it grows by ``|λ|``
+    per rf period, i.e. at the rate ln``|λ|`` · Ω_rf/2π [1/s]
     [·]
     """
     Δ = _monodromy_trace(float(a), float(q))
@@ -116,7 +116,7 @@ def mathieu_first_region_stable(a, q):
     Whether (a, q) lies in the first stability region of Mathieu's equation, a_0(q) < a < b_1(q), with
     Mathieu's characteristic values a_0 and b_1 (scipy.special.mathieu_a, mathieu_b; even in q)
 
-    At a = 0 this is |q| < 0.908046 (Leibfried et al. 2003, Fig. 1).
+    At a = 0 this is ``|q|`` < 0.908046 (Leibfried et al. 2003, Fig. 1).
     [bool]
     """
     q = abs(float(q))
@@ -227,7 +227,7 @@ class PaulTrap(ForceElement):
 
     The trap's axes are the lab axes (no rotation). Gravity, a stray `UniformElectricField` or an offset
     tweezer displace the particle from the rf null, which drives excess micromotion of amplitude
-    |q_j| u_j / 2 at Ω_rf (`excess_micromotion_amplitude`).
+    ``|q_j|`` u_j / 2 at Ω_rf (`excess_micromotion_amplitude`).
     """
 
     is_conservative = False
@@ -412,7 +412,7 @@ class PaulTrap(ForceElement):
 
     def adiabaticity_warning(self, particle):
         """
-        A message if the pseudopotential is a poor approximation (|q_j| > 0.4 or |a_j| > 0.1 on an axis),
+        A message if the pseudopotential is a poor approximation (``|q_j|`` > 0.4 or ``|a_j|`` > 0.1 on an axis),
         else ''
         """
         a, q = self.mathieu_parameters(particle)
@@ -491,7 +491,7 @@ class PaulTrap(ForceElement):
     def electrode_distances(self):
         """
         Distances d_j from the trap centre to the electrodes along (x, y, z): as given, or for ideal
-        electrodes r0/√|a_j|, or r_dc/√|a^dc_j| on an axis without rf curvature (inf if neither)
+        electrodes r0/√``|a_j|``, or r_dc/√``|a^dc_j|`` on an axis without rf curvature (inf if neither)
         [m]
         """
         if self._electrode_distances is not None:
@@ -511,7 +511,7 @@ class PaulTrap(ForceElement):
         axes (0 if an axis is not confining)
         [J]
 
-        Valid for |q| ≲ 0.4 (the pseudopotential) and ideal quadrupole fields out to the electrodes;
+        Valid for ``|q|`` ≲ 0.4 (the pseudopotential) and ideal quadrupole fields out to the electrodes;
         real traps are shallower (anharmonic fields near the electrodes).
         """
         k = self.secular_stiffness_diagonal(particle, 'lowest')
@@ -522,7 +522,7 @@ class PaulTrap(ForceElement):
     def excess_micromotion_amplitude(self, displacement, particle):
         """
         Amplitude of the micromotion at Ω_rf of a particle displaced by u from the rf null (by gravity, a
-        stray field, an offset tweezer), |q_j| u_j/2 per axis (Leibfried et al. 2003, Eq. 10 and 13)
+        stray field, an offset tweezer), ``|q_j|`` u_j/2 per axis (Leibfried et al. 2003, Eq. 10 and 13)
         [m]
         """
         _, q = self.mathieu_parameters(particle)
@@ -627,7 +627,7 @@ class UniformElectricField(ForceElement):
     the field of compensation electrodes)
 
     With a `PaulTrap` it displaces the particle from the rf null by u_j = Q E_j/k_j and so drives excess
-    micromotion of amplitude |q_j| u_j/2 at Ω_rf.
+    micromotion of amplitude ``|q_j|`` u_j/2 at Ω_rf.
 
     - E: the field (E_x, E_y, E_z) [V/m]
     """
