@@ -392,11 +392,12 @@ class Dimension:
     def mechanical_frequency(self, axis):
         """
         The frequency of this bead's oscillator along `axis`: the tweezer frequency `Trap.Ωj`,
-        shifted by the static cavity field when `MultiTrap(static_cavity_shifts=True)` (see
+        shifted by the static cavity field when `MultiTrap(static_cavity_shifts=True)`, and by the
+        particle's own block of the interactions' stiffness with `MultiTrap(interactions=[...])` (see
         `MultiTrap.setup_static_cavity_shifts`)
         [2π·Hz]
         """
-        if getattr(self.multitrap, 'static_cavity_shifts', False):
+        if getattr(self.multitrap, 'static_cavity_shifts', False) or getattr(self.multitrap, 'interactions', None):
             return self.multitrap.static_shifted_Ωj[self.trap_index][axis]
         return self.trap.Ωj[axis]
 
