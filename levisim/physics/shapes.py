@@ -635,6 +635,7 @@ class Cylinder(_Shape):
 
             Γ_cm = Γ⊥(𝟙 - ẑẑ) + Γ∥ ẑẑ,   with n_g √(2π m_g kB T) R ℓ / m_n times
             Γ⊥: 2 + αc(-1/2 + πγs/4 + R/ℓ),   Γ∥: 4R/ℓ + αc(1 - 2R/ℓ + πγs R/(2ℓ))
+
         [2π·Hz]
         """
         perp, par, _, _ = self._table_I(gas, accommodation, surface_temperature_ratio)

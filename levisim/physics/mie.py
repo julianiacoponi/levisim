@@ -134,7 +134,8 @@ class MieComparison:
     - α_dipole: Clausius-Mossotti with radiation reaction (`Particle.polarisability_tensor`) [Fm²]
     - α_mie: 6πi ε0 a₁/k³ [Fm²]
     - mie, dipole: the cross sections {'σ_ext', 'σ_sca', 'σ_abs'} [m²]
-    - multipole_fraction: the share of σ_sca not in the electric dipole a₁, 1 - 3|a₁|²/Σ(2n+1)(|a_n|²+|b_n|²) [·]
+    - multipole_fraction: the share of σ_sca not in the electric dipole a₁,
+      ``1 - 3|a₁|²/Σ(2n+1)(|a_n|²+|b_n|²)`` [·]
     """
     r: float
     λ: float

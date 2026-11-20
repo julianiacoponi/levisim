@@ -93,11 +93,13 @@ class TabulatedParticle(Particle):
       moments); symmetric, positive definite, obeying I1 + I2 ≥ I3
     - polarisability: body-frame polarisability [Fm²] (without radiation reaction, which levisim
       adds), one of
-        - a 3×3 tensor (or 3-vector diagonal, or scalar), used at every wavelength
-        - a callable α(λ) returning one, λ the vacuum wavelength [m]
-        - a table {'λ': (n,) increasing wavelengths [m], 'α': (n, 3, 3) tensors}, interpolated
-          linearly (real and imaginary parts) between the tabulated wavelengths; outside the table
-          it raises
+
+      - a 3×3 tensor (or 3-vector diagonal, or scalar), used at every wavelength
+      - a callable α(λ) returning one, λ the vacuum wavelength [m]
+      - a table {'λ': (n,) increasing wavelengths [m], 'α': (n, 3, 3) tensors}, interpolated
+        linearly (real and imaginary parts) between the tabulated wavelengths; outside the table
+        it raises
+
       Each tensor must be symmetric (reciprocity) and passive (Im α positive semi-definite).
     - translational_damping, rotational_damping: body-frame gas damping-rate tensors [2π·Hz] (the
       Γ_cm and Γ_rot of Martinetz et al. (2018)), either 3×3 arrays valid in `damping_gas` (a `Gas`
@@ -376,7 +378,7 @@ class TabulatedParticle(Particle):
 
     def to_dict(self):
         """
-        Keyword arguments that rebuild this particle, TabulatedParticle(**p.to_dict()) (callables are
+        Keyword arguments that rebuild this particle, ``TabulatedParticle(**p.to_dict())`` (callables are
         passed through as they are; arrays are copies)
         """
         if self._polarisability_constant is not None:

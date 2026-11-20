@@ -158,7 +158,7 @@ def ellipsoid_surface_quadrature(a, b, c, centre=(0.0, 0.0, 0.0), order=DEFAULT_
     Quadrature of the surface of the ellipsoid x²/a² + y²/b² + z²/c² = 1 (semi-axes a, b, c [m]
     along x, y, z, shifted by `centre`): (points, unit normals, area weights), from
     r = (a sinθ cosφ, b sinθ sinφ, c cosθ) with Gauss-Legendre nodes in θ and equally spaced φ.
-    The area element is |∂r/∂θ × ∂r/∂φ| = sinθ·|(bc sinθ cosφ, ac sinθ sinφ, ab cosθ)|.
+    The area element is the norm of ∂r/∂θ × ∂r/∂φ = sinθ·(bc sinθ cosφ, ac sinθ sinφ, ab cosθ).
     """
     θ_nodes, θ_weights = np.polynomial.legendre.leggauss(order)
     θ = (θ_nodes + 1) * π/2

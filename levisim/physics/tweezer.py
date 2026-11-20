@@ -337,13 +337,13 @@ class Tweezer(ForceElement):
 
     def recoil_coefficients(self, particle):
         """
-        (|Re α_eff ê|, (c_x, c_y, c_z)): the polarisability and direction weights of the
-        photon-recoil force noise, S_j = π ħ/(15 ε0)·(|Re α_eff ê|·E0/2π)²·k⁵·c_j (see `noise`)
+        (‖Re α_eff ê‖, (c_x, c_y, c_z)): the polarisability and direction weights of the
+        photon-recoil force noise, S_j = π ħ/(15 ε0)·(‖Re α_eff ê‖·E0/2π)²·k⁵·c_j (see `noise`)
 
         The induced dipole p ∝ α_eff ê radiates with the pattern 1 - (p̂·n)², whose mean of n_j² is
         (2 - p̂_j²)/5; the absorbed tweezer photons add 1 along the beam (z). So ::
 
-            c_j = 2 - p̂_j² + 5 δ_jz,   p̂_j² = |Re(α_eff ê)_j|²/|Re α_eff ê|²
+            c_j = 2 - p̂_j² + 5 δ_jz,   p̂_j² = (Re α_eff ê)_j²/‖Re α_eff ê‖²
 
         which is (2, 1, 7) for a dipole along the polarisation y (an isotropic particle: then the
         first entry is Re α_eff exactly, as in the original code).
@@ -422,7 +422,7 @@ class Tweezer(ForceElement):
         per second, `Trap.photon_recoil_heating_rates` (Piotrowski et al., Nat. Phys. 19, 1009
         (2023), Eq. (4)). Not used by FreeSpaceSimulation, which models no recoil heating. For an
         anisotropic particle the induced dipole need not lie along the polarisation, and Re α_eff and
-        c_j become |Re α_eff ê| and the weights of `recoil_coefficients`.
+        c_j become ‖Re α_eff ê‖ and the weights of `recoil_coefficients`.
         """
         if _has_scalar_polarisability(particle):
             α = np.real(self.effective_polarisability(particle))
