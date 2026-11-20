@@ -72,6 +72,10 @@ class Trap:
         Trap(tweezer=Tweezer(...), bead=Bead(...), Γ_fbx=..., photon_recoil=..., kicks=[...])
         Trap(fields=[Tweezer(...), HarmonicPotential(...), Feedback(...)], particle=Sphere(...))
 
+    Either form accepts ``extra_fields=[...]``, appended to the elements (e.g. a `PaulTrap` beside
+    the shorthand's tweezer, which is how a hybrid Paul-optical trap enters `MultiTrap` through its
+    ``trap_kwargs``).
+
     The first is shorthand for ``fields=[tweezer, Feedback(Γ_fbx, Γ_fby, Γ_fbz)]`` (plus a
     `PhotonRecoil` element if photon_recoil=True and the kicks), with the historical defaults
     Γ_fbx, Γ_fby = 2.1, 2.5 kHz. With ``fields=`` given, the trap holds exactly those elements:
@@ -141,6 +145,13 @@ class Trap:
         # Kick() instances for simulating discrete impacts
         # generate this with kicks.generate_kick_list()
         self.fields.extend(kwargs.get('kicks', []))
+        # further force elements appended to either form, e.g. a PaulTrap next to the shorthand's
+        # tweezer (Trap(tweezer=..., extra_fields=[PaulTrap(...)]), as MultiTrap's trap_kwargs can pass)
+        extra_fields = list(kwargs.get('extra_fields', []))
+        for element in extra_fields:
+            if not isinstance(element, ForceElement):
+                raise TypeError(f'Trap extra_fields must be ForceElement instances, not {type(element).__name__}')
+        self.fields.extend(extra_fields)
 
         # ------------------------------------------------------------------------------------------
         # Point about which the stiffness tensor (and so kj, Ωj) is evaluated: the origin (the
@@ -1540,14 +1551,19 @@ class Trap:
     def static_force(self, r, t=0.0):
         """
         Total position-dependent force of the elements at r and time t: the field, recoil and
-        gravity elements (not the feedback damping or the kicks)
+        gravity elements (not the feedback damping or the kicks); a time-dependent element (a
+        `PaulTrap`) contributes its time-averaged `secular_force` instead of its force at t
         [N]
         """
         x, y, z = as_position(r)
         F = np.zeros(3)
         for element in self.fields:
             if element.simulation_group in ('field', 'recoil', 'gravity'):
-                F = F + self.element_force(element, x, y, z, t)
+                if element.is_time_dependent:
+                    # an rf element (PaulTrap) enters through its time-averaged (secular) force
+                    F = F + element.secular_force((x, y, z), self.bead)
+                else:
+                    F = F + self.element_force(element, x, y, z, t)
         return F
 
     def find_equilibrium(self, r_guess=None, t=0.0):
@@ -1569,6 +1585,26 @@ class Trap:
         if status != 1:
             raise RuntimeError(f'find_equilibrium did not converge: {message}')
         return solution * scale
+
+    def paul_trap_report(self, element=None):
+        """
+        The `PaulTrap.report` of the trap's Paul trap (the first, or `element`), with the stiffness of
+        all the other elements at the linearisation point folded into the Mathieu a_j, so that its
+        'Ω_exact' are the exact (Floquet) secular frequencies of the hybrid trap, and 'stable' its
+        stability flag
+        [dict]
+        """
+        from levisim.physics.fields.electric import PaulTrap
+        if element is None:
+            paul_traps = self.fields_of_type(PaulTrap)
+            if not paul_traps:
+                raise ValueError('This Trap has no PaulTrap in its fields')
+            element = paul_traps[0]
+        others = sum(
+            (K for other, K in self.stiffness_contributions if other is not element),
+            np.zeros((3, 3)),
+        )
+        return element.report(self.bead, extra_stiffness=others)
 
     @cached_property
     def z_eq_exact(self):
