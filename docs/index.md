@@ -28,6 +28,7 @@ concepts/conventions
 concepts/calculation_methods
 concepts/stability
 concepts/static_cavity_shifts
+concepts/particles_and_materials
 guide/index
 notebooks
 ```

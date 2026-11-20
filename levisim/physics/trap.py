@@ -49,7 +49,10 @@ class Trap:
         # DEFINING INSTANCES
         # ------------------------------------------------------------------------------------------
         self.tweezer = kwargs.get('tweezer', Tweezer())
-        self.bead = kwargs.get('bead', Bead())
+        # the levitated particle; `particle=` is accepted as an alias of `bead=`
+        if 'bead' in kwargs and 'particle' in kwargs:
+            raise ValueError('Pass either bead or particle, not both')
+        self.bead = kwargs['bead'] if 'bead' in kwargs else kwargs.get('particle', Bead())
         self.gas = kwargs.get('gas', Gas())
         # Kick() instances for simulating discrete impacts
         # generate this with kicks.generate_kick_list()
@@ -120,6 +123,17 @@ class Trap:
         # MULTI-TRAP PROPERTIES
         # ------------------------------------------------------------------------------------------
         self.trap_index = kwargs.get('trap_index')
+
+    @property
+    def particle(self):
+        """
+        The levitated particle (the same object as `bead`)
+        """
+        return self.bead
+
+    @particle.setter
+    def particle(self, value):
+        self.bead = value
 
     @property
     def info(self):
