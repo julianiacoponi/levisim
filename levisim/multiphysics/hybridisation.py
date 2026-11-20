@@ -106,7 +106,7 @@ def term_string(term):
 def term_latex(term, with_ω=True):
     r"""
     Generates latex that represents the hybridistaion term
-    e.g. R_{x_{1} y{1}} \cdot R_{y{1}x{2}} \cdot R_{x{2}x{1}}
+    e.g. ``R_{x_{1} y{1}} \cdot R_{y{1}x{2}} \cdot R_{x{2}x{1}}``
     """
     if not term.pairs:
         return '+1'
