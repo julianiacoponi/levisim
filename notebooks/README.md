@@ -70,6 +70,7 @@ two. ✓ marks the notebooks in the CI smoke run ([`smoke_list.txt`](smoke_list.
 | [`delic2020_ground_state_cooling`](papers/delic2020_ground_state_cooling.ipynb) | Delić et al., Science 367, 892 (2020): ground-state cooling by coherent scattering | ~5 s | ✓ |
 | [`piotrowski2023_two_mode_ground_state`](papers/piotrowski2023_two_mode_ground_state.ipynb) | Piotrowski et al., Nat. Phys. 19, 1009 (2023): two modes in the ground state | ~5 s | ✓ |
 | [`vijayan2024_cavity_mediated_interactions`](papers/vijayan2024_cavity_mediated_interactions.ipynb) | Vijayan et al., Nat. Phys. 20, 859 (2024): cavity-mediated coupling of two particles | ~5 s | ✓ |
+| [`pontin2025_pair_dark_modes`](papers/pontin2025_pair_dark_modes.ipynb) | Pontin et al., PRL 135, 073602 (2025): strong coupling and dark modes of two particles in a bichromatic tweezer | ~60 s | ✓ |
 
 **[`multiphysics/`](multiphysics/)** (outputs stripped)
 

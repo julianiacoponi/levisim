@@ -102,17 +102,21 @@ def occupations(mtrap):
     return out
 
 
-def heterodyne(mtrap, ω):
+def heterodyne(mtrap, ω, drift_matrix=None):
     """
     levisim's heterodyne spectrum S_het(ω) = 〈a_out(ω) a_out†(ω)〉 (shot noise = 1), vectorised over ω
 
     Same noise vector as `MultiTrap.heterodyne_spectrum(LINEAR_AMPLIFIER_MODEL)`:
     a_out = −√κ · [T(ω) c_in]_0 + a_in with T(ω) = (−iω − A)⁻¹. S_het − 1 is the normally ordered
     spectrum, so the ω > 0 side is anti-Stokes (∝ n) and the ω < 0 side Stokes (∝ n + 1).
+    `drift_matrix` replaces `mtrap.drift_matrix` A, e.g. with a direct coupling that levisim does not
+    model added to it (the Coulomb coupling in the Pontin et al. 2025 notebook); the noise inputs
+    stay those of `mtrap`.
     """
     ω = np.atleast_1d(np.asarray(ω, dtype=float))
     n = mtrap.num_operators
-    M = -1j * ω[:, None, None] * np.eye(n)[None] - mtrap.drift_matrix[None]
+    A = mtrap.drift_matrix if drift_matrix is None else drift_matrix
+    M = -1j * ω[:, None, None] * np.eye(n)[None] - A[None]
     e0 = np.zeros((len(ω), n, 1))
     e0[:, 0, 0] = 1
     T_row0 = np.linalg.solve(np.transpose(M, (0, 2, 1)), e0)[..., 0]
@@ -121,16 +125,16 @@ def heterodyne(mtrap, ω):
     return np.sum(np.asarray(mtrap.quantum_factor_per_noise_operator)[None] * np.abs(v)**2, axis=1)
 
 
-def mechanical_eigenfrequencies(mtrap):
+def mechanical_eigenfrequencies(mtrap, drift_matrix=None):
     """
     Normal-mode frequencies and linewidths of the mechanical-like eigenvalues of the drift matrix
 
     Returns (frequencies, linewidths) [2π·Hz], sorted by frequency, one entry per mechanical mode:
     the eigenvalues λ of A with c ∝ exp(λt) come in pairs ±iω − γ/2; the cavity-like pair (largest
     damping) is dropped, and of each mechanical pair the one with Im λ < 0 (an annihilation
-    operator) is kept.
+    operator) is kept. `drift_matrix` replaces `mtrap.drift_matrix`, as in `heterodyne`.
     """
-    λ = np.linalg.eigvals(mtrap.drift_matrix)
+    λ = np.linalg.eigvals(mtrap.drift_matrix if drift_matrix is None else drift_matrix)
     λ = λ[np.argsort(np.abs(λ.real))][:-2]
     λ = λ[λ.imag < 0]
     order = np.argsort(-λ.imag)
