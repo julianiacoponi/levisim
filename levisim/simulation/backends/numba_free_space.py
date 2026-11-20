@@ -8,7 +8,8 @@ exactly as the NumPy loops scale them. Trajectories therefore agree with the Num
 round-off (the compiled exp, and the order of the products in G·dW, can differ in the last bit).
 
 Supported: the Gaussian-beam tweezer force (or override_Ω_dict), gas + feedback damping, kicks,
-photon recoil, gravity, both integrators. Kernels are compiled on first use and cached on disk
+photon recoil, gravity, both integrators, i.e. a Trap whose force elements are one Tweezer plus
+Feedback, Kick, PhotonRecoil and Gravity elements. Other force elements run the NumPy loop. Kernels are compiled on first use and cached on disk
 (numba's cache=True), so later processes only load them.
 
 Threading: one free-space bead has nothing to thread over, so these kernels are serial (see
@@ -55,7 +56,7 @@ def free_space_parameters(sim):
         P[_E0], P[_ZR], P[_K] = tweezer.E0, tweezer.zR, tweezer.k
         P[_WX0], P[_WY0] = tweezer.wx0, tweezer.wy0
         P[_IM_ALPHA] = np.imag(α_eff)
-    if sim.gravity:
+    if sim.gravity_elements:
         P[_GRAVITY] = 1.0
         P[_GX], P[_GY], P[_GZ] = sim.F_gravity
 

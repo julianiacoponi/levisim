@@ -12,6 +12,7 @@ from levisim.core.units import (
     mbar,
     nm,
 )
+from levisim.physics.fields.elements import Gravity
 from levisim.physics.trap import Trap
 from levisim.simulation.base import StochasticSimulation
 
@@ -42,18 +43,23 @@ class FreeSpaceSimulation(StochasticSimulation):
         seed [None]: None uses numpy's legacy global RandomState (reproducible with np.random.seed);
             an int (or SeedSequence / Generator) uses np.random.default_rng(seed)
         gravity [False]: add the bead's weight m·g along gravity_direction [(-1, 0, 0), i.e. -x];
-            it shifts the equilibrium by g/Ωj² (≈ 10 pm in x for the defaults)
+            it shifts the equilibrium by g/Ωj² (≈ 10 pm in x for the defaults). Internally this is a
+            `Gravity` force element (self.gravity_field); a trap may instead hold a Gravity element in
+            its fields (not both)
         detection_floor [0]: one-sided white displacement-noise PSD [m²/Hz] added to the recorded
             traces only (a number, or a dict per axis)
         zero_mean [True]: subtract each trace's mean
         store_momenta [False]: also store px, py, pz traces [kg·m/s] (self.px etc., traces 'px', ...)
         store_radial [False]: also store the radial trace r = √(x² + y²) [m] (self.r, traces 'r')
         backend ['auto']: 'auto', 'numpy' or 'numba' (compiled loop, `pip install levisim[fast]`),
-            see StochasticSimulation; every option above has a compiled kernel
+            see StochasticSimulation; every option above has a compiled kernel, for a trap made of
+            one tweezer plus feedback, kicks, photon recoil and gravity (or override_Ω_dict); traps
+            with other force elements run the NumPy loop
         save, save_dir, save_description, save_fmt: optional pickling of the instance
 
-    The time axis, seeding, noise generation, integrators and recording are shared with every
-    levisim time-domain simulation, see `StochasticSimulation`.
+    The forces are those of the trap's force elements (`Trap.fields`), added in a fixed order
+    (see dynamics_vector). The time axis, seeding, noise generation, integrators and recording are
+    shared with every levisim time-domain simulation, see `StochasticSimulation`.
     """
 
     state_labels = ('x', 'y', 'z', 'px', 'py', 'pz')
@@ -67,6 +73,13 @@ class FreeSpaceSimulation(StochasticSimulation):
         self.gravity = bool(kwargs.get('gravity', False))
         gravity_direction = np.asarray(kwargs.get('gravity_direction', (-1, 0, 0)), dtype=float)
         self.gravity_direction = gravity_direction / np.linalg.norm(gravity_direction)
+        # the gravity keyword is a Gravity force element added to the trap's own elements
+        # (built from the raw direction, which Gravity normalises exactly as above)
+        self.gravity_field = Gravity(direction=gravity_direction) if self.gravity else None
+        if self.gravity and self.trap.fields_in_group('gravity'):
+            raise ValueError(
+                'gravity=True would add gravity twice: the trap already holds a Gravity element in its fields'
+            )
         self.store_momenta = bool(kwargs.get('store_momenta', False))
         self.store_radial = bool(kwargs.get('store_radial', False))
 
@@ -153,10 +166,14 @@ class FreeSpaceSimulation(StochasticSimulation):
                      'noise_spectral_densities', 'initial_state', 'F_gravity'):
             if getattr(cls, name) is not getattr(FreeSpaceSimulation, name):
                 return f'{cls.__name__} overrides {name}'
-        for obj, base, names in (
-            (self.trap, Trap, ('Ftw', 'Utw', 'F_scattering', 'F_photon_recoil')),
-            (self.trap.tweezer, Tweezer, ('w', 'wx', 'wy', 'wz', 'ellipse', 'E_field_amplitude')),
-        ):
+        reason = self._compiled_kernel_unsupported_fields()
+        if reason:
+            return reason
+        checks = [(self.trap, Trap, ('Ftw', 'Utw', 'F_scattering', 'F_photon_recoil', 'field_force',
+                                     'kick_force', 'element_force'))]
+        if self.trap.has_optical_field:
+            checks.append((self.trap.tweezer, Tweezer, ('w', 'wx', 'wy', 'wz', 'ellipse', 'E_field_amplitude')))
+        for obj, base, names in checks:
             for name in names:
                 if getattr(type(obj), name) is not getattr(base, name):
                     return f'{type(obj).__name__} overrides {name}'
@@ -166,6 +183,34 @@ class FreeSpaceSimulation(StochasticSimulation):
             return 'rk_loop_debug logs every step'
         if np.shape(G) != (6, 4) or len(X0) != 6:
             return 'unexpected state or noise dimensions'
+        return ''
+
+    def _compiled_kernel_unsupported_fields(self):
+        """
+        Why the trap's force elements are outside the compiled kernel's fixed set ('' if inside)
+
+        The kernel knows one Gaussian-beam tweezer (or override_Ω_dict in its place), any Feedback
+        elements (through Γx, Γy, Γz), kicks, one PhotonRecoil of that tweezer, and gravity. A generic
+        compiled path would need each element to provide a numba-compilable force with its parameters
+        packed into an array (see the PR notes of the force-element refactor).
+        """
+        from levisim.physics.fields.elements import Feedback, Gravity, PhotonRecoil
+        from levisim.physics.kick import Kick
+        from levisim.physics.tweezer import Tweezer
+        trap = self.trap
+        field_elements = trap.fields_in_group('field')
+        single_tweezer = len(field_elements) == 1 and isinstance(field_elements[0], Tweezer)
+        if not trap.override_Ω_dict and not single_tweezer:
+            names = ', '.join(element.label for element in field_elements) or 'none'
+            return f'no compiled kernel for the field elements [{names}] (only one Tweezer)'
+        for element in trap.fields:
+            if element.simulation_group == 'field':
+                continue
+            if type(element) not in (Feedback, Kick, PhotonRecoil, Gravity):
+                return f'no compiled kernel for the {element.label} element'
+        recoils = trap.fields_of_type(PhotonRecoil)
+        if recoils and (len(recoils) > 1 or recoils[0].tweezer is not trap.tweezer):
+            return 'the compiled kernel supports one PhotonRecoil of the trap tweezer only'
         return ''
 
     # ------------------------------------------------------------------------------------------
@@ -182,6 +227,12 @@ class FreeSpaceSimulation(StochasticSimulation):
         i.e. Hamilton's equations for ``H = |p|²/2m + Utw(r)``, plus the (gas + feedback) damping and
         any Kick impulses active at time t.
         [m/s, m/s, m/s, N, N, N]
+
+        With force elements (`Trap.fields`) the momentum rows are assembled in this fixed order, by
+        each element's simulation_group: the sum of the 'field' forces (Ftw above, in the order of
+        fields; replaced by -m Ωj² j with override_Ω_dict), minus the gas + 'damping' (Feedback)
+        damping Γj·pj, plus the 'kick' force; then the 'recoil' force is added to dpz/dt and last the
+        'gravity' force. This is the order of the single-tweezer code, so its numbers are unchanged.
         """
         x, y, z, px, py, pz = X
         m = self.trap.bead.m
@@ -193,25 +244,11 @@ class FreeSpaceSimulation(StochasticSimulation):
             Ftwy = -m * (self.trap.override_Ω_dict['y'])**2 * y
             Ftwz = -m * (self.trap.override_Ω_dict['z'])**2 * z
         else:
-            Ftwx, Ftwy, Ftwz = self.trap.Ftw(x, y, z)
+            # the 'field' elements: exactly trap.Ftw(x, y, z) for a single-tweezer trap
+            Ftwx, Ftwy, Ftwz = self.trap.field_force(x, y, z, t)
 
-        F_kick_x, F_kick_y = 0, 0
-        for kick in self.trap.kicks:
-            if kick.start <= t < kick.end:
-                # K = p_kick / pth
-                kick.p = kick.K * self.trap.gas.pth
-
-                # since
-                # p_kick = F0 * duration
-                # then
-                # F0 = p_kick / duration
-                kick.F0 = kick.p / kick.duration
-
-                F_kick_x = kick.F0 * np.cos(kick.θ)
-                F_kick_y = kick.F0 * np.sin(kick.θ)
-
-                kick.Fx = F_kick_x
-                kick.Fy = F_kick_y
+        # as always, the last kick active at t wins (Trap.kick_force)
+        F_kick_x, F_kick_y = self.trap.kick_force(t)
 
         dynamics = np.array([
             px / m,
@@ -226,7 +263,7 @@ class FreeSpaceSimulation(StochasticSimulation):
         if self.trap.photon_recoil:
             # scattering force along the beam propagation axis, +z (see Trap.F_scattering)
             dynamics[5] += self.trap.F_photon_recoil(x, y, z)
-        if self.gravity:
+        if self.gravity_elements:
             # m g ≈ 16.5 aN for the default 1.68 fg bead, along gravity_direction (default -x)
             dynamics[3:] += self.F_gravity
 
@@ -269,12 +306,29 @@ class FreeSpaceSimulation(StochasticSimulation):
         ])
 
     @property
+    def gravity_elements(self):
+        """
+        The Gravity force elements acting in this simulation: the one of the gravity keyword (if on)
+        and any 'gravity' elements of the trap's fields
+        """
+        own = [self.gravity_field] if self.gravity_field is not None else []
+        return own + self.trap.fields_in_group('gravity')
+
+    @property
     def F_gravity(self):
         """
-        Weight of the bead along gravity_direction
+        Total force of the gravity elements (the bead's weight m·g along gravity_direction with
+        gravity=True); with no gravity element, the weight along gravity_direction that gravity=True
+        would add
         [N]
         """
-        return self.trap.bead.weight * self.gravity_direction
+        elements = self.gravity_elements
+        if not elements:
+            return self.trap.bead.weight * self.gravity_direction
+        F = elements[0].force(np.zeros(3), 0.0, self.trap.bead)
+        for element in elements[1:]:
+            F = F + element.force(np.zeros(3), 0.0, self.trap.bead)
+        return F
 
     def temperature_via_variance(self, axis, Ωj=None):
         """
