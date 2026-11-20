@@ -18,6 +18,7 @@
 
 ```sh
 pip install levisim              # or: pip install --upgrade levisim
+pip install "levisim[fast]"      # optional: numba, compiled stochastic-simulation loops
 ```
 
 ```python

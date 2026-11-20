@@ -204,6 +204,41 @@ global stream is used, so runs seeded with `np.random.seed(...)` reproduce earli
 bit for bit. The normals are pre-generated in chunks of $2^{15}$ steps; a $10^5$-sample run takes about
 3.4 s.
 
+### Compiled backend (`pip install levisim[fast]`)
+
+With numba installed (the `fast` extra), the time loop can run as a compiled kernel. The keyword
+`backend` chooses it:
+
+- `backend='auto'` (default): numba when it is installed and the run has at least $2^{15}$ steps
+  (shorter runs cost less in NumPy than loading the kernels), NumPy otherwise;
+- `backend='numpy'`: the NumPy loop, which remains the tested reference;
+- `backend='numba'`: the compiled loop; an `ImportError` explains how to install numba if it is missing.
+
+`sim.backend_used` records which loop ran. Both loops draw the same random numbers in the same order
+(the compiled loop takes them from the same chunked generator), so a seeded run gives the same
+trajectory to round-off: positions agree to about $10^{-14}$ relative over $3\times10^4$ steps, and
+the whole state agrees bit for bit where no exponential is evaluated (`override_Ω_dict` with Heun).
+Over very long runs the anharmonic, lightly damped $z$ motion amplifies any last-bit difference
+(perturbing $x_0$ by $10^{-15}$ relative in one loop gives $10^{-9}$ after $2^{20}$ Heun steps), so
+long trajectories from the two backends agree statistically rather than sample by sample. Every
+option on this page (kicks, gravity, photon recoil, `override_Ω_dict`, the detection floor, the stored
+traces) has a compiled kernel; a subclass that overrides the physics methods, or
+`rk_loop_debug=True`, falls back to NumPy.
+
+The kernels are cached on disk, so only the first run on a machine compiles them:
+
+| $2^{20}$ steps, default `Trap` | NumPy | numba |
+|---|---|---|
+| `vector_4` (Kasdin RK4) | 33 μs per step | 0.32 μs per step |
+| `vector_2` (Heun) | 14 μs per step | 0.15 μs per step |
+| first call, empty cache (both kernels) | | 0.7–0.8 s, plus 0.2 s to import numba |
+| first call, cached (both kernels) | | 0.11 s, plus 0.2 s to import numba |
+
+(Apple arm64, numba 0.68; best of three for numba, one run for NumPy.) A single free-space bead has
+nothing to thread over, so these kernels are serial; `levisim.simulation.backends.choose_threading`
+holds the policy that multi-particle and ensemble kernels will use (threads over independent setups,
+or over particles for large systems).
+
 ### Choosing $\Delta t$, the length and the resolution
 
 - The step must resolve the fastest motion: the default $\Delta t = 0.1\ \mu$s gives about 64 steps per
