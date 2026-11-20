@@ -17,6 +17,7 @@ from levisim.core import *
 from levisim.physics import *
 from levisim.multiphysics import *
 from levisim.data import *
+from levisim.simulation import *
 from levisim.analysis import *
 
 
