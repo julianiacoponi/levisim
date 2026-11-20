@@ -1,35 +1,59 @@
 """
-Combined physics of a levitated free-space tweezer trap (Trap)
+Combined physics of a levitated particle held by a list of force elements (Trap)
 """
 
-import numpy as np
 from functools import cached_property
-from scipy.optimize import brentq
 
-from levisim.core.constants import π, ħ, c, kB, ε0
-from levisim.core.units import (
-    μm, pm,
-    ms,
-    degrees,
-    Hz, kHz,
-    zN,
-    eV,
-)
-
-from levisim.physics.tweezer import Tweezer
-from levisim.physics.bead import Bead
-from levisim.physics.gas import Gas
+import numpy as np
+from scipy.optimize import brentq, fsolve
 
 from levisim.analysis.spectral_density_theory import SpectralDensityTheory
+from levisim.core.constants import kB, ħ, ε0, π
+from levisim.core.units import (
+    Hz,
+    degrees,
+    eV,
+    kHz,
+    ms,
+    zN,
+    μm,
+)
+from levisim.physics.bead import Bead
+from levisim.physics.fields.base import ForceElement, as_position
+from levisim.physics.fields.elements import Feedback, PhotonRecoil
+from levisim.physics.gas import Gas
+from levisim.physics.kick import Kick
+from levisim.physics.tweezer import Tweezer
+
+
+class MissingOpticalFieldError(ValueError):
+    """Raised when an optical-only quantity is asked of a Trap whose fields hold no optical element"""
 
 
 class Trap:
     """
-    Combined physics of a levitated free-space tweezer trap
-    i.e. of an experimental setup of
-    - a Bead instance, levitated by
-    - a Tweezer instance, floating in
+    Combined physics of a levitated particle in a trap made of force elements, i.e. of
+    - a particle (a Bead by default), held by
+    - a list of force elements (`fields`: a Tweezer by default, plus feedback damping, ...), floating in
     - a Gas instance
+
+    Two ways to build one::
+
+        Trap(tweezer=Tweezer(...), bead=Bead(...), Γ_fbx=..., photon_recoil=..., kicks=[...])
+        Trap(fields=[Tweezer(...), HarmonicPotential(...), Feedback(...)], particle=Sphere(...))
+
+    The first is shorthand for ``fields=[tweezer, Feedback(Γ_fbx, Γ_fby, Γ_fbz)]`` (plus a
+    `PhotonRecoil` element if photon_recoil=True and the kicks), with the historical defaults
+    Γ_fbx, Γ_fby = 2.1, 2.5 kHz. With ``fields=`` given, the trap holds exactly those elements:
+    feedback damping is zero unless a `Feedback` element is among them (or Γ_fbx, ... are given, which
+    then add one), and ``tweezer=`` may not be given as well.
+
+    The total stiffness tensor is the sum of the elements' stiffness tensors at the
+    `linearisation_point` (the origin, i.e. the tweezer focus, by default); its diagonal gives kx, ky,
+    kz and the frequencies Ωj = √(kj/m), and its off-diagonal part the `intra_trap_couplings`.
+    Optical-only quantities (tweezer, α_eff, U_depth, photon_recoil_heating_rates, σ_scattering,
+    z_eq, Utw, Ftw, ...) use the first optical element and raise a `MissingOpticalFieldError` (a
+    ValueError) for a trap without one.
 
     This class also allows for:
     - Arbitrary values of feedback damping in x, y, z
@@ -48,24 +72,62 @@ class Trap:
         ############################################################################################
         # DEFINING INSTANCES
         # ------------------------------------------------------------------------------------------
-        self.tweezer = kwargs.get('tweezer', Tweezer())
         # the levitated particle; `particle=` is accepted as an alias of `bead=`
         if 'bead' in kwargs and 'particle' in kwargs:
             raise ValueError('Pass either bead or particle, not both')
         self.bead = kwargs['bead'] if 'bead' in kwargs else kwargs.get('particle', Bead())
         self.gas = kwargs.get('gas', Gas())
+
+        # ------------------------------------------------------------------------------------------
+        # The force elements acting on the particle (see levisim.physics.fields)
+        feedback_keys = [key for key in ('Γ_fbx', 'Γ_fby', 'Γ_fbz') if key in kwargs]
+        if 'fields' in kwargs:
+            if 'tweezer' in kwargs:
+                raise ValueError('Pass the tweezer inside fields=[...], not as tweezer= as well')
+            self.fields = list(kwargs['fields'])
+            for element in self.fields:
+                if not isinstance(element, ForceElement):
+                    raise TypeError(f'Trap fields must be ForceElement instances, not {type(element).__name__}')
+            if feedback_keys:
+                if any(isinstance(element, Feedback) for element in self.fields):
+                    raise ValueError(f'{", ".join(feedback_keys)} given as well as a Feedback element in fields')
+                # Feedback mechanical damping rates of (x, y, z)-motion oscillations [2π·Hz]
+                self.fields.append(Feedback(*(kwargs.get(key, 0.0) for key in ('Γ_fbx', 'Γ_fby', 'Γ_fbz'))))
+        else:
+            # shorthand: one tweezer plus feedback cold damping with the historical defaults
+            # Feedback mechanical damping rates of (x, y, z)-motion oscillations [2π·Hz]
+            self.fields = [
+                kwargs.get('tweezer', Tweezer()),
+                Feedback(
+                    Γ_fbx=kwargs.get('Γ_fbx', 2.1*kHz),
+                    Γ_fby=kwargs.get('Γ_fby', 2.5*kHz),
+                    Γ_fbz=kwargs.get('Γ_fbz', 0.0*kHz),
+                ),
+            ]
+        # Whether or not to include the photon recoil (scattering) force along the beam axis in
+        # Simulation, see F_scattering (Tania doesn't use it) [bool]: adds a PhotonRecoil element
+        if bool(kwargs.get('photon_recoil', False)):
+            self.photon_recoil = True
         # Kick() instances for simulating discrete impacts
         # generate this with kicks.generate_kick_list()
-        self.kicks = kwargs.get('kicks', [])
+        self.fields.extend(kwargs.get('kicks', []))
+
+        # ------------------------------------------------------------------------------------------
+        # Point about which the stiffness tensor (and so kj, Ωj) is evaluated: the origin (the
+        # tweezer focus) by default, as levisim always has; give a position, or 'equilibrium' for
+        # the root of the static force (find_equilibrium)
+        # [m]
+        linearisation_point = kwargs.get('linearisation_point', None)
+        if isinstance(linearisation_point, str):
+            if linearisation_point != 'equilibrium':
+                raise ValueError(f"linearisation_point must be a position or 'equilibrium', not {linearisation_point!r}")
+            linearisation_point = self.find_equilibrium()
+        self.linearisation_point = (
+            np.zeros(3) if linearisation_point is None else as_position(linearisation_point)
+        )
 
         ############################################################################################
         # DEFINED PROPERTIES
-        # ------------------------------------------------------------------------------------------
-        # Feedback mechanical damping rates of (x, y, z)-motion oscillations
-        # [2π·Hz]
-        self.Γ_fbx = float(kwargs.get('Γ_fbx', 2.1*kHz))
-        self.Γ_fby = float(kwargs.get('Γ_fby', 2.5*kHz))
-        self.Γ_fbz = float(kwargs.get('Γ_fbz', 0.0*kHz))
 
         # ------------------------------------------------------------------------------------------
         # Scale factor for directed force noise compared to the thermal force noise
@@ -77,12 +139,6 @@ class Trap:
         # Angle of the directed force noise in the x-y plane
         # [rad]
         self.ψ = float(kwargs.get('ψ', 45*degrees))
-
-        # ------------------------------------------------------------------------------------------
-        # Whether or not to include the photon recoil (scattering) force along the beam axis in
-        # Simulation, see F_scattering (Tania doesn't use it)
-        # [bool]
-        self.photon_recoil = bool(kwargs.get('photon_recoil', False))
 
         # ------------------------------------------------------------------------------------------
         # Override resonant frequencies (that ignore Tweezer properties)
@@ -135,6 +191,145 @@ class Trap:
     def particle(self, value):
         self.bead = value
 
+    ################################################################################################
+    # FORCE ELEMENTS
+    # ----------------------------------------------------------------------------------------------
+    def fields_of_type(self, element_type):
+        """The elements of `fields` that are instances of element_type, in order"""
+        return [element for element in self.fields if isinstance(element, element_type)]
+
+    def fields_in_group(self, group):
+        """The elements of `fields` whose simulation_group is group, in order"""
+        return [element for element in self.fields if element.simulation_group == group]
+
+    @property
+    def has_optical_field(self):
+        """Whether any element of `fields` is optical (is_optical)"""
+        return any(element.is_optical for element in self.fields)
+
+    @property
+    def tweezer(self):
+        """
+        The trap's optical element: the first element of `fields` with is_optical (the Tweezer)
+
+        Raises MissingOpticalFieldError (a ValueError) if the trap has no optical element.
+        """
+        for element in self.fields:
+            if element.is_optical:
+                return element
+        names = ', '.join(element.label for element in self.fields) or 'none'
+        raise MissingOpticalFieldError(
+            f'This Trap has no optical field (its fields: {names}). Optical-only quantities (tweezer, '
+            'α_eff, U_depth, photon_recoil_heating_rates, σ_scattering, z_eq, Utw, Ftw, F_scattering, '
+            'and the cavity drive unless cavity_drive_tweezer is given) need a Tweezer in fields.'
+        )
+
+    @tweezer.setter
+    def tweezer(self, value):
+        # replace the optical element in place (or put one first if there is none)
+        for index, element in enumerate(self.fields):
+            if element.is_optical:
+                for recoil in self.fields_of_type(PhotonRecoil):
+                    if recoil.tweezer is element:
+                        recoil.tweezer = value
+                self.fields[index] = value
+                return
+        self.fields.insert(0, value)
+
+    def _feedback_rate(self, attribute):
+        rates = [getattr(element, attribute) for element in self.fields_of_type(Feedback)]
+        if len(rates) == 1:
+            return rates[0]
+        return float(sum(rates))
+
+    def _set_feedback_rate(self, attribute, value):
+        feedbacks = self.fields_of_type(Feedback)
+        if len(feedbacks) > 1:
+            raise ValueError(f'This Trap has {len(feedbacks)} Feedback elements: set {attribute} on one of them')
+        if not feedbacks:
+            feedbacks = [Feedback()]
+            self.fields.append(feedbacks[0])
+        setattr(feedbacks[0], attribute, float(value))
+
+    @property
+    def Γ_fbx(self):
+        """
+        Feedback mechanical damping rate of x-motion oscillations (sum over the Feedback elements)
+        [2π·Hz]
+        """
+        return self._feedback_rate('Γ_fbx')
+
+    @Γ_fbx.setter
+    def Γ_fbx(self, value):
+        self._set_feedback_rate('Γ_fbx', value)
+
+    @property
+    def Γ_fby(self):
+        """
+        Feedback mechanical damping rate of y-motion oscillations (sum over the Feedback elements)
+        [2π·Hz]
+        """
+        return self._feedback_rate('Γ_fby')
+
+    @Γ_fby.setter
+    def Γ_fby(self, value):
+        self._set_feedback_rate('Γ_fby', value)
+
+    @property
+    def Γ_fbz(self):
+        """
+        Feedback mechanical damping rate of z-motion oscillations (sum over the Feedback elements)
+        [2π·Hz]
+        """
+        return self._feedback_rate('Γ_fbz')
+
+    @Γ_fbz.setter
+    def Γ_fbz(self, value):
+        self._set_feedback_rate('Γ_fbz', value)
+
+    @property
+    def kicks(self):
+        """The Kick elements of `fields` (step-like impulses), in order"""
+        return self.fields_of_type(Kick)
+
+    @kicks.setter
+    def kicks(self, value):
+        self.fields = [element for element in self.fields if not isinstance(element, Kick)] + list(value)
+
+    @property
+    def photon_recoil(self):
+        """
+        Whether the scattering (photon recoil) force acts in Simulation, i.e. whether `fields` holds
+        a PhotonRecoil element; setting it adds one for the trap's tweezer, or removes them
+        [bool]
+        """
+        return bool(self.fields_of_type(PhotonRecoil))
+
+    @photon_recoil.setter
+    def photon_recoil(self, value):
+        if value and not self.photon_recoil:
+            self.fields.append(PhotonRecoil(self.tweezer))
+        elif not value:
+            self.fields = [element for element in self.fields if not isinstance(element, PhotonRecoil)]
+
+    def __setstate__(self, state):
+        """
+        Restores a pickled Trap; a Trap pickled before the force elements (with tweezer, Γ_fbx, ...,
+        photon_recoil and kicks as attributes) is converted to the equivalent fields
+        """
+        if 'fields' not in state:
+            state = dict(state)
+            fields = [
+                state.pop('tweezer'),
+                Feedback(state.pop('Γ_fbx', 0.0), state.pop('Γ_fby', 0.0), state.pop('Γ_fbz', 0.0)),
+            ]
+            if state.pop('photon_recoil', False):
+                fields.append(PhotonRecoil(fields[0]))
+            fields.extend(state.pop('kicks', []))
+            state['fields'] = fields
+            state.setdefault('linearisation_point', np.zeros(3))
+        self.__dict__.update(state)
+
     @property
     def info(self):
         """
@@ -184,15 +379,7 @@ class Trap:
             f'\n    ky = {self.ky:.5e} N/m'
             f'\n    kz = {self.kz:.5e} N/m'
             f'\n'
-            f'\n    α_eff = {self.α_eff:.5e} Fm²'
-            f'\n    σ_scattering = {self.σ_scattering:.5e} m²'
-            f'\n    z_eq = {self.z_eq/ μm:.5f} μm'
-            f'\n'
-            f'\n    U_depth = {self.U_depth / eV:.5f} eV'
-            f'\n    U_depth = {self.U_depth / kB:.5e} K'
-            f'\n    v_escape = {self.v_escape:.5f} m/s'
-            f'\n    p_escape = {self.p_escape:.5e} kg·m/s'
-            f'\n'
+            f'{self._optical_info_str}'
             f'\n    F_gas = {self.F_gas:.5e} N'
             f'\n    mean_free_path = {self.mean_free_path:.5e} m'
             f'\n    collision_rate = {self.collision_rate:.5e} Hz'
@@ -206,11 +393,42 @@ class Trap:
             f'\n    Fy_SQL = {self.Fy_SQL:.5e} N'
             f'\n    Fz_SQL = {self.Fz_SQL:.5e} N'
             f'\n'
-            f'\n    id(tweezer) = {id(self.tweezer)}'
+            f'{self._fields_info_str}'
             f'\n    id(bead) = {id(self.bead)}'
             f'\n    id(gas) = {id(self.gas)}'
             f'\n)'
         )
+
+    @property
+    def _optical_info_str(self):
+        if not self.has_optical_field:
+            return ''
+        return (
+            f'\n    α_eff = {self.α_eff:.5e} Fm²'
+            f'\n    σ_scattering = {self.σ_scattering:.5e} m²'
+            f'\n    z_eq = {self.z_eq/ μm:.5f} μm'
+            f'\n'
+            f'\n    U_depth = {self.U_depth / eV:.5f} eV'
+            f'\n    U_depth = {self.U_depth / kB:.5e} K'
+            f'\n    v_escape = {self.v_escape:.5f} m/s'
+            f'\n    p_escape = {self.p_escape:.5e} kg·m/s'
+            f'\n'
+        )
+
+    @property
+    def _fields_info_str(self):
+        # the historical summary of a shorthand trap (tweezer + feedback, recoil, kicks) lists only
+        # id(tweezer); any other element is listed by name
+        lines = ''
+        if self.has_optical_field:
+            lines += f'\n    id(tweezer) = {id(self.tweezer)}'
+        others = [
+            element for element in self.fields
+            if not (element.is_optical or isinstance(element, (Feedback, PhotonRecoil, Kick)))
+        ]
+        if others or not self.has_optical_field:
+            lines += f'\n    fields = [{", ".join(element.label for element in self.fields)}]'
+        return lines
 
     ################################################################################################
     # CAVITY DRIVE (coherent scattering, used by MultiTrap)
@@ -467,33 +685,117 @@ class Trap:
         }
 
     @cached_property
-    def kx(self):
+    def stiffness_contributions(self):
         """
-        Spring constant of the restoring force in the x-axis due to the tweezer potential
+        List of (element, stiffness tensor) for every element of `fields`, each tensor
+        K_ij = -∂F_i/∂r_j evaluated at the linearisation_point
         [N/m]
         """
-        return np.real(self.α_eff) * self.tweezer.E0**2 / self.tweezer.wx0**2
+        return [(element, element.stiffness(self.linearisation_point, self.bead)) for element in self.fields]
+
+    @cached_property
+    def stiffness_tensor(self):
+        """
+        Total stiffness tensor of the trap at the linearisation_point, the sum of the elements'
+        stiffness tensors (in the order of `fields`)
+        [N/m]
+
+        For the default tweezer trap it is diag(kx, ky, kz) of the tweezer at its focus. Its
+        off-diagonal part (from fields whose principal axes differ) is `intra_trap_coupling_stiffness`.
+        """
+        total = None
+        for _, K in self.stiffness_contributions:
+            total = K if total is None else total + K
+        return np.zeros((3, 3)) if total is None else total
+
+    @cached_property
+    def intra_trap_coupling_stiffness(self):
+        """
+        Off-diagonal part of `stiffness_tensor` (zero diagonal), K_jk for j ≠ k
+        [N/m]
+        """
+        K = np.array(self.stiffness_tensor, dtype=float)
+        np.fill_diagonal(K, 0.0)
+        return K
+
+    @cached_property
+    def intra_trap_coupling_matrix(self):
+        """
+        Direct mechanical couplings between the axes of this trap's particle, in levisim's g
+        convention (MultiTrapBase.mechanical_coupling_matrix): entry [j, k] = gjk, the term
+        -gjk·qj·qk of H/ħ with qj = bj + bj†, so that dbj/dt ∋ +i·gjk·qk
+        [2π·Hz]
+
+        A force F_j = -K_jk x_k with xj = xj_zpf·qj gives ::
+
+            gjk = -K_jk · xj_zpf · xk_zpf / ħ
+
+        with the zero-point fluctuations of the trap frequencies Ωj (`j_zpf`). Axes ordered (x, y, z);
+        the diagonal is zero. For a conservative trap the matrix is symmetric.
+        """
+        zpf = np.array([self.x_zpf, self.y_zpf, self.z_zpf])
+        return -self.intra_trap_coupling_stiffness * np.outer(zpf, zpf) / ħ
+
+    @cached_property
+    def intra_trap_couplings(self):
+        """
+        Dict of the intra-trap mechanical couplings {'xy': gxy, 'yx': gyx, 'xz': ..., 'zx': ...,
+        'yz': ..., 'zy': ...}, key jk for row j and column k of `intra_trap_coupling_matrix`, i.e. the
+        rate at which axis k drives axis j. All zero for the default tweezer trap.
+        [2π·Hz]
+        """
+        g = self.intra_trap_coupling_matrix
+        axes = 'xyz'
+        return {
+            axes[j] + axes[k]: g[j, k]
+            for j in range(3) for k in range(3) if j != k
+        }
+
+    @cached_property
+    def field_noise_psd(self):
+        """
+        Sum of the force noises the elements add (e.g. the tweezer's photon-recoil force noise),
+        as a two-sided 3×3 spectral density matrix; it excludes the gas (Sth) and the directed noise
+        (Sdir), and is not used by FreeSpaceSimulation
+        [N²/Hz]
+        """
+        total = np.zeros((3, 3))
+        for element in self.fields:
+            total = total + element.noise(self.bead)
+        return total
+
+    @cached_property
+    def kx(self):
+        """
+        Spring constant of the restoring force in the x-axis, the xx element of the total stiffness
+        tensor (for a tweezer trap, Re α_eff E0²/wx0²)
+        [N/m]
+        """
+        return self.stiffness_tensor[0, 0]
 
     @cached_property
     def ky(self):
         """
-        Spring constant of the restoring force in the y-axis due to the tweezer potential
+        Spring constant of the restoring force in the y-axis, the yy element of the total stiffness
+        tensor (for a tweezer trap, Re α_eff E0²/wy0²)
         [N/m]
         """
-        return np.real(self.α_eff) * self.tweezer.E0**2 / self.tweezer.wy0**2
+        return self.stiffness_tensor[1, 1]
 
     @cached_property
     def kz(self):
         """
-        Spring constant of the restoring force in the z-axis due to the tweezer potential
+        Spring constant of the restoring force in the z-axis, the zz element of the total stiffness
+        tensor (for a tweezer trap, Re α_eff E0²/wz0²)
         [N/m]
         """
-        return np.real(self.α_eff) * self.tweezer.E0**2 / self.tweezer.wz0**2
+        return self.stiffness_tensor[2, 2]
 
     @cached_property
     def kj(self):
         """
-        Dict of spring constants of the restoring forces in the (x, y, z)-axes due to the tweezer potential
+        Dict of spring constants of the restoring forces in the (x, y, z)-axes (the diagonal of the
+        total stiffness tensor)
         [N/m]
         """
         return {
@@ -800,7 +1102,7 @@ class Trap:
         Effective polarisability of the bead that accounts for the radiation reaction force
         [complex Fm²]
         """
-        return self.bead.α / (1 - 1j * (self.tweezer.k**3 / (6*π*ε0)) * self.bead.α)
+        return self.tweezer.effective_polarisability(self.bead)
 
     @cached_property
     def photon_recoil_heating_rates(self):
@@ -1084,12 +1386,111 @@ class Trap:
 
     def F_photon_recoil(self, x, y, z):
         """
-        Photon recoil force used by Simulation: F_scattering if photon_recoil is enabled, else 0
+        Photon recoil force used by Simulation, along +z: F_scattering if photon_recoil is enabled
+        (the sum over the PhotonRecoil elements), else 0
         [N]
         """
-        if not self.photon_recoil:
+        recoils = self.fields_of_type(PhotonRecoil)
+        if not recoils:
             return 0
-        return self.F_scattering(x, y, z)
+        if len(recoils) == 1 and recoils[0].tweezer is self.tweezer:
+            return self.F_scattering(x, y, z)
+        F = 0
+        for recoil in recoils:
+            F = F + recoil.force((x, y, z), 0.0, self.bead)[2]
+        return F
+
+    ################################################################################################
+    # FORCES OF THE ELEMENTS (used by Simulation)
+    # ----------------------------------------------------------------------------------------------
+    def element_force(self, element, x, y, z, t=0.0):
+        """
+        Force of one element of `fields` on the particle at (x, y, z) and time t, as a (3,) array;
+        the trap's tweezer goes through Ftw (so that a Trap subclass overriding Utw/Ftw is honoured)
+        and kicks are given the trap's gas
+        [N]
+        """
+        if element.is_optical and element is self.tweezer:
+            return np.array(self.Ftw(x, y, z))
+        if isinstance(element, Kick):
+            return element.force((x, y, z), t, self.bead, gas=self.gas)
+        return element.force((x, y, z), t, self.bead)
+
+    def field_force(self, x, y, z, t=0.0):
+        """
+        Sum of the forces of the 'field' elements (tweezers, potentials; not feedback, kicks,
+        recoil or gravity), as (Fx, Fy, Fz), summed in the order of `fields`
+
+        For a trap whose only field element is its tweezer this is exactly Ftw(x, y, z).
+        [N]
+        """
+        elements = self.fields_in_group('field')
+        if len(elements) == 1 and elements[0].is_optical and elements[0] is self.tweezer:
+            return self.Ftw(x, y, z)
+        if not elements:
+            return (0.0, 0.0, 0.0)
+        F = self.element_force(elements[0], x, y, z, t)
+        for element in elements[1:]:
+            F = F + self.element_force(element, x, y, z, t)
+        return F[0], F[1], F[2]
+
+    def kick_force(self, t):
+        """
+        The kick force (F_kick,x, F_kick,y) at time t; as Simulation always has, the last active kick
+        wins, and its p, F0, Fx and Fy attributes are set
+        [N]
+        """
+        F_kick_x, F_kick_y = 0, 0
+        for kick in self.kicks:
+            if kick.start <= t < kick.end:
+                # K = p_kick / pth
+                kick.p = kick.K * self.gas.pth
+
+                # since
+                # p_kick = F0 * duration
+                # then
+                # F0 = p_kick / duration
+                kick.F0 = kick.p / kick.duration
+
+                F_kick_x = kick.F0 * np.cos(kick.θ)
+                F_kick_y = kick.F0 * np.sin(kick.θ)
+
+                kick.Fx = F_kick_x
+                kick.Fy = F_kick_y
+        return F_kick_x, F_kick_y
+
+    def static_force(self, r, t=0.0):
+        """
+        Total position-dependent force of the elements at r and time t: the field, recoil and
+        gravity elements (not the feedback damping or the kicks)
+        [N]
+        """
+        x, y, z = as_position(r)
+        F = np.zeros(3)
+        for element in self.fields:
+            if element.simulation_group in ('field', 'recoil', 'gravity'):
+                F = F + self.element_force(element, x, y, z, t)
+        return F
+
+    def find_equilibrium(self, r_guess=None, t=0.0):
+        """
+        Equilibrium position of the particle, the root of `static_force` near r_guess (default the
+        origin), e.g. the gravitational sag -g/Ωj² of a Gravity element, or z_eq_exact with recoil
+        [m]
+        """
+        scale = 1e-9  # solve in nm
+        r_guess = np.zeros(3) if r_guess is None else as_position(r_guess)
+        # residuals in units of the force of a 1 nm displacement (stiffness at the origin)
+        K0 = sum(element.stiffness(None, self.bead) for element in self.fields)
+        force_scale = max(float(np.max(np.abs(np.diag(K0)))) * scale, 1e-30)
+
+        def residual(u):
+            return self.static_force(u * scale, t) / force_scale
+
+        solution, _, status, message = fsolve(residual, r_guess / scale, full_output=True, xtol=1e-13)
+        if status != 1:
+            raise RuntimeError(f'find_equilibrium did not converge: {message}')
+        return solution * scale
 
     @cached_property
     def z_eq_exact(self):
