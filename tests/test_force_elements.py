@@ -336,7 +336,10 @@ def test_harmonic_only_trap_simulates_with_expected_Ω_and_equipartition():
 
 
 def test_numba_falls_back_to_numpy_for_other_elements():
-    pytest.importorskip('numba')
+    # skip when numba is missing OR disabled with LEVISIM_DISABLE_NUMBA (importorskip only covers the first)
+    from levisim.simulation.backends import numba_available
+    if not numba_available():
+        pytest.skip('numba is not installed or is disabled')
     trap = Trap(fields=[Tweezer(), HarmonicPotential(1e-7), Feedback(2*kHz, 2*kHz)])
     sim = FreeSpaceSimulation(trap=trap, num_samples=200, seed=1, backend='numba')
     assert 'HarmonicPotential' in sim._compiled_kernel_unsupported_fields()
