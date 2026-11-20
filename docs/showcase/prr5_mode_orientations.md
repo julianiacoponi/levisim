@@ -63,7 +63,7 @@ frequency shifts cancel at the same point. The figure is drawn without these sta
 [static cavity shifts](../concepts/static_cavity_shifts.md)): they move the rotation's cancellation
 point by at most $0.001\pi$, and the net frequency shift of each mode then crosses zero at
 $\Phi = 0.257\pi$ ($x$) and $0.255\pi$ ($y$) for $\Delta/2\pi = -450$ kHz, beside the rotation's
-$0.248\pi$, and at $0.315\pi$ and $0.308\pi$ for $-150$ kHz (rotation $0.314\pi$), as the paper found.
+$0.248\pi$, and at $0.315\pi$ and $0.308\pi$ for $-150$ kHz (rotation $0.3135\pi$ with the shifts, $0.3133\pi$ without), as the paper found.
 
 :::{figure} ../guide/figures/showcase/prr5_mode_orientations.png
 :width: 100%

@@ -20,7 +20,7 @@ The figure is drawn with static_cavity_shifts=False, the model this showcase was
 by default; see `MultiTrap.setup_static_cavity_shifts`). It moves the cancellation point by at most
 0.001π, and with it the net frequency shift of both modes (static stiffening minus optical spring)
 crosses zero at Φ = 0.257π (x) and 0.255π (y) for Δ/2π = -450 kHz, beside the rotation's 0.248π,
-and at 0.315π and 0.308π for -150 kHz (rotation 0.314π): the paper's coincidence of the two
+and at 0.315π and 0.308π for -150 kHz (rotation, with the shifts: 0.3135π; without: 0.3133π): the paper's coincidence of the two
 cancellations.
 """
 import sys
