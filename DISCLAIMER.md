@@ -53,3 +53,9 @@ A fifth session, also in November 2026, followed up the owner's review of the fo
 - An assessment of whether to publish `levisim` on PyPI, and the packaging work that follows from it.
 
 Each of its pull requests says which of these it contains.
+
+## November 2026 update (interactive Three.js web labs)
+
+The interactive Three.js optical-bench web interfaces (`levisim/web/`), their documentation page
+(`docs/interactive_labs.md`), and their cross-verification test suites (`tests/test_web_*.py`) were
+written with Gemini (Antigravity) at the owner's request. Each pull request states which lab it adds.

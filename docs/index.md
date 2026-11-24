@@ -23,6 +23,7 @@ trap frequency $\Omega_{j_n}$.
 :caption: Using levisim
 
 getting_started
+interactive_labs
 showcase/index
 concepts/conventions
 concepts/calculation_methods

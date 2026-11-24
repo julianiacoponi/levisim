@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>levisim — Free-Space Optical Tweezer Lab</title>
+  <link rel="stylesheet" href="../shared/lab_ui.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.187.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.187.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="viewport"></div>
+
+  <!-- Minimalist Darkroom Lab Topbar -->
+  <header class="topbar">
+    <div class="topbar-group">
+      <div class="brand">
+        <span class="brand-dot"></span>
+        <div>
+          <div class="brand-title">levisim · Free-Space Tweezer</div>
+          <div class="brand-sub">Trap · SpectralDensityTheory · PRR 6</div>
+        </div>
+      </div>
+      <a class="pill-link" href="../">Labs</a>
+      <button class="pill-btn active" data-cam="bench">Bench</button>
+      <button class="pill-btn" data-cam="focus">Trap Focus</button>
+      <button class="pill-btn" data-cam="optics">Optics</button>
+      <button class="pill-btn" data-cam="monitor">Monitor</button>
+    </div>
+
+    <div class="topbar-group">
+      <select id="sel-chamber" class="pill-select" title="UHV Sapphire Chamber">
+        <option value="full" selected>Chamber: Full Glass</option>
+        <option value="cutaway">Chamber: Cutaway</option>
+        <option value="open">Chamber: Open Focus</option>
+      </select>
+      <select id="sel-view" class="pill-select" title="Monitor Spectra">
+        <option value="motional" selected>Plots: Motional + Cxy</option>
+        <option value="optical">Plots: Optical (SNU)</option>
+        <option value="both">Plots: Motional + Optical</option>
+      </select>
+      <select id="sel-theme" class="pill-select" title="Monitor Screen Theme">
+        <option value="rf" selected>Screen: RF Analyzer</option>
+        <option value="xmgrace">Screen: levisim xmgrace</option>
+        <option value="glass">Screen: Quantum OLED</option>
+      </select>
+      <button id="btn-mon-power" class="pill-btn active">Monitor: ON</button>
+      <button id="btn-popout" class="pill-btn">2D Pop-Out</button>
+      <span id="engine-badge" class="engine-badge">60 FPS JS</span>
+      <button id="btn-drawer" class="pill-btn active">Controls</button>
+    </div>
+  </header>
+
+  <!-- Collapsible Precision Lab Drawer -->
+  <aside id="drawer" class="drawer">
+    <div class="drawer-header">
+      <h2>Trap Parameters</h2>
+      <button id="btn-run-rk" class="pill-btn" style="display:none">Run Python RK Simulation</button>
+    </div>
+    <div class="drawer-body">
+      <div class="section">
+        <div class="section-title">levisim Presets</div>
+        <div id="preset-grid" class="preset-grid"></div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Tweezer Laser &amp; Focus</div>
+        <div class="ctrl">
+          <div class="ctrl-head"><span class="ctrl-label">Laser Power P</span><span id="val-power" class="ctrl-val">485 mW</span></div>
+          <input id="sl-power" type="range" min="50" max="1500" step="5" value="485" />
+        </div>
+        <div class="ctrl">
+          <div class="ctrl-head"><span class="ctrl-label">Wavelength &lambda;</span><span id="val-lambda" class="ctrl-val">1064 nm</span></div>
+          <input id="sl-lambda" type="range" min="532" max="1550" step="2" value="1064" />
+        </div>
+        <div class="ctrl">
+          <div class="ctrl-head"><span class="ctrl-label">Focus Waist w<sub>x0</sub></span><span id="val-wx" class="ctrl-val">0.928 &mu;m</span></div>
+          <input id="sl-wx" type="range" min="0.55" max="1.45" step="0.005" value="0.9276" />
+        </div>
+        <div class="ctrl">
+          <div class="ctrl-head"><span class="ctrl-label">Focus Waist w<sub>y0</sub></span><span id="val-wy" class="ctrl-val">1.068 &mu;m</span></div>
+          <input id="sl-wy" type="range" min="0.55" max="1.45" step="0.005" value="1.0679" />
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Nanosphere &amp; Vacuum Gas</div>
+        <div class="ctrl">
+          <div class="ctrl-head"><span class="ctrl-label">Silica Radius r</span><span id="val-radius" class="ctrl-val">60.1 nm</span></div>
+          <input id="sl-radius" type="range" min="25" max="150" step="0.5" value="60.1" />
+        </div>
+        <div class="ctrl">
+          <div class="ctrl-head"><span class="ctrl-label">Gas Pressure P<sub>gas</sub></span><span id="val-logp" class="ctrl-val">4.0e-3 mbar</span></div>
+          <input id="sl-logp" type="range" min="-7" max="0" step="0.05" value="-2.398" />
+        </div>
+        <label class="toggle-row">
+          <span>Photon Recoil Shift (z<sub>eq</sub>)</span>
+          <input id="chk-recoil" type="checkbox" />
+        </label>
+        <label class="toggle-row">
+          <span>Malitson Sellmeier n(&lambda;)</span>
+          <input id="chk-malitson" type="checkbox" />
+        </label>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Feedback &amp; Directed Force (PRR 6)</div>
+        <div class="ctrl">
+          <div class="ctrl-head"><span class="ctrl-label">Cold Damping &Gamma;<sub>fb,x</sub></span><span id="val-gfbx" class="ctrl-val">2.10 kHz</span></div>
+          <input id="sl-gfbx" type="range" min="0" max="15" step="0.05" value="2.1" />
+        </div>
+        <div class="ctrl">
+          <div class="ctrl-head"><span class="ctrl-label">Cold Damping &Gamma;<sub>fb,y</sub></span><span id="val-gfby" class="ctrl-val">2.50 kHz</span></div>
+          <input id="sl-gfby" type="range" min="0" max="15" step="0.05" value="2.5" />
+        </div>
+        <div class="ctrl">
+          <div class="ctrl-head"><span class="ctrl-label">Directed Noise Angle &psi;</span><span id="val-psi" class="ctrl-val">+45.0&deg;</span></div>
+          <input id="sl-psi" type="range" min="-90" max="90" step="0.5" value="45" />
+        </div>
+        <div class="ctrl">
+          <div class="ctrl-head"><span class="ctrl-label">Directed Noise Ratio &beta;</span><span id="val-beta" class="ctrl-val">1.41</span></div>
+          <input id="sl-beta" type="range" min="0" max="5" step="0.02" value="1.4142" />
+        </div>
+        <div class="ctrl">
+          <div class="ctrl-head"><span class="ctrl-label">Detection Floor G<sub>floor</sub></span><span id="val-floor" class="ctrl-val">10^-27 m²/Hz</span></div>
+          <input id="sl-floor" type="range" min="-30" max="-23" step="0.1" value="-27" />
+        </div>
+        <label class="toggle-row">
+          <span>Overlay Simulated Estimate Dots</span>
+          <input id="chk-sim" type="checkbox" checked />
+        </label>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Live Telemetry</div>
+        <div class="readout-grid">
+          <div class="readout-card"><div class="readout-k">&Omega;x / 2&pi;</div><div id="ro-fx" class="readout-v">—</div></div>
+          <div class="readout-card"><div class="readout-k">&Omega;y / 2&pi;</div><div id="ro-fy" class="readout-v">—</div></div>
+          <div class="readout-card"><div class="readout-k">&Omega;z / 2&pi;</div><div id="ro-fz" class="readout-v">—</div></div>
+          <div class="readout-card"><div class="readout-k">&Gamma;<sub>th</sub> / 2&pi;</div><div id="ro-gth" class="readout-v">—</div></div>
+          <div class="readout-card"><div class="readout-k">T<sub>eff,x</sub></div><div id="ro-tx" class="readout-v good">—</div></div>
+          <div class="readout-card"><div class="readout-k">T<sub>eff,y</sub></div><div id="ro-ty" class="readout-v good">—</div></div>
+          <div class="readout-card"><div class="readout-k">Coherence &gamma;<sub>xy</sub></div><div id="ro-coh" class="readout-v">—</div></div>
+          <div class="readout-card"><div class="readout-k">z<sub>eq</sub> shift</div><div id="ro-zeq" class="readout-v">—</div></div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- 2D Pop-Out Spectrum Analyzer Dock -->
+  <div id="popout-overlay" class="popout-overlay">
+    <div class="popout-bar">
+      <span>2D SPECTRUM ANALYZER · Hover plot for exact readout</span>
+      <button id="btn-popout-close" class="pill-btn">Close</button>
+    </div>
+    <canvas id="popout-canvas" class="popout-canvas" width="1024" height="640"></canvas>
+  </div>
+
+  <!-- Diegetic Hover Tooltip & Help Strip -->
+  <div id="diegetic-tooltip" class="diegetic-tooltip"></div>
+  <div class="hint-bar">
+    <span><strong>Drag bench optics:</strong> Laser power · &lambda;/2 waveplate · 4-electrode &psi; ring · Vacuum gauge · Feedback box</span>
+    <span>|</span>
+    <span><strong>Click monitor</strong> to zoom in</span>
+  </div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

@@ -1,0 +1,201 @@
+/* Darkroom Quantum Optics Lab HUD — shared by levisim Three.js web interfaces */
+:root {
+  --bg: #070a10;
+  --panel: rgba(11, 16, 25, 0.84);
+  --panel-solid: #0c121d;
+  --border: rgba(148, 163, 184, 0.20);
+  --border-strong: rgba(56, 189, 248, 0.42);
+  --text: #e2e8f0;
+  --muted: #94a3b8;
+  --accent: #38bdf8;
+  --crimson: #f43f5e;
+  --emerald: #34d399;
+  --amber: #fbbf24;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  width: 100%; height: 100%; overflow: hidden;
+  background: var(--bg); color: var(--text);
+  font-family: var(--sans); font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+}
+#viewport { position: fixed; inset: 0; width: 100%; height: 100%; }
+
+/* Top minimal lab bar */
+.topbar {
+  position: fixed; top: 12px; left: 14px; right: 14px; z-index: 20;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  pointer-events: none;
+}
+.topbar-group {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  background: var(--panel); border: 1px solid var(--border);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  padding: 6px 10px; border-radius: 10px;
+  pointer-events: auto;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.42);
+}
+.brand {
+  display: flex; align-items: center; gap: 8px; padding-right: 8px;
+  border-right: 1px solid var(--border);
+}
+.brand-dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--crimson); box-shadow: 0 0 10px var(--crimson);
+}
+.brand-title { font-weight: 700; font-size: 13px; letter-spacing: 0.02em; }
+.brand-sub { font-size: 11px; color: var(--muted); font-family: var(--mono); }
+
+.pill-btn, .pill-link {
+  appearance: none; border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04); color: var(--text);
+  padding: 5px 10px; border-radius: 7px; font-size: 11.5px; font-weight: 600;
+  cursor: pointer; transition: all 0.14s ease; text-decoration: none;
+  display: inline-flex; align-items: center; gap: 5px;
+}
+.pill-btn:hover, .pill-link:hover {
+  border-color: var(--border-strong); background: rgba(56, 189, 248, 0.12);
+}
+.pill-btn.active {
+  background: rgba(56, 189, 248, 0.22); border-color: var(--accent); color: #f8fafc;
+}
+.pill-btn.warn {
+  background: rgba(244, 63, 94, 0.22); border-color: var(--crimson); color: #fecdd3;
+}
+.pill-select {
+  appearance: none; border: 1px solid var(--border);
+  background: rgba(15, 23, 42, 0.88); color: var(--text);
+  padding: 5px 10px; border-radius: 7px; font-size: 11.5px; font-weight: 600;
+  cursor: pointer; outline: none;
+}
+.pill-select:hover { border-color: var(--border-strong); }
+
+.engine-badge {
+  font-family: var(--mono); font-size: 10.5px; padding: 3px 8px;
+  border-radius: 999px; border: 1px solid rgba(52, 211, 153, 0.35);
+  background: rgba(16, 185, 129, 0.14); color: var(--emerald);
+}
+.engine-badge.python {
+  border-color: rgba(251, 191, 36, 0.45);
+  background: rgba(245, 158, 11, 0.16); color: var(--amber);
+}
+
+/* Collapsible Right Precision Lab Drawer */
+.drawer {
+  position: fixed; top: 64px; right: 14px; bottom: 14px; width: 326px; z-index: 20;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  display: flex; flex-direction: column; overflow: hidden;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.52);
+  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.drawer.collapsed { transform: translateX(calc(100% + 20px)); }
+.drawer-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 11px 14px; border-bottom: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+}
+.drawer-header h2 {
+  font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--accent); font-family: var(--mono);
+}
+.drawer-body {
+  flex: 1; overflow-y: auto; padding: 10px 14px 16px;
+  scrollbar-width: thin; scrollbar-color: rgba(148, 163, 184, 0.3) transparent;
+}
+.section {
+  margin-bottom: 14px; padding-bottom: 12px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+}
+.section:last-child { border-bottom: none; margin-bottom: 0; }
+.section-title {
+  font-family: var(--mono); font-size: 10.5px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted);
+  margin-bottom: 9px; display: flex; justify-content: space-between; align-items: center;
+}
+
+.preset-grid { display: flex; flex-wrap: wrap; gap: 5px; }
+.preset-btn {
+  border: 1px solid var(--border); background: rgba(255, 255, 255, 0.03);
+  color: var(--text); padding: 4px 8px; border-radius: 6px;
+  font-size: 11px; cursor: pointer; transition: all 0.12s;
+}
+.preset-btn:hover { border-color: var(--accent); background: rgba(56, 189, 248, 0.12); }
+.preset-btn.active { border-color: var(--accent); background: rgba(56, 189, 248, 0.22); color: #fff; }
+
+.ctrl { margin-bottom: 9px; }
+.ctrl:last-child { margin-bottom: 0; }
+.ctrl-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  margin-bottom: 4px; font-size: 11.5px;
+}
+.ctrl-label { color: #cbd5e1; }
+.ctrl-val { font-family: var(--mono); font-size: 11px; color: var(--accent); font-weight: 600; }
+.ctrl input[type="range"] {
+  width: 100%; height: 4px; accent-color: var(--accent); cursor: pointer;
+}
+.toggle-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 4px 0; font-size: 11.5px; color: #cbd5e1;
+}
+.toggle-row input[type="checkbox"] { accent-color: var(--accent); width: 15px; height: 15px; cursor: pointer; }
+
+/* Live derived telemetry cards */
+.readout-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+}
+.readout-card {
+  background: rgba(15, 23, 42, 0.72); border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 7px; padding: 6px 8px;
+}
+.readout-k { font-size: 10px; color: var(--muted); font-family: var(--mono); }
+.readout-v { font-size: 12px; font-weight: 700; font-family: var(--mono); color: #f8fafc; margin-top: 2px; }
+.readout-v.good { color: var(--emerald); }
+.readout-v.bad { color: var(--crimson); }
+
+/* Bottom-left diegetic help bar */
+.hint-bar {
+  position: fixed; left: 14px; bottom: 14px; z-index: 15;
+  background: var(--panel); border: 1px solid var(--border);
+  backdrop-filter: blur(10px); border-radius: 8px;
+  padding: 7px 12px; font-size: 11px; color: var(--muted);
+  display: flex; align-items: center; gap: 10px;
+}
+.hint-bar strong { color: var(--text); font-weight: 600; }
+
+/* Diegetic 3D hover tooltip */
+.diegetic-tooltip {
+  position: fixed; z-index: 30; pointer-events: none;
+  background: rgba(8, 12, 20, 0.92); border: 1px solid var(--border-strong);
+  border-radius: 8px; padding: 7px 10px; min-width: 170px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+  opacity: 0; transform: translateY(4px); transition: opacity 0.12s, transform 0.12s;
+}
+.diegetic-tooltip.visible { opacity: 1; transform: translateY(0); }
+.dt-title { font-weight: 700; font-size: 12px; color: #f8fafc; }
+.dt-val { font-family: var(--mono); font-size: 11.5px; color: var(--accent); margin-top: 2px; }
+.dt-hint { font-size: 10.5px; color: var(--muted); margin-top: 3px; }
+
+/* 2D Pop-Out Spectrum Analyzer Modal / Dock */
+.popout-overlay {
+  position: fixed; left: 14px; bottom: 54px; width: min(760px, calc(100vw - 360px));
+  z-index: 25; background: rgba(9, 14, 22, 0.95);
+  border: 1px solid var(--border-strong); border-radius: 12px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.65);
+  overflow: hidden; display: none;
+}
+.popout-overlay.open { display: block; }
+.popout-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px; border-bottom: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03); font-family: var(--mono); font-size: 11.5px;
+}
+.popout-canvas { width: 100%; height: auto; display: block; cursor: crosshair; }
+
+@media (max-width: 900px) {
+  .drawer { width: 280px; }
+  .popout-overlay { width: calc(100vw - 28px); }
+}

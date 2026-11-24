@@ -242,6 +242,7 @@ Each of these notebooks in [`notebooks/papers/`](notebooks/papers/) builds a pub
 | `levisim/multiphysics/utils/` | `shelf` (default parameters and lazily built example systems), method comparison, animations |
 | `levisim/data/` | `Simulation` (stochastic simulation of a bead in a free-space tweezer), `Trace`, experiment data |
 | `levisim/analysis/` | spectral density estimation and theory, Gaussian-state entanglement measures |
+| `levisim/web/` | interactive Three.js optical-bench web lab (`levisim-web`) and static assets for GitHub Pages |
 | `tests/` | the pytest suite |
 | `fortran/` | the Fortran reference implementation and its reference `.dat` output (see `fortran/README.md`) |
 | `docs/` | the Sphinx documentation site, and the two-tone entanglement studies |
