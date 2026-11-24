@@ -80,4 +80,4 @@ include = ["levisim*"]
 # the shipped power-series pickles (2D, 4D, 6D; about 270 kB), their README, and the web lab assets
 [tool.setuptools.package-data]
 "levisim.multiphysics" = ["power_series_data/*.pickle", "power_series_data/README.md"]
-"levisim.web" = ["static/*.html", "static/shared/*", "static/free_space_tweezer/*"]
+"levisim.web" = ["static/*.html", "static/shared/*", "static/free_space_tweezer/*", "static/coherent_scattering_cavity/*"]

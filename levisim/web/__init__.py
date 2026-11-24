@@ -9,6 +9,7 @@ lightweight local HTTP API that computes spectra directly with ``Trap``,
 
 from levisim.web.server import (
     STATIC_DIR,
+    compute_cavity_spectra,
     compute_tweezer_spectra,
     create_server,
     dispatch_request,
@@ -19,6 +20,7 @@ from levisim.web.server import (
 
 __all__ = [
     'STATIC_DIR',
+    'compute_cavity_spectra',
     'compute_tweezer_spectra',
     'create_server',
     'dispatch_request',

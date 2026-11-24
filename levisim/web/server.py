@@ -26,12 +26,13 @@ from pathlib import Path
 import numpy as np
 
 from levisim.core.logger import logger
-from levisim.core.units import Hz, degrees, kHz, mbar, mW, nm, μm, μs
+from levisim.core.units import Hz, cm, degrees, kHz, mbar, mW, nm, μm, μs
 
 __all__ = [
     'STATIC_DIR',
     'THREE_CDN_PREFIX',
     'compute_tweezer_spectra',
+    'compute_cavity_spectra',
     'run_tweezer_simulation',
     'dispatch_request',
     'create_server',
@@ -282,6 +283,187 @@ def run_tweezer_simulation(params: dict) -> dict:
     }
 
 
+def compute_cavity_spectra(params: dict) -> dict:
+    """
+    Computes live coherent-scattering cavity optical and motional spectra via ``MultiTrap``.
+
+    Parameters
+    ----------
+    params : dict
+        Physical or mode-comb cavity parameters: ``mode`` (``'physical'`` or ``'comb'``),
+        ``num_traps``, ``delta_kHz``, ``finesse``, ``L_cm``, ``waist_um``, ``theta_hom_deg``,
+        ``theta_tw_deg``, ``phi_sw_pi``, ``phi2_deg``, ``power_mW``, ``wavelength_nm``,
+        ``radius_nm``, ``pressure_mbar``, ``temperature_K``, ``photon_recoil``, and grid.
+
+    Returns
+    -------
+    dict
+        JSON-serialisable dictionary containing frequency grid (kHz), homodyne spectrum
+        ``S_hh`` and heterodyne spectrum ``S_het`` (shot-noise units), hybridised position
+        PSDs ``S_pos``, cross-spectrum ``S_x1y1_re``, drift eigenvalues, stability flags,
+        and cavity/coupling telemetry.
+    """
+    from levisim.multiphysics.enums import QuantumLinearTheoryMethod
+    from levisim.multiphysics.multitrap import MultiTrap
+    from levisim.physics.bead import Bead
+    from levisim.physics.tweezer import Tweezer
+
+    mode = str(params.get('mode', 'physical')).lower()
+    if mode not in ('physical', 'comb'):
+        raise ValueError(f'mode must be "physical" or "comb", got {mode!r}')
+
+    num_traps = int(_float_param(params, 'num_traps', 2, min_value=1, max_value=8))
+    delta_kHz = _float_param(params, 'delta_kHz', -450.0, min_value=-2000.0, max_value=1000.0)
+    finesse = _float_param(params, 'finesse', 40_000.0, min_value=1_000.0, max_value=500_000.0)
+    L_cm = _float_param(params, 'L_cm', 0.96, min_value=0.1, max_value=10.0)
+    waist_um = _float_param(params, 'waist_um', 61.0, min_value=10.0, max_value=300.0)
+    theta_hom_deg = _float_param(params, 'theta_hom_deg', 45.0, min_value=-180.0, max_value=180.0)
+    phi2_deg = _float_param(params, 'phi2_deg', 30.0, min_value=-180.0, max_value=360.0)
+
+    pressure_mbar = _float_param(params, 'pressure_mbar', 1e-6, min_value=1e-10, max_value=1.0)
+    temperature_K = _float_param(params, 'temperature_K', 300.0, min_value=1.0, max_value=1000.0)
+
+    f_min_kHz = _float_param(params, 'f_min_kHz', 122.0, min_value=1.0, max_value=1500.0)
+    f_max_kHz = _float_param(params, 'f_max_kHz', 166.0, min_value=2.0, max_value=2000.0)
+    if f_max_kHz <= f_min_kHz:
+        raise ValueError(f'f_max_kHz ({f_max_kHz}) must exceed f_min_kHz ({f_min_kHz})')
+    num_points = int(_float_param(params, 'num_points', 300, min_value=32, max_value=1500))
+
+    f_kHz = np.linspace(f_min_kHz, f_max_kHz, num_points)
+    ω_range = f_kHz * kHz
+
+    gas_kwargs = dict(P=pressure_mbar * mbar, T=temperature_K, vth=500.0)
+    cavity_kwargs = dict(
+        Δ=delta_kHz * kHz,
+        L=L_cm * cm,
+        w=waist_um * μm,
+        Finesse=finesse,
+        θhom=theta_hom_deg * degrees,
+    )
+
+    if mode == 'comb':
+        comb_mid_kHz = _float_param(params, 'comb_mid_kHz', 300.0, min_value=20.0, max_value=1000.0)
+        comb_span_kHz = _float_param(params, 'comb_span_kHz', 100.0, min_value=1.0, max_value=500.0)
+        comb_g_kHz = _float_param(params, 'comb_g_kHz', -40.0, min_value=-200.0, max_value=200.0)
+        φn_dict = {n: (phi2_deg * degrees if n == 2 else 0.0) for n in range(1, num_traps + 1)}
+        mtrap = MultiTrap(
+            num_traps=num_traps,
+            Cartesian_axes_per_trap=2,
+            gas_kwargs=gas_kwargs,
+            cavity_kwargs=cavity_kwargs,
+            toy_params=dict(
+                Ω_model='equal spacing',
+                Ω_mid=comb_mid_kHz * kHz,
+                Ω_span=comb_span_kHz * kHz,
+                toy_gx=comb_g_kHz * kHz,
+                toy_gy=comb_g_kHz * kHz,
+                φn_dict=φn_dict,
+            ),
+            ω_range=ω_range,
+        )
+    else:
+        theta_tw_deg = _float_param(params, 'theta_tw_deg', 45.0, min_value=0.0, max_value=90.0)
+        phi_sw_pi = _float_param(params, 'phi_sw_pi', 0.5, min_value=0.0, max_value=1.0)
+        power_mW = _float_param(params, 'power_mW', 485.0, min_value=10.0, max_value=3000.0)
+        wavelength_nm = _float_param(params, 'wavelength_nm', 1064.0, min_value=400.0, max_value=2000.0)
+        radius_nm = _float_param(params, 'radius_nm', 60.1, min_value=15.0, max_value=200.0)
+        photon_recoil = bool(params.get('photon_recoil', True))
+
+        builtin_waists = [
+            (0.9276, 1.0679), (0.950, 1.050), (0.975, 1.025), (0.965, 1.015),
+            (0.940, 1.020), (0.930, 1.010), (0.915, 1.055), (0.925, 1.045),
+        ]
+        builtin_phases = [0.0, phi2_deg, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0]
+
+        tweezers = [
+            Tweezer(
+                Power=power_mW * mW,
+                λ=wavelength_nm * nm,
+                wx0=builtin_waists[i][0] * μm,
+                wy0=builtin_waists[i][1] * μm,
+                θ=theta_tw_deg * degrees,
+                φ=builtin_phases[i] * degrees,
+            )
+            for i in range(num_traps)
+        ]
+        beads = [
+            Bead(r=(radius_nm + 0.1 * i) * nm, Φ=phi_sw_pi * np.pi)
+            for i in range(num_traps)
+        ]
+        mtrap = MultiTrap(
+            num_traps=num_traps,
+            Cartesian_axes_per_trap=2,
+            tweezers=tweezers,
+            beads=beads,
+            gas_kwargs=gas_kwargs,
+            cavity_kwargs=cavity_kwargs,
+            photon_recoil=photon_recoil,
+            ω_range=ω_range,
+        )
+
+    LAM = QuantumLinearTheoryMethod.LINEAR_AMPLIFIER_MODEL
+    S_hh, S_het = mtrap.homodyne_and_heterodyne_spectra(LAM)
+    _, psd_dict = mtrap.all_position_power_spectra(LAM, zpf_scaled=True)
+    S_x1y1 = mtrap.position_cross_spectrum('x1', 'y1', LAM, zpf_scaled=True).real
+
+    eigs = mtrap.drift_eigenvalues
+    kappa = float(mtrap.cavity.κ)
+    mech_eigs = [
+        {'re': float(ev.real), 'im': float(ev.imag / kHz)}
+        for ev in eigs
+        if ev.imag >= -1e-6 and abs(ev.real) < 0.25 * kappa
+    ]
+
+    dim_x1 = mtrap.dimensions['x1']
+    dim_y1 = mtrap.dimensions['y1']
+    dOmega = float(dim_x1.Ω - dim_y1.Ω)
+    Delta = float(mtrap.cavity.Δ)
+    g_dyn = 2.0 * float(dim_x1.g * dim_y1.g) * Delta / (Delta ** 2 + 0.25 * kappa ** 2)
+    g_cs = float(dim_x1.gxy)
+    if abs(dOmega) > 1.0:
+        dyn_angle_deg = float(0.5 * np.arctan2(2.0 * g_dyn, dOmega) / degrees)
+        cs_angle_deg = float(0.5 * np.arctan2(2.0 * g_cs, dOmega) / degrees)
+        mode_angle_deg = float(0.5 * np.arctan2(2.0 * (g_dyn + g_cs), dOmega) / degrees)
+    else:
+        dyn_angle_deg = cs_angle_deg = mode_angle_deg = 0.0
+
+    n_cav = float(abs(mtrap.cavity.αR + 1j * mtrap.cavity.αI) ** 2)
+
+    return {
+        'engine': 'python-levisim',
+        'f_kHz': f_kHz.tolist(),
+        'S_hh': np.asarray(S_hh, dtype=float).tolist(),
+        'S_het': np.asarray(S_het, dtype=float).tolist(),
+        'S_pos': {label: np.asarray(arr, dtype=float).tolist() for label, arr in psd_dict.items()},
+        'S_x1y1_re': np.asarray(S_x1y1, dtype=float).tolist(),
+        'eigenvalues': [{'re': float(ev.real), 'im_kHz': float(ev.imag / kHz)} for ev in eigs],
+        'mech_eigenvalues': mech_eigs,
+        'telemetry': {
+            'is_stable': bool(mtrap.is_stable),
+            'max_growth_rate': float(mtrap.max_growth_rate),
+            'kappa_kHz': float(kappa / kHz),
+            'delta_kHz': float(Delta / kHz),
+            'n_cav': n_cav,
+            'gx1_kHz': float(dim_x1.g / kHz),
+            'gy1_kHz': float(dim_y1.g / kHz),
+            'gxy1_kHz': float(dim_x1.gxy / kHz),
+            'mode_angle_deg': mode_angle_deg,
+            'dyn_angle_deg': dyn_angle_deg,
+            'cs_angle_deg': cs_angle_deg,
+            'dimensions': [
+                {
+                    'label': dim.label,
+                    'omega_kHz': float(dim.Ω / kHz),
+                    'g_kHz': float(dim.g / kHz),
+                    'gxy_kHz': float(dim.gxy / kHz),
+                    'phi_deg': float(dim.φ / degrees),
+                }
+                for dim in mtrap.dimensions.values()
+            ],
+        },
+    }
+
+
 def dispatch_request(
     method: str,
     path: str,
@@ -304,7 +486,7 @@ def dispatch_request(
 
     if method == 'GET':
         if route == '/api/health':
-            return json_resp(200, {'ok': True, 'engine': 'python-levisim', 'labs': ['free_space_tweezer']})
+            return json_resp(200, {'ok': True, 'engine': 'python-levisim', 'labs': ['free_space_tweezer', 'coherent_scattering_cavity']})
 
         if three_dir is not None and route.startswith('/vendor/three/'):
             rel = route[len('/vendor/three/'):]
@@ -348,6 +530,8 @@ def dispatch_request(
                 return json_resp(200, compute_tweezer_spectra(payload))
             if route == '/api/tweezer/simulate':
                 return json_resp(200, run_tweezer_simulation(payload))
+            if route == '/api/cavity/spectra':
+                return json_resp(200, compute_cavity_spectra(payload))
             return json_resp(404, {'error': f'unknown endpoint: {route}'})
         except ValueError as exc:
             return json_resp(400, {'error': str(exc)})
@@ -436,8 +620,9 @@ def serve(
     actual_host, actual_port = server.server_address
     suffix = {
         'tweezer': '/free_space_tweezer/',
+        'cavity': '/coherent_scattering_cavity/',
         'home': '/',
-    }.get(lab, '/free_space_tweezer/')
+    }.get(lab, '/')
     url = f'http://{actual_host}:{actual_port}{suffix}'
     logger.info('Serving levisim interactive web lab at {}', url)
     sys.stdout.write(f'levisim-web running at {url}\nPress Ctrl+C to stop.\n')
@@ -460,7 +645,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument('--host', default='127.0.0.1', help='Host interface to bind (default: 127.0.0.1)')
     parser.add_argument('--port', type=int, default=8765, help='Port to bind (default: 8765)')
-    parser.add_argument('--lab', choices=('tweezer', 'home'), default='tweezer', help='Initial lab page to open')
+    parser.add_argument('--lab', choices=('tweezer', 'cavity', 'home'), default='home', help='Initial lab page to open')
     parser.add_argument('--no-open', action='store_true', help='Do not open a browser tab automatically')
     parser.add_argument('--three-dir', type=Path, default=None, help='Local path to the `three` package for offline serving')
     args = parser.parse_args(argv)
