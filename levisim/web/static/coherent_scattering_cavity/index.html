@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>levisim — Coherent-Scattering Cavity Trap Lab</title>
+  <link rel="stylesheet" href="../shared/lab_ui.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.187.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.187.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="viewport"></div>
+
+  <!-- Minimalist Darkroom Lab Topbar -->
+  <header class="topbar">
+    <div class="topbar-group">
+      <div class="brand">
+        <span class="brand-dot"></span>
+        <div>
+          <div class="brand-title">levisim · Coherent-Scattering Cavity</div>
+          <div class="brand-sub">MultiTrap · QLT · PRR 5 &amp; PRR 8</div>
+        </div>
+      </div>
+      <a class="pill-link" href="../">Labs</a>
+      <button class="pill-btn active" data-cam="bench">Bench</button>
+      <button class="pill-btn" data-cam="focus">Cavity Focus</button>
+      <button class="pill-btn" data-cam="homodyne">Homodyne</button>
+      <button class="pill-btn" data-cam="monitor">Monitor</button>
+    </div>
+
+    <div class="topbar-group">
+      <span id="stability-pill" class="pill-btn active" style="pointer-events:none">Stable Steady State</span>
+      <select id="sel-chamber" class="pill-select" title="UHV Sapphire Chamber">
+        <option value="full" selected>Chamber: Full Glass</option>
+        <option value="cutaway">Chamber: Cutaway</option>
+        <option value="open">Chamber: Open Cavity</option>
+      </select>
+      <select id="sel-view" class="pill-select" title="Monitor Spectra">
+        <option value="combined" selected>Plots: Optical + Motional</option>
+        <option value="optical">Plots: Optical (S_hh, S_het)</option>
+        <option value="motional">Plots: Motional PSDs</option>
+        <option value="cross">Plots: PRR 5 Cross (Re S_x1y1)</option>
+      </select>
+      <select id="sel-theme" class="pill-select" title="Monitor Screen Theme">
+        <option value="rf" selected>Screen: RF Analyzer</option>
+        <option value="xmgrace">Screen: levisim xmgrace</option>
+        <option value="glass">Screen: Quantum OLED</option>
+      </select>
+      <button id="btn-mon-power" class="pill-btn active">Monitor: ON</button>
+      <button id="btn-popout" class="pill-btn">2D Pop-Out</button>
+      <span id="engine-badge" class="engine-badge">60 FPS JS</span>
+      <button id="btn-drawer" class="pill-btn active">Controls</button>
+    </div>
+  </header>
+
+  <!-- Collapsible Precision Lab Drawer -->
+  <aside id="drawer" class="drawer">
+    <div class="drawer-header">
+      <h2>Cavity &amp; MultiTrap</h2>
+    </div>
+    <div class="drawer-body">
+      <div class="section">
+        <div class="section-title">Paper &amp; Quickstart Presets</div>
+        <div id="preset-grid" class="preset-grid"></div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Fabry-P&eacute;rot Cavity &amp; Detection</div>
+        <div class="ctrl">
+          <div class="ctrl-head"><span class="ctrl-label">Detuning &Delta; / 2&pi;</span><span id="val-delta" class="ctrl-val">-450 kHz</span></div>
+          <input id="sl-delta" type="range" min="-800" max="300" step="5" value="-450" />
+        </div>
+        <div class="ctrl">
+          <div class="ctrl-head"><span class="ctrl-label">Cavity Finesse &#8497;</span><span id="val-finesse" class="ctrl-val">40k</span></div>
+          <input id="sl-finesse" type="range" min="10" max="100" step="2" value="40" />
+        </div>
+        <div class="ctrl">
+          <div class="ctrl-head"><span class="ctrl-label">Homodyne Angle &theta;<sub>hom</sub></span><span id="val-theta-hom" class="ctrl-val">45.0&deg;</span></div>
+          <input id="sl-theta-hom" type="range" min="0" max="180" step="1" value="45" />
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Coherent-Scattering Geometry</div>
+        <div class="ctrl">
+          <div class="ctrl-head"><span class="ctrl-label">Standing-Wave Phase &Phi;</span><span id="val-phi-sw" class="ctrl-val">0.500&pi; (node)</span></div>
+          <input id="sl-phi-sw" type="range" min="0.04" max="0.50" step="0.002" value="0.50" />
+        </div>
+        <div class="ctrl">
+          <div class="ctrl-head"><span class="ctrl-label">Polarisation Angle &theta;</span><span id="val-theta-tw" class="ctrl-val">45.0&deg;</span></div>
+          <input id="sl-theta-tw" type="range" min="5" max="85" step="0.5" value="45" />
+        </div>
+        <div class="ctrl">
+          <div class="ctrl-head"><span class="ctrl-label">2nd Tweezer Phase &phi;<sub>2</sub></span><span id="val-phi2" class="ctrl-val">30.0&deg;</span></div>
+          <input id="sl-phi2" type="range" min="0" max="180" step="0.5" value="30" />
+        </div>
+        <div class="ctrl">
+          <div class="ctrl-head"><span class="ctrl-label">Trapped Particles N</span><span id="val-ntrap" class="ctrl-val">2 beads</span></div>
+          <input id="sl-ntrap" type="range" min="1" max="8" step="1" value="2" />
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Tweezer &amp; Vacuum Bath</div>
+        <div class="ctrl">
+          <div class="ctrl-head"><span class="ctrl-label">Tweezer Power P</span><span id="val-power" class="ctrl-val">485 mW</span></div>
+          <input id="sl-power" type="range" min="100" max="1200" step="5" value="485" />
+        </div>
+        <div class="ctrl">
+          <div class="ctrl-head"><span class="ctrl-label">Gas Pressure P<sub>gas</sub></span><span id="val-logp" class="ctrl-val">1.0e-6 mbar</span></div>
+          <input id="sl-logp" type="range" min="-9" max="-2" step="0.1" value="-6" />
+        </div>
+        <label class="toggle-row">
+          <span>Photon Recoil Heating</span>
+          <input id="chk-recoil" type="checkbox" checked />
+        </label>
+        <label class="toggle-row">
+          <span>3D Mode-Orientation Axes (PRR 5)</span>
+          <input id="chk-mode-vec" type="checkbox" checked />
+        </label>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Live QLT &amp; Stability Telemetry</div>
+        <div class="readout-grid">
+          <div class="readout-card"><div class="readout-k">Linear Stability</div><div id="ro-stable" class="readout-v good">—</div></div>
+          <div class="readout-card"><div class="readout-k">max Re &lambda;</div><div id="ro-growth" class="readout-v">—</div></div>
+          <div class="readout-card"><div class="readout-k">&kappa; / 2&pi;</div><div id="ro-kappa" class="readout-v">—</div></div>
+          <div class="readout-card"><div class="readout-k">|&alpha;|² photons</div><div id="ro-ncav" class="readout-v">—</div></div>
+          <div class="readout-card"><div class="readout-k">g<sub>x1</sub> / 2&pi;</div><div id="ro-gx" class="readout-v">—</div></div>
+          <div class="readout-card"><div class="readout-k">g<sub>y1</sub> / 2&pi;</div><div id="ro-gy" class="readout-v">—</div></div>
+          <div class="readout-card"><div class="readout-k">g<sub>xy</sub> / 2&pi;</div><div id="ro-gxy" class="readout-v">—</div></div>
+          <div class="readout-card"><div class="readout-k">PRR 5 Mode Tilt</div><div id="ro-rot" class="readout-v">—</div></div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- 2D Pop-Out Spectrum Analyzer Dock -->
+  <div id="popout-overlay" class="popout-overlay">
+    <div class="popout-bar">
+      <span>2D SPECTRUM ANALYZER · Hover plot for exact frequency/SNU readout</span>
+      <button id="btn-popout-close" class="pill-btn">Close</button>
+    </div>
+    <canvas id="popout-canvas" class="popout-canvas" width="1024" height="640"></canvas>
+  </div>
+
+  <!-- Diegetic Hover Tooltip & Help Strip -->
+  <div id="diegetic-tooltip" class="diegetic-tooltip"></div>
+  <div class="hint-bar">
+    <span><strong>Drag bench optics:</strong> Right mirror (&Delta;) · Left mirror (&Phi;) · &lambda;/2 waveplate (&theta;) · EOM (&phi;<sub>2</sub>) · LO mirror (&theta;<sub>hom</sub>)</span>
+    <span>|</span>
+    <span><strong>Click monitor</strong> to zoom in</span>
+  </div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
