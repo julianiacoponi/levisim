@@ -62,6 +62,7 @@ dev = ["pytest", "pytest-xdist", "ruff", "nbstripout", "pre-commit", "build", "t
 
 [project.scripts]
 levisim-logs = "levisim.core.elk:main"
+levisim-web = "levisim.web.server:main"
 
 [project.urls]
 Homepage = "https://github.com/julianiacoponi/levisim"
@@ -76,6 +77,7 @@ Changelog = "https://github.com/julianiacoponi/levisim/blob/main/CHANGELOG.md"
 [tool.setuptools.packages.find]
 include = ["levisim*"]
 
-# the shipped power-series pickles (2D, 4D, 6D; about 270 kB) and their README
+# the shipped power-series pickles (2D, 4D, 6D; about 270 kB), their README, and the web lab assets
 [tool.setuptools.package-data]
 "levisim.multiphysics" = ["power_series_data/*.pickle", "power_series_data/README.md"]
+"levisim.web" = ["static/*.html", "static/shared/*", "static/free_space_tweezer/*"]

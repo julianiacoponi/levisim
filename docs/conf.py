@@ -277,7 +277,20 @@ def _point_reexported_instances_to_their_docs(app, what, name, obj, options, lin
 build_notebook_gallery()
 
 
+def _copy_web_labs(app, exception):
+    """Copies levisim/web/static into <outdir>/labs/ so GitHub Pages serves the Three.js labs"""
+    if exception is not None or app.builder.format != 'html':
+        return
+    src = REPO_ROOT / 'levisim' / 'web' / 'static'
+    if not src.is_dir():
+        return
+    dst = Path(app.outdir) / 'labs'
+    shutil.rmtree(dst, ignore_errors=True)
+    shutil.copytree(src, dst)
+
+
 def setup(app):
     app.connect('source-read', _convert_source)
     app.connect('include-read', _convert_include)
     app.connect('autodoc-process-docstring', _point_reexported_instances_to_their_docs)
+    app.connect('build-finished', _copy_web_labs)
