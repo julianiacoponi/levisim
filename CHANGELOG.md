@@ -7,6 +7,11 @@ All notable changes to `levisim` are recorded here. The format follows
 ## [Unreleased]
 
 ### Changed
+- README figures for the quickstart and the stochastic simulations redrawn and extended: an
+  annotated homodyne spectrum with the displacement spectrum of each motion, a cavity-detuning sweep
+  of the spectrum and of the phonon occupancies, the simulated traces, and a 200 ms simulation
+  (was 40 ms) for smoother spectra, with the co-spectrum's statistical band and the window leakage
+  shown as a ratio to theory.
 - Installation instructions for the PyPI release (upgrade, version check, editable install of a
   clone with `pip install -e ".[dev]"`, running the notebooks against a release tag), badges in the
   README, the PyPI link in `CITATION.cff`, and the release notes for the `testpypi` environment.
