@@ -7,8 +7,8 @@ an optional radiation-reaction correction) and the gas-damping tensors. `Sphere`
 implemented here; `Bead` (levisim.physics.bead) is a `Sphere` that keeps the original keyword
 arguments and numbers. The non-spherical shapes (Spheroid, Ellipsoid, Cylinder, Rod, Disk, Dumbbell)
 are in levisim.physics.shapes and `TabulatedParticle` in levisim.physics.tabulated. A particle has a
-fixed orientation (a unit quaternion) that turns body-frame tensors into lab-frame ones; rotational
-dynamics come later.
+orientation (a unit quaternion) that turns body-frame tensors into lab-frame ones; the rotational
+dynamics are in levisim.physics.rotation and levisim.simulation.rigid_body.
 """
 
 from functools import cached_property
@@ -158,6 +158,7 @@ class Particle:
         λ=1064*nm,
         Φ=_NODE,
         orientation=(1.0, 0.0, 0.0, 0.0),
+        dipole_moment=None,
     ):
         """
         Initialises a Particle instance
@@ -181,6 +182,10 @@ class Particle:
         # Orientation of the body frame (unit quaternion w, x, y, z)
         # [·]
         self.orientation = orientation
+
+        # Permanent electric dipole moment in the body frame (None: no permanent dipole)
+        # [C·m]
+        self.dipole_moment = dipole_moment
 
     @property
     def orientation(self):
@@ -374,15 +379,87 @@ class Particle:
 
     def effective_polarisability_along(self, direction, k):
         """
-        Effective polarisability for light polarised along the real unit lab-frame vector
-        `direction` at wavenumber k [1/m]: ê·α_eff·ê, with the radiation reaction applied to the whole
-        tensor first. For a fixed orientation the time-averaged dipole energy in the field E ê is
-        -(1/4) Re(ê·α_eff·ê)|E|² (the induced dipole's components perpendicular to ê do no work),
-        so this sets the translational trap frequencies.
+        Effective polarisability for light polarised along the unit lab-frame vector `direction` at
+        wavenumber k [1/m]: ê*·α_eff·ê, with the radiation reaction applied to the whole tensor
+        first. For a fixed orientation the time-averaged dipole energy in the field E ê is
+        -(1/4) Re(ê*·α_eff·ê)|E|² (the induced dipole's components perpendicular to ê do no work),
+        so this sets the translational trap frequencies. A complex `direction` is a Jones vector
+        (circular or elliptical polarisation).
         [complex Fm²]
         """
+        if np.iscomplexobj(direction):
+            e = np.asarray(direction, dtype=complex)
+            return complex(np.conj(e) @ self.effective_polarisability_tensor(k) @ e)
         e = np.asarray(direction, dtype=float)
         return complex(e @ self.effective_polarisability_tensor(k) @ e)
+
+    ################################################################################################
+    # ROTATION (levisim.physics.rotation)
+    # ----------------------------------------------------------------------------------------------
+    def body_effective_polarisability_tensor(self, k):
+        """
+        Body-frame polarisability with the radiation reaction at the wavenumber k [1/m] of the light,
+        α_eff = α (𝟙 - i k³/(6πε0) α)⁻¹ from the static body-frame tensor at the particle's λ (the
+        lab-frame tensor of any orientation R is R α_eff Rᵀ)
+        [complex Fm²]
+        """
+        return _radiation_reaction(_as_tensor(self.polarisability_tensor()), k)
+
+    def lab_tensor(self, tensor, orientation=None):
+        """
+        A body-frame 3×3 tensor in the lab frame for `orientation` (a unit quaternion; default the
+        particle's own), R T Rᵀ
+        [units of T]
+        """
+        if orientation is None:
+            return self.to_lab_frame(tensor)
+        R = quaternion_to_rotation_matrix(as_unit_quaternion(orientation))
+        return R @ np.asarray(tensor) @ R.T
+
+    def lab_vector(self, vector, orientation=None):
+        """A body-frame 3-vector in the lab frame for `orientation` (default the particle's own), R v"""
+        R = self.rotation_matrix if orientation is None else quaternion_to_rotation_matrix(as_unit_quaternion(orientation))
+        return R @ np.asarray(vector)
+
+    @property
+    def dipole_moment(self):
+        """
+        Permanent electric dipole moment in the body frame (None if the particle has none), which a
+        static electric field turns (`UniformElectricField.torque`)
+        [C·m]
+        """
+        return getattr(self, '_dipole_moment', None)
+
+    @dipole_moment.setter
+    def dipole_moment(self, value):
+        if value is None:
+            self._dipole_moment = None
+            return
+        p = np.asarray(value, dtype=float)
+        if p.shape != (3,) or not np.all(np.isfinite(p)):
+            raise ValueError(f'dipole_moment must be a finite body-frame 3-vector in C·m, not {value}')
+        self._dipole_moment = p
+
+    @property
+    def magnetic_moment(self):
+        """
+        Permanent magnetic moment in the body frame, μ = V·M_r from the material's remanent
+        magnetisation (a magnitude M_r is taken along the body z axis); None if the material has no
+        remanence
+        [A·m²]
+        """
+        M = getattr(self.material, 'magnetisation', None)
+        if M is None:
+            return None
+        M = np.asarray(M, dtype=float)
+        if M.ndim == 0:
+            M = np.array([0.0, 0.0, float(M)])
+        return self.V * M
+
+    @property
+    def magnetic_susceptibility_tensor(self):
+        """Magnetic volume susceptibility χ_m of the material, a 3×3 body-frame tensor [·]"""
+        return self.material.χ_m_tensor
 
     ################################################################################################
     # GAS DAMPING

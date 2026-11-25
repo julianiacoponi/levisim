@@ -122,6 +122,25 @@ class ForceElement:
         """
         return np.zeros(3)
 
+    def torque_stiffness(self, particle, orientation=None, r0=None):
+        """
+        Torque stiffness K_ij = -∂τ_i/∂θ_j for small rotations θ about the lab axes, at `orientation`
+        (default the particle's own) and position r0 (default the origin)
+        [N·m/rad]
+
+        Zero by default.
+        """
+        return np.zeros((3, 3))
+
+    def torque_noise(self, particle, orientation=None, r0=None):
+        """
+        Two-sided torque spectral density matrix that the element adds, 〈τ_i(t) τ_j(t')〉 = S_ij δ(t - t')
+        [N²·m²/Hz]
+
+        Zero by default (the `Tweezer` gives its recoil torque noise).
+        """
+        return np.zeros((3, 3))
+
     def potential(self, r, particle):
         """
         Potential energy of the particle at r, for a conservative element

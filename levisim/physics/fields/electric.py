@@ -26,6 +26,7 @@ from scipy.special import mathieu_a, mathieu_b
 from levisim.core.constants import e, ħ
 from levisim.core.units import Hz, kHz, mm
 from levisim.physics.fields.base import ForceElement, as_position
+from levisim.physics.material import _as_tensor
 
 __all__ = [
     'PaulTrap',
@@ -657,6 +658,58 @@ class UniformElectricField(ForceElement):
         [N/m]
         """
         return np.zeros((3, 3))
+
+    @staticmethod
+    def _dipoles(particle, orientation):
+        """(lab-frame permanent dipole p0 or None, lab-frame static polarisability) [C·m, Fm²]"""
+        p_body = getattr(particle, 'dipole_moment', None)
+        p0 = None if p_body is None else particle.lab_vector(p_body, orientation)
+        if np.ndim(particle.α) == 0 and getattr(particle, 'has_scalar_polarisability', True):
+            α = None  # an isotropic induced dipole is parallel to E: no torque
+        else:
+            α = np.real(particle.lab_tensor(_as_tensor(particle.static_polarisability_tensor()), orientation))
+        return p0, α
+
+    def torque(self, r, t, particle, orientation=None):
+        """
+        Torque on the particle's permanent dipole p0 (`Particle.dipole_moment`, body frame) and on the
+        dipole the field induces in an anisotropic particle ::
+
+            τ = p0 × E + (α_static E) × E
+
+        with p0 and the static polarisability tensor in the lab frame of `orientation` (default the
+        particle's own). This is the torque used to drive and cool the librations of a near-spherical
+        particle with a permanent dipole (Kamba et al., Nat. Commun. 14, 7943 (2023)).
+        [N·m]
+        """
+        from levisim.physics.rotation import dipole_moment_torque, induced_static_torque
+        p0, α = self._dipoles(particle, orientation)
+        τ = np.zeros(3)
+        if p0 is not None:
+            τ = τ + dipole_moment_torque(p0, self.E)
+        if α is not None:
+            τ = τ + induced_static_torque(α, self.E)
+        return τ
+
+    def torque_stiffness(self, particle, orientation=None, r0=None):
+        """
+        K_ij = -∂τ_i/∂θ_j of `torque` for small rotations about the lab axes: -(G_j p0) × E for the
+        permanent dipole and -((G_j α - α G_j) E) × E for the induced one. For p0 along E it is
+        p0·E·(𝟙 - ÊÊᵀ), a libration frequency √(p0 E/I).
+        [N·m/rad]
+        """
+        from levisim.physics.rotation import GENERATORS, rotated_tensor_derivatives
+        p0, α = self._dipoles(particle, orientation)
+        K = np.zeros((3, 3))
+        for j in range(3):
+            dτ = np.zeros(3)
+            if p0 is not None:
+                dτ = dτ + np.cross(GENERATORS[j] @ p0, self.E)
+            if α is not None:
+                dα = rotated_tensor_derivatives(α)[0][j]
+                dτ = dτ + np.cross(dα @ self.E, self.E)
+            K[:, j] = -dτ
+        return K
 
     def __repr__(self):
         return f'UniformElectricField(E={self.E.tolist()} V/m)'
