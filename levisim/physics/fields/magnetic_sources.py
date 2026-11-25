@@ -725,37 +725,66 @@ class CoilPair(FieldSum):
 ####################################################################################################
 # Uniformly magnetised rectangular block
 # --------------------------------------------------------------------------------------------------
-def _safe_log_sum(Y, R):
-    """ln(Y + R) with R = √(X² + Y² + Z²) ≥ |Y|, without cancellation for Y < 0"""
-    with np.errstate(divide='ignore', invalid='ignore'):
-        return np.where(Y >= 0, np.log(Y + R), np.log((R**2 - Y**2) / (R - Y)))
+def _corner_coordinates(u, half, M):
+    """
+    For the two charge sheets σ = ±M at u_z = ±half_z of a block magnetised along z: the coordinates
+    X, Y, Z of u relative to the 8 sheet corners (last axis) and the weights σ (-1)^(i+j)/4π
+    """
+    a, b, c = half
+    xs = np.array([-a, -a, a, a, -a, -a, a, a])
+    ys = np.array([-b, b, -b, b, -b, b, -b, b])
+    zs = np.array([c, c, c, c, -c, -c, -c, -c])
+    # (-1)^(i+j) is +1 for the corners (x_1, y_1) and (x_2, y_2); σ = +M on top, -M at the bottom
+    weights = np.array([1, -1, -1, 1, -1, 1, 1, -1]) * M / (4 * π)
+    X = u[..., 0, None] - xs
+    Y = u[..., 1, None] - ys
+    Z = u[..., 2, None] - zs
+    return X, Y, Z, weights
+
+
+def _log_sum(A, B2, R):
+    """ln(A + R) with B2 = R² - A², without cancellation for A < 0"""
+    return np.where(A >= 0, np.log(np.abs(A) + R), np.log(B2) - np.log(R + np.abs(A)))
 
 
 def _block_field_Mz(u, half, M):
     """
     H field [A/m] of a block |u_x| ≤ half_x, |u_y| ≤ half_y, |u_z| ≤ half_z magnetised uniformly along
-    +z with magnetisation M [A/m], from its two surface-charge sheets σ = ±M at u_z = ±half_z
+    +z with magnetisation M [A/m], from its two surface-charge sheets σ = ±M at u_z = ±half_z:
+    H = Σ_corners w (-ln(Y + R), -ln(X + R), arctan(XY/(ZR)))
     """
-    x, y, z = u[..., 0], u[..., 1], u[..., 2]
-    a, b, c = half
-    Hx = np.zeros(u.shape[:-1])
-    Hy = np.zeros(u.shape[:-1])
-    Hz = np.zeros(u.shape[:-1])
-    for zs, σ in ((c, M), (-c, -M)):
-        Z = z - zs
-        for i, xs in enumerate((-a, a)):
-            X = x - xs
-            for j, ys in enumerate((-b, b)):
-                Y = y - ys
-                R = np.sqrt(X**2 + Y**2 + Z**2)
-                # Σ_ij (-1)^(i+j) G(x - x_i, y - y_j) with the rectangle's corners x_1 = -a, x_2 = a, ...;
-                # (-1)^(i+j) is +1 for (x_1, y_1) and (x_2, y_2)
-                sign = σ * (1.0 if i == j else -1.0) / (4 * π)
-                with np.errstate(divide='ignore', invalid='ignore'):
-                    Hz += sign * np.arctan(X * Y / (Z * R))
-                Hx += sign * -_safe_log_sum(Y, R)
-                Hy += sign * -_safe_log_sum(X, R)
+    X, Y, Z, w = _corner_coordinates(u, half, M)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        R = np.sqrt(X**2 + Y**2 + Z**2)
+        Hx = -_log_sum(Y, X**2 + Z**2, R) @ w
+        Hy = -_log_sum(X, Y**2 + Z**2, R) @ w
+        Hz = np.arctan(X * Y / (Z * R)) @ w
     return np.stack([Hx, Hy, Hz], axis=-1)
+
+
+def _inverse_sum(A, B2, R):
+    """1/(R (R + A)) with B2 = R² - A², without cancellation for A < 0"""
+    return np.where(A >= 0, 1 / (R * (R + np.abs(A))), (R + np.abs(A)) / (R * B2))
+
+
+def _block_jacobian_Mz(u, half, M):
+    """
+    Jacobian ∂H_i/∂u_j [A/m²] of `_block_field_Mz`, from the derivatives of the sheet antiderivatives
+    G_z = arctan(XY/(ZR)), G_x = -ln(Y + R), G_y = -ln(X + R)
+    """
+    X, Y, Z, w = _corner_coordinates(u, half, M)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        R2 = X**2 + Y**2 + Z**2
+        R = np.sqrt(R2)
+        inv_y = _inverse_sum(Y, X**2 + Z**2, R)  # 1/(R(R + Y))
+        inv_x = _inverse_sum(X, Y**2 + Z**2, R)  # 1/(R(R + X))
+        rows = [
+            [-X * inv_y, -1 / R, -Z * inv_y],                                   # H_x ∝ -ln(Y + R)
+            [-1 / R, -Y * inv_x, -Z * inv_x],                                   # H_y ∝ -ln(X + R)
+            [Y * Z / ((X**2 + Z**2) * R), X * Z / ((Y**2 + Z**2) * R),          # H_z ∝ arctan(XY/(ZR))
+             -X * Y * (X**2 + Y**2 + 2 * Z**2) / ((X**2 * Y**2 + Z**2 * R2) * R)],
+        ]
+        return np.stack([np.stack([term @ w for term in row], axis=-1) for row in rows], axis=-2)
 
 
 class CuboidMagnet(MagneticFieldSource):
@@ -771,7 +800,8 @@ class CuboidMagnet(MagneticFieldSource):
         H_z = σ/4π Σ_ij (-1)^(i+j) arctan(X_i Y_j / (Z R_ij)),   H_x = -σ/4π Σ_ij (-1)^(i+j) ln(Y_j + R_ij)
 
     (X_i = x - x_i, ... relative to the sheet's corners). B = μ0 H outside the block and μ0 (H + M)
-    inside. The field is singular on the edges, so stay a few gradient steps (1e-3 of the smallest
+    inside. gradB is exact (the derivatives of the sheet fields); hessB comes from central differences
+    of it. The field is singular on the edges, so stay a few difference steps (3e-3 of the smallest
     side) away from them.
 
     - dimensions: the full side lengths (L_x, L_y, L_z) in the block's own frame [m]
@@ -824,6 +854,22 @@ class CuboidMagnet(MagneticFieldSource):
         if np.any(inside):
             B[inside] += μ0 * self.magnetisation
         return B
+
+    def _gradB_local(self, u):
+        """
+        Exact Jacobian from the derivatives of the sheet fields (the uniform μ0 M inside the block has none)
+        """
+        u = _as_points(u)
+        half = self.dimensions / 2
+        J = np.zeros(u.shape + (3,))
+        for axis in range(3):
+            M = self.magnetisation[axis]
+            if M == 0:
+                continue
+            order = [(axis + 1) % 3, (axis + 2) % 3, axis]
+            J_perm = _block_jacobian_Mz(u[..., order], half[order], M)
+            J[..., np.array(order)[:, None], np.array(order)[None, :]] += J_perm
+        return μ0 * J
 
     def __repr__(self):
         return (
