@@ -52,6 +52,7 @@ from levisim.physics.tweezer import Tweezer
 from levisim.physics.bead import Bead
 from levisim.physics.gas import Gas
 from levisim.physics.cavity import Cavity
+from levisim.physics.coherent_scattering import static_cavity_hessian
 from levisim.physics.trap import Trap
 
 from levisim.multiphysics.enums.quantum_linear_theory_method import QuantumLinearTheoryMethod
@@ -163,6 +164,25 @@ class MultiTrapBase:
         cavity_kwargs = kwargs.get('cavity_kwargs', {})
 
         self.toy_params = kwargs.get('toy_params')
+
+        # opt-in corrections of the physical model (both off by default, so that the numbers of
+        # levisim 0.1.0 are unchanged; see setup_static_cavity_shifts and Dimension.standing_wave_k):
+        #   - cavity_wavenumber: the standing wave (and so the couplings gx, gy, gxy, gxz, gyz and
+        #     the static shifts) uses the cavity wavenumber Cavity.k, not the tweezer's
+        #   - static_cavity_shifts: the trap frequencies include the cotrapping shifts of the
+        #     coherent-scattering potential and the dispersive shifts of the cavity intensity, and
+        #     everything downstream (zero-point fluctuations, couplings, occupations) uses them
+        # toy parameters have no standing wave or static cavity field, so there both are ignored
+        self.cavity_wavenumber = bool(kwargs.get('cavity_wavenumber', False))
+        self.static_cavity_shifts = bool(kwargs.get('static_cavity_shifts', False))
+        if self.toy_params and (self.cavity_wavenumber or self.static_cavity_shifts):
+            logger.warning(
+                'cavity_wavenumber and static_cavity_shifts only apply to physical parameters and are'
+                ' ignored with toy_params'
+            )
+            self.cavity_wavenumber = False
+            self.static_cavity_shifts = False
+
         if self.toy_params:
             self.cavity = Cavity(**cavity_kwargs)
             ignored = [name for name in (*PHYSICAL_PER_TRAP_KWARGS, 'φn_dict') if kwargs.get(name) is not None]
@@ -177,6 +197,7 @@ class MultiTrapBase:
             # the cavity is built after the tweezers, so that it is driven at their frequency
             self.cavity = Cavity(**self._cavity_kwargs_with_tweezer_frequency(cavity_kwargs))
             self.setup_linearised_coherent_scattering_physics(**kwargs)
+            self.setup_static_cavity_shifts()
             self.dimensions = {label: Dimension(self, label) for label in self.labels}
 
         # ------------------------------------------------------------------------------------------
@@ -245,7 +266,13 @@ class MultiTrapBase:
                 self.photon_recoil = False
         if self.photon_recoil:
             for label, dimension in self.dimensions.items():
-                self.recoil_heating_rate_dict[label] = dimension.trap.photon_recoil_heating_rates[dimension.axis]
+                Γ_rec = dimension.trap.photon_recoil_heating_rates[dimension.axis]
+                # the rate in phonons per second goes as x_zpf² ∝ 1/Ω, so it follows a static shift
+                # of the dimension's frequency (Trap uses the tweezer frequency)
+                Ω_tw = dimension.trap.Ωj[dimension.axis]
+                if dimension.Ω != Ω_tw:
+                    Γ_rec = Γ_rec * Ω_tw / dimension.Ω
+                self.recoil_heating_rate_dict[label] = Γ_rec
             logger.debug(
                 'Photon recoil heating added to the baths of {}: {}', self,
                 ', '.join(f'Γ_rec,{label}/2π = {Γ_rec / kHz:.4g} kHz' for label, Γ_rec in self.recoil_heating_rate_dict.items()),
@@ -843,6 +870,72 @@ class MultiTrapBase:
         # P0 = i(α* - α) = 2αI
         # [·]
         self.cavity.P0 = 2 * self.cavity.αI
+
+    def setup_static_cavity_shifts(self):
+        """
+        Setup the static stiffness that the static cavity field adds to each bead's trap
+
+        The linearisation of `setup_linearised_coherent_scattering_physics` keeps, at second order
+        in the bead displacement, only the off-diagonal terms of the coherent-scattering potential
+        (gxy ∝ A0, gxz and gyz ∝ P0). The same expansion has diagonal "cotrapping" terms
+        ∝ A0·cos Φ, and the bead also sits in the cavity's own standing-wave intensity (the
+        dispersive potential V_c), whose curvature ∝ |α|²·cos 2Φ adds diagonal terms and an x-y
+        term along the cavity axis. These are the 3 × 3 Hessians K of
+        `levisim.physics.coherent_scattering.static_cavity_hessian` [N/m], one per trap, kept in
+        `self.static_cavity_hessians` (zero unless `static_cavity_shifts=True`). With
+        `static_cavity_shifts=True` each dimension's frequency becomes ::
+
+            Ωjn = Ωjn,tw·√(1 + Kjj/(m·Ωjn,tw²))      (Ωjn,tw = Trap.Ωj, the tweezer's)
+
+        and Kxy adds -Kxy·x_zpf·y_zpf/ħ to gxy. The shifted Ωjn is used self-consistently: it is
+        Dimension.Ω (the mechanical susceptibilities), it sets the zero-point fluctuation (so every
+        coupling is rescaled by √(Ωtw/Ω) per dimension), the thermal and recoil phonon occupations
+        and the cooling estimates. A trap given measured frequencies (`override_Ω_dict` in its
+        `trap_kwargs`) keeps them, since a measured frequency already contains the static shift.
+        `self.static_shifted_Ωj[n]` holds the frequencies of trap n per axis.
+
+        Raises ValueError if a modelled dimension is statically unstable (Ωtw² + K/m ≤ 0).
+        """
+        α = (self.cavity.A0 + 1j * self.cavity.P0) / 2
+        kc = self.cavity.k if self.cavity_wavenumber else None
+        modelled_axes = 'xyz'[:self.Cartesian_axes_per_trap]
+        self.static_cavity_hessians = {}
+        self.static_shifted_Ωj = {}
+        for trap in self.traps:
+            n = trap.trap_index
+            if self.static_cavity_shifts:
+                K = static_cavity_hessian(trap, self.cavity.E0, α, kc=kc)
+            else:
+                K = np.zeros((3, 3))
+            self.static_cavity_hessians[n] = K
+            shifted = {}
+            for ii, axis in enumerate('xyz'):
+                Ω_tw = trap.Ωj[axis]
+                if K[ii, ii] == 0 or trap.override_Ω_dict:
+                    shifted[axis] = Ω_tw
+                    continue
+                relative = K[ii, ii] / (trap.bead.m * Ω_tw**2)
+                if 1 + relative <= 0:
+                    if axis in modelled_axes:
+                        msg = (
+                            f'the static cavity field makes {axis}{n} statically unstable: Ω{axis}{n},tw/2π ='
+                            f' {Ω_tw / kHz:.4g} kHz and K/(m·Ω²) = {relative:.4g}'
+                            ' (pass static_cavity_shifts=False to leave the static shifts out)'
+                        )
+                        logger.error(msg)
+                        raise ValueError(msg)
+                    shifted[axis] = np.nan
+                    continue
+                shifted[axis] = Ω_tw * np.sqrt(1 + relative)
+            self.static_shifted_Ωj[n] = shifted
+        if self.static_cavity_shifts:
+            logger.debug(
+                'Static cavity shifts of {}: {}', self,
+                ', '.join(
+                    f'δΩ{axis}{trap.trap_index}/2π = {(self.static_shifted_Ωj[trap.trap_index][axis] - trap.Ωj[axis]) / kHz:+.4g} kHz'
+                    for trap in self.traps for axis in modelled_axes
+                ),
+            )
 
     # every toy_params key that setup_toy_parameters reads, besides those of the chosen ΩModel kind
     TOY_PARAMETER_KEYS = frozenset({
