@@ -179,7 +179,8 @@ class Casimir(PowerLawPairInteraction):
     - ideal_mirrors [False]: proximity_force only, use η = 1 (perfectly reflecting surfaces, an
       upper bound)
     - validity_warning_ratio [3.0]: a WARNING is logged once if 'casimir_polder' is evaluated at
-      r < ratio·(R_j + R_k), or 'proximity_force' at a gap d > min(R_j, R_k)/ratio
+      r < ratio·(R_j + R_k), or 'proximity_force' at a gap d > min(R_j, R_k)/ratio; 0 switches the
+      warning off
     """
 
     MODELS = ('casimir_polder', 'proximity_force')
@@ -237,9 +238,9 @@ class Casimir(PowerLawPairInteraction):
         gap = r - R_j - R_k
         if gap <= 0:
             raise ValueError(f'Casimir: the spheres touch or overlap (gap {gap:.4g} m)')
-        if self._warned:
-            return
         ratio = self.validity_warning_ratio
+        if self._warned or ratio <= 0:
+            return
         if self.model == 'casimir_polder' and r < ratio * (R_j + R_k):
             message = f'r = {r:.3g} m < {ratio:g}·(R_j + R_k): the dipole (Casimir-Polder) limit is not accurate here'
         elif self.model == 'proximity_force' and gap > min(R_j, R_k) / ratio:

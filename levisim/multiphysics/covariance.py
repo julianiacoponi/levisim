@@ -90,12 +90,15 @@ def quadrature_matrices(mtrap, cavity=True, extra_heating=None):
     """
     (A, D) of the MultiTrap in quadratures, with or without the cavity mode
 
-    - cavity=True: the full drift and diffusion matrices, mode order (cavity, *mtrap.labels)
-    - cavity=False: the mechanical modes only, mode order mtrap.labels: the rows and columns of the
-      cavity quadratures are dropped, which describes the particles with their direct couplings and
-      static shifts but without the cavity (exact when no dimension couples to the cavity, G = 0)
+    - cavity=True: the full drift and diffusion matrices, with the cavity mode first and then the
+      dimensions in the order of ``mtrap.labels``
+    - cavity=False: the mechanical modes only, in the order of ``mtrap.labels``. The rows and columns
+      of the cavity quadratures are dropped, which describes the particles with their direct
+      couplings and static shifts but without the cavity (exact when no dimension couples to the
+      cavity, G = 0)
     - extra_heating: {label: Γ_h} heating rates [phonons/s] added to the diffusion, 2Γ_h on both
       quadratures of each listed mechanical mode
+
     [2π·Hz, 2π·Hz]
     """
     A = quadrature_drift_matrix(mtrap.drift_matrix)

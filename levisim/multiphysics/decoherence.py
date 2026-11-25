@@ -26,7 +26,10 @@ extra heating rate Γ_h is the same as raising the bath occupation n → n + Γ_
   gives S_E ≈ S_V/d² (times a geometry factor of order one).
 
 These rates are valid in the long-wavelength (localisation) regime and for Q = Ω/Γ ≫ 1, which is
-where levisim's linear Gaussian model applies.
+where levisim's linear Gaussian model applies. The blackbody rates are those of a point dipole,
+valid for spheres much smaller than the thermal wavelength, R·kB·T/(ħc) ≪ 1 (ħc/kB·T = 0.57 mm at
+4 K, 7.6 μm at 300 K); above 0.1 `decoherence_budget` logs a WARNING and lists the modes in
+`DecoherenceBudget.warnings`, since the R⁶ scattering term then grossly overestimates the rate.
 """
 
 import math
@@ -35,6 +38,7 @@ import numpy as np
 from scipy.special import zeta
 
 from levisim.core.constants import c, kB, ħ, π
+from levisim.core.logger import logger
 
 __all__ = [
     'DEFAULT_BLACKBODY_PERMITTIVITY',
@@ -103,6 +107,7 @@ class DecoherenceBudget(dict):
     """
 
     included = ('gas',)
+    warnings = ()
 
     def totals(self):
         """{label: total heating rate} [phonons/s]"""
@@ -156,6 +161,7 @@ def decoherence_budget(mtrap, T_environment=None, T_internal=None, ε_bb=DEFAULT
     T_environment = mtrap.gas.T if T_environment is None else T_environment
     budget = DecoherenceBudget()
     budget.included = ('gas', 'photon_recoil') if mtrap.photon_recoil else ('gas',)
+    warnings = []
     for label, dim in mtrap.dimensions.items():
         trap = dim.trap
         particle = trap.bead
@@ -169,6 +175,11 @@ def decoherence_budget(mtrap, T_environment=None, T_internal=None, ε_bb=DEFAULT
         except ValueError:  # a trap without an optical element scatters no tweezer light
             rates['photon_recoil'] = 0.0
         if R is not None:
+            size_parameter = R * kB * max(T_environment, T_environment if T_i is None else T_i) / (ħ * c)
+            if size_parameter > 0.1:
+                warnings.append(
+                    f'{label}: R·kB·T/(ħc) = {size_parameter:.3g} > 0.1, outside the dipole limit of the blackbody rates'
+                )
             Λ_sc, Λ_e, Λ_a = blackbody_localisation_parameters(R, T_environment, T_i, ε_bb)
             rates['blackbody_scattering'] = localisation_heating_rate(Λ_sc, dim.m, dim.Ω)
             rates['blackbody_emission'] = localisation_heating_rate(Λ_e, dim.m, dim.Ω)
@@ -178,4 +189,10 @@ def decoherence_budget(mtrap, T_environment=None, T_internal=None, ε_bb=DEFAULT
             rates['electric_field_noise'] = electric_field_noise_heating_rate(particle.q, S_E, dim.m, dim.Ω)
         rates['total'] = sum(rates[name] for name in MECHANISMS)
         budget[label] = rates
+    budget.warnings = tuple(warnings)
+    if warnings:
+        logger.warning(
+            'decoherence_budget: the blackbody rates are point-dipole results, and these modes are outside'
+            ' their validity (they overestimate the rate): {}', '; '.join(warnings),
+        )
     return budget

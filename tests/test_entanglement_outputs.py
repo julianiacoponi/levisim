@@ -227,3 +227,9 @@ def test_budget_needs_physical_parameters():
     mtrap = MultiTrap(num_traps=2, toy_params=PHASE_DEPENDENT_toy_params)
     with pytest.raises(ValueError, match='physical'):
         decoherence_budget(mtrap)
+
+
+def test_blackbody_size_warning():
+    mtrap, _ = gravity_pair()  # 1 mm spheres
+    assert decoherence_budget(mtrap, T_environment=4.0).warnings
+    assert not decoherence_budget(charged_beads(), T_environment=300.0).warnings
