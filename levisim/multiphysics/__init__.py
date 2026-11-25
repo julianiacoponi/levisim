@@ -115,6 +115,17 @@ __all__ = [
     'visualise_two_noise_component_calculation_methods',
     'visualise_two_noise_component_calculation_methods_over_entire_spectrum',
     'visualise_two_spectrum_calculation_methods',
+    'covariance_evolution',
+    'evolve_covariance',
+    'product_state_covariance',
+    'particle_mode_indices',
+    'particle_log_negativity',
+    'quadrature_matrices',
+    'decoherence_budget',
+    'DecoherenceBudget',
+    'blackbody_localisation_parameters',
+    'electric_field_noise_heating_rate',
+    'localisation_heating_rate',
 ]
 
 from levisim.multiphysics.multitrap import *
@@ -123,6 +134,7 @@ from levisim.multiphysics.hybridisation import *
 from levisim.multiphysics.enums import *
 from levisim.multiphysics.utils import *
 from levisim.multiphysics.covariance import *
+from levisim.multiphysics.decoherence import *
 from levisim.multiphysics.multitone import *
 from levisim.multiphysics.two_tone import *
 from levisim.multiphysics.two_tone_traps import *

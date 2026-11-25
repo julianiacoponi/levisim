@@ -22,6 +22,7 @@ shows where each of them gives the wrong answer for levitated-particle states.
 """
 import numpy as np
 
+from scipy.linalg import block_diag
 from scipy.optimize import minimize
 
 
@@ -50,6 +51,8 @@ __all__ = [
     'rotate_transverse_axes',
     'two_mode_squeezed_vacuum',
     'thermal_covariance',
+    'squeezed_thermal_covariance',
+    'direct_sum',
 ]
 
 
@@ -403,3 +406,21 @@ def thermal_covariance(occupations):
     Product of thermal states with the given mean occupations
     """
     return np.diag(np.repeat(2*np.asarray(occupations, dtype=float) + 1, 2))
+
+
+def squeezed_thermal_covariance(n, r=0.0, θ=0.0):
+    """
+    Covariance matrix of one mode in a squeezed thermal state S(r, θ)·ρ_th(n)·S(r, θ)†
+
+    V = (2n + 1)·R(θ)·diag(e^(-2r), e^(2r))·R(θ)ᵀ: for θ = 0 and r > 0 the X quadrature is squeezed
+    (variance (2n + 1)·e^(-2r)), for r < 0 anti-squeezed; θ rotates the squeezed axis from X towards P.
+    A squeezing of D dB (variance ratio 10^(D/10)) is r = D·ln(10)/20, e.g. 15 dB is r = 1.73.
+    [·]
+    """
+    R = np.array([[np.cos(θ), -np.sin(θ)], [np.sin(θ), np.cos(θ)]])
+    return (2 * n + 1) * R @ np.diag([np.exp(-2 * r), np.exp(2 * r)]) @ R.T
+
+
+def direct_sum(*covariances):
+    """Covariance matrix of a product state, the block-diagonal direct sum of the modes' matrices"""
+    return block_diag(*covariances)

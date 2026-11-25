@@ -152,8 +152,8 @@ repel less and the dampings split, more the larger the dissipative part.
 
 ## Non-reciprocal coupling through the cavity
 
-Particles in one cavity do not couple to each other directly (in levisim, only the motions of the
-same particle couple through $g_{jk}$), but through the cavity field, which each particle drives and
+Without direct interactions, particles in one cavity do not couple to each other directly (only the
+motions of the same particle couple through $g_{jk}$), but through the cavity field, which each particle drives and
 which acts back on all of them. Eliminating the cavity field gives the hybridisation functions
 $R_{j_n k_m}(\omega)$ of [the calculation methods](calculation_methods.md), whose cavity-mediated part
 is a combination of $\mathrm{Re}(G_{j_n}G_{k_m}^*)$ and $\mathrm{Im}(G_{j_n}G_{k_m}^*)$, weighted by the
@@ -209,6 +209,28 @@ route to instability appears in levisim's off-node toy systems with three axes p
 strong coupling of the slow $z$ motion shifts its frequency through zero (the optical spring exceeds
 the trap stiffness), the eigenvalue becomes real and positive, and the particle is pushed out of the
 trap rather than driven into growing oscillation.
+
+## Non-reciprocal direct coupling
+
+Direct couplings between particles (`MultiTrap(interactions=[...])`, `toy_params['g_direct']`) enter
+the drift matrix through `mechanical_coupling_matrix`, which need not be symmetric: entry $g_{jk}$ is
+the rate at which motion $k$ drives motion $j$. A conservative interaction (Coulomb, gravity, Casimir)
+has a symmetric stiffness, $K_{jk} = K_{kj}$, and so $g_{jk} = g_{kj}$: a reciprocal coupling; non-conservative forces (optical binding, or feedback that drives one particle with the
+signal of another) need not. For two degenerate motions in the rotating-wave picture the coupled
+amplitudes evolve with $\begin{pmatrix}-\Gamma/2 & ig_{12}\\ ig_{21} & -\Gamma/2\end{pmatrix}$, so the
+eigenvalues are $-\Gamma/2 \pm \sqrt{-g_{12}g_{21}}$:
+
+- $g_{12}g_{21} > 0$ (reciprocal, or of equal sign): a splitting $2\sqrt{g_{12}g_{21}}$, always stable;
+- $g_{12}g_{21} = 0$ (one-way): no splitting and no growth, the driven motion just follows the other;
+- $g_{12}g_{21} < 0$ (opposite signs): level attraction, and growth at $\sqrt{\lvert g_{12}g_{21}\rvert} - \Gamma/2$
+  once the coupling exceeds the damping.
+
+Checked on the drift matrix of two 300 kHz toy motions with $\Gamma/2\pi$ = 100 Hz and no cavity
+coupling: $g_{12}/2\pi = -g_{21}/2\pi$ = 1 kHz gives a largest real part of +5969.0 s⁻¹ (the
+rotating-wave value is 5969.0 s⁻¹) at a single frequency of 300.002 kHz, while $g_{21} = g_{12}$ gives
+two modes 2 kHz apart with $\mathrm{Re}\,\lambda = -\Gamma/2$. `MultiTrap.is_stable`,
+`max_growth_rate` and the construction-time warning treat such systems like any other. The
+non-reciprocity of the cavity-mediated coupling above adds to that of the direct coupling.
 
 ## Other systems the same machinery describes
 
