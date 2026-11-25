@@ -57,6 +57,129 @@ and a WARNING is logged once per instance when either is used outside its range.
 sets the static $\varepsilon$. A particle's `εr` is levisim's *optical* permittivity (1.98 for the
 default silica), which underestimates the static value.
 
+## Optical binding
+
+`OpticalBinding` is the force that light scattered by one particle exerts on another. It is neither
+conservative nor reciprocal, so it is not a pair potential. Each particle $n$ sits in its own tweezer
+(trap $n$, focus at `trap.position`), which induces the dipole $p_n = \alpha_n E_{\mathrm{tw},n}(r_n)$. The
+dipole radiates the full free-space dipole field $\mathfrak G(r - r_n)\,p_n$, near, intermediate and far
+terms included:
+
+$$
+\mathfrak G(\mathbf r) = \frac{e^{ikr}}{4\pi\varepsilon_0}\left[\frac{k^2}{r}(\mathbb 1 - \hat r\hat r) + (3\hat r\hat r - \mathbb 1)\left(\frac1{r^3} - \frac{ik}{r^2}\right)\right].
+$$
+
+Particle $n$ feels the time-averaged force of the field at its position. With levisim's complex
+amplitudes, $E(t) = \mathrm{Re}[E\,e^{-i\omega t}]$, the force is
+
+$$
+\mathbf F_n = \tfrac12\,\mathrm{Re}\sum_i p_{n,i}^*\,\nabla E_{\mathrm{loc},n,i}(\mathbf r_n)
+\;-\;(\text{force of its own tweezer on the isolated particle}),
+\qquad
+E_{\mathrm{loc},n} = E_{\mathrm{tw},n} + \sum_{m\neq n}\mathfrak G(\mathbf r - \mathbf r_m)\,p_m ,
+$$
+
+where the gradient acts on the field and not on the dipole. Two orders are available.
+
+- `order='first'` (default) keeps every term of second order in the polarisabilities. This is the
+  optical binding force of Rieser et al., Science **377**, 987 (2022), Eq. (S2), and Rudolph et al.,
+  PRL **133**, 233603 (2024), Eq. (1), generalised to complex tensor polarisabilities. It has two parts:
+  the field scattered by $p_m$ acting on $p_n$, and the tweezer acting on the dipole
+  $\delta p_n = \alpha_n\mathfrak G p_m$ that this field induces. Its stiffness blocks are analytic, from
+  closed-form second derivatives of $\mathfrak G$ and of the tweezer field.
+- `order='self_consistent'` solves the coupled-dipole equations $p = \alpha(E_\mathrm{tw} + \mathfrak Gp)$
+  exactly, which includes multiple scattering. Its stiffness blocks are fourth-order central
+  differences of the forces. The two orders differ by a relative amount of order
+  $|k^3\alpha/4\pi\varepsilon_0|/kd$: 0.04 % at 2.2 μm for 105 nm silica spheres.
+
+`α_n` is the lab-frame polarisability with the radiation reaction:
+`Tweezer.effective_polarisability`·𝟙 for an isotropic sphere, and
+`Particle.effective_polarisability_tensor` for shapes, so a tilted spheroid's dipole leaves the
+polarisation direction. Each tweezer is levisim's paraxial elliptical Gaussian beam,
+
+$$
+E_\mathrm{tw}(s) = E_0 e^{i\phi}\,\hat e\;\frac{\exp\!\left(ikz - \dfrac{x^2/w_{x0}^2 + y^2/w_{y0}^2}{1 + iz/z_R}\right)}{1 + iz/z_R},
+$$
+
+at the displacement $s$ from the focus, with $\phi$ = `Tweezer.φ`. On the axis its phase is
+$kz - \arctan(z/z_R) + \phi$, the phase of the coherent-scattering model. The phase gradient at the
+focus is therefore $k' = k - 1/z_R$, not $k$. `tweezer_field='plane_wave'` uses $E_0e^{i\phi}\hat e\,e^{ikz}$
+instead, for comparison with plane-wave theory.
+
+```python
+from levisim.physics import OpticalBinding
+
+mtrap = MultiTrap(num_traps=2, Cartesian_axes_per_trap=3, trap_positions=[(0, 0, 0), (3.2e-6, 0, 0)],
+                  φn_dict={1: 0.5 * π, 2: 0.0}, interactions=[OpticalBinding()])
+binding = mtrap.interactions[0]                   # MultiTrap attached its traps
+parts = binding.coupling_decomposition(mtrap.interaction_positions, [t.bead for t in mtrap.traps])
+parts['reciprocal'], parts['antireciprocal']      # (K ± Kᵀ)/2 over [x1, y1, z1, x2, ...] [N/m]
+```
+
+**Traps.** The interaction needs the tweezers and their foci, which the generic
+`forces(positions, particles)` interface does not carry. Give them with `OpticalBinding(traps=[...])`,
+or let the host attach its own. `MultiTrap`, `MultiParticleFreeSpaceSimulation` and the nonlinear
+`CavitySimulation` call `Interaction.attach_traps(traps)` for every interaction, and the base-class
+method does nothing.
+
+**Reciprocal and anti-reciprocal parts.** For two particles a distance $d$ apart across the
+polarisation, coupled along their tweezer axes, the far-field limit of the stiffness is Rieser et
+al.'s Eq. (1). Writing $\Delta\phi = \phi_1 - \phi_2$,
+
+$$
+K_{zz} \to \begin{pmatrix} k_1 + k_2 & -(k_1 + k_2)\\ -(k_1 - k_2) & k_1 - k_2\end{pmatrix},\qquad
+k_1 = \mathcal G\frac{\cos kd\,\cos\Delta\phi}{kd},\quad k_2 = \mathcal G\frac{\sin kd\,\sin\Delta\phi}{kd},
+\quad \mathcal G = \frac{\alpha^2k^3k'^2E_1E_2}{8\pi\varepsilon_0}.
+$$
+
+$k_1$ is reciprocal, and $k_2$ is the curl of the force. `MultiTrap` turns these into the rates
+$g_{jk} = -K_{jk}x_{\text{zpf},j}x_{\text{zpf},k}/\hbar$, so $g_r \pm g_a$ = `G[z1, z2]`, `G[z2, z1]`. The tests
+check this limit to $2\times10^{-3}$ of $\mathcal G/kd$ at $d$ = 64 μm and 1 mm, for a 20 nm sphere. Without
+the Gouy phase (`tweezer_field='plane_wave'`, $k' = k$) the limit is the published one. On the diagonal, the axial fall of the Gaussian amplitude adds $1/(k'z_R)^2$ to
+the curvature. With complex $\alpha$, the radiation reaction adds $O(\mathrm{Im}\,\alpha/\mathrm{Re}\,\alpha)$.
+For 105 nm silica that is 4 %.
+
+```{figure} figures/optical_binding.png
+Axial coupling of two 105 nm silica spheres in 400 mW tweezers with 730 nm waists (Rieser et
+al.'s parameters), in units of the trap frequency. Left: at $\Delta\phi = \pi/2$ the two directions differ
+in sign and magnitude. Middle: reciprocal and anti-reciprocal parts against the optical phase at
+3.2 μm. Right: a dipole along $y$ radiates no far field along $y$. Separated along the polarisation,
+the coupling has no $1/d$ term and falls as $1/d^2$. Script: `docs/concepts/scripts/optical_binding_figures.py`.
+```
+
+**Momentum balance.** The two forces are not equal and opposite, $F_1 + F_2 \neq 0$. The difference is
+momentum carried away by light. It has two parts: the interference of the fields the two dipoles
+radiate (each dipole alone radiates symmetrically and takes no net momentum), and the change in
+the light the particles remove from the tweezer beams (the $\delta p$ terms). The first part is tested
+exactly for two fixed dipoles: $F_{12} + F_{21} = -\tfrac{\varepsilon_0}{2}\oint|E|^2\hat n\,r^2\,\mathrm d\Omega$,
+cross term only, to $10^{-9}$ (`tests/test_optical_binding.py`). The second part, the momentum
+exchanged with the beams, is not represented in levisim, which has no field degrees of freedom for
+the tweezers.
+
+**Approximations.**
+
+- Point dipoles: a WARNING is logged once when $kR > 0.6$.
+- Paraxial tweezers, with no longitudinal field.
+- Vacuum between the particles.
+- Each particle is lit by its own tweezer only. Another tweezer's Gaussian field at a particle is
+  neglected, and a WARNING is logged once when it exceeds `overlap_tolerance` = 10⁻³ of the
+  particle's own. Real high-NA foci have Airy tails, which Rieser et al. had to include in their
+  fits.
+- Tweezers of different wavelengths do not interfere on average. Their particles do not bind (the
+  pair is skipped, with a WARNING).
+- Interference between the recoil noise of the two particles (correlated shot noise, Rudolph et al.
+  Eq. (8)) is not modelled. Each particle's recoil heating stays independent.
+
+The time domain evaluates the full, un-linearised force at every step, with the Gaussian envelope
+and the Gouy phase. This is what saturates the non-reciprocal instability on a limit cycle. Only
+the NumPy loop runs it: `MultiParticleFreeSpaceSimulation` with `backend='auto'` falls back from numba,
+and the nonlinear `CavitySimulation` is not compilable with interactions. One force evaluation for
+two particles takes about 70 μs.
+
+Reproductions: `notebooks/papers/rieser2022_optical_binding.ipynb` (coupling against separation,
+optical phase and polarisation) and `notebooks/papers/reisenbauer2024_nonreciprocal_binding.ipynb`
+(exceptional points and limit cycles).
+
 ## Positions
 
 `Trap(position=(X, Y, Z))` places a trap (its origin, the tweezer focus) in the laboratory frame,
