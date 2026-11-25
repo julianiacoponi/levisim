@@ -105,7 +105,9 @@ def test_vectorised_and_pointwise_evaluation_agree():
         points = RNG.normal(scale=scale, size=(2, 3, 3))
         B = source.B(points)
         assert B.shape == (2, 3, 3) and source.gradB(points).shape == (2, 3, 3, 3)
-        np.testing.assert_allclose(B[1, 2], source.B(points[1, 2]), rtol=1e-13, atol=0)
+        # round-off is relative to the field's magnitude, not to each (possibly near-zero) component
+        B_point = source.B(points[1, 2])
+        np.testing.assert_allclose(B[1, 2], B_point, rtol=0, atol=1e-12 * np.linalg.norm(B_point))
 
 
 def test_current_loop_matches_biot_savart_and_on_axis_formula():
