@@ -24,42 +24,55 @@ The method-specific calculations are in the mixins, which `MultiTrap` combines w
 `setup_linear_amplifier_model_matrices` and `setup_hybridisation` from the mixins.
 """
 
-import numpy as np
 import itertools
-
 from copy import copy
 from functools import cached_property
 
+import numpy as np
+
 from levisim.core.constants import (
-    π, ħ, kB,
     c as speed_of_light,
+)
+from levisim.core.constants import (
+    kB,
     m_air,
-    shot_noise,
     node,
+    shot_noise,
+    ħ,
+    π,
 )
-from levisim.core.units import (
-    degrees,
-    metre, nm,
-    Hz, kHz,
-    kg,
-    mbar,
-)
-
 from levisim.core.logger import logger
-from levisim.core.wrappers import timer, profiler, progress_bar
-
-from levisim.physics.tweezer import Tweezer
-from levisim.physics.bead import Bead
-from levisim.physics.gas import Gas
-from levisim.physics.cavity import Cavity
-from levisim.physics.coherent_scattering import hessian_to_coupling_rate, static_cavity_hessian
-from levisim.physics.trap import Trap
-
-from levisim.multiphysics.enums.quantum_linear_theory_method import QuantumLinearTheoryMethod
+from levisim.core.units import (
+    Hz,
+    degrees,
+    kg,
+    kHz,
+    mbar,
+    metre,
+    nm,
+)
+from levisim.core.wrappers import profiler, progress_bar, timer
 from levisim.multiphysics.dimension import Dimension
-from levisim.multiphysics.hybridisation import generate_subscripts_and_labels
+from levisim.multiphysics.enums.quantum_linear_theory_method import (
+    QuantumLinearTheoryMethod,
+)
+from levisim.multiphysics.hybridisation import (
+    axes_per_trap_from,
+    generate_subscripts_and_labels,
+)
 from levisim.multiphysics.multitrap.omega_model import ΩModel
-
+from levisim.physics.bead import Bead
+from levisim.physics.cavity import Cavity
+from levisim.physics.coherent_scattering import (
+    drive_polarisability,
+    hessian_to_coupling_rate,
+    librational_expansion,
+    static_cavity_hessian,
+)
+from levisim.physics.gas import Gas
+from levisim.physics.rotation import LIBRATION_AXIS_INDEX, is_libration_axis
+from levisim.physics.trap import Trap
+from levisim.physics.tweezer import Tweezer
 
 __all__ = [
     'MultiTrapBase',
@@ -100,7 +113,17 @@ class MultiTrapBase:
             if per_trap_lists:
                 default_num_traps = len(per_trap_lists[0])
         self.num_traps = kwargs.get('num_traps', default_num_traps)
+        # the modelled axes of each particle: an integer n (the first n of x, y, z, as always) or a
+        # tuple of axis names, which may include the librations 'α', 'β', 'γ' (small rotations about
+        # the lab x, y, z axes; see setup_librations), e.g. ('x', 'y', 'z', 'α', 'γ')
         self.Cartesian_axes_per_trap = kwargs.get('Cartesian_axes_per_trap', 2)
+        self.axes_per_trap = axes_per_trap_from(self.Cartesian_axes_per_trap)
+        self.num_axes_per_trap = len(self.axes_per_trap)
+        self.librational_axes = tuple(axis for axis in self.axes_per_trap if is_libration_axis(axis))
+        if self.librational_axes and kwargs.get('toy_params'):
+            msg = f'librational axes {self.librational_axes} need physical parameters, not toy_params'
+            logger.error(msg)
+            raise ValueError(msg)
         # ω_range is either one array of angular frequencies, or a list/tuple of arrays that are
         # stitched into one sorted array without duplicates - e.g. a fine grid around each
         # resonance plus a coarse background grid - kept per segment in self.ω_ranges
@@ -125,7 +148,7 @@ class MultiTrapBase:
                 )
             logger.debug('{} ω_range segments stitched into {} unique points', len(self.ω_ranges), len(self.ω_range))
 
-        self.num_dimensions = self.num_traps * self.Cartesian_axes_per_trap
+        self.num_dimensions = self.num_traps * self.num_axes_per_trap
         # we assume there is one light degree of freedom, with just 2 in the noise vector: a_in, a_in^dagger
         # for each dimension we have 2 entries in the noise vector: bjn,in, bjn,in^dagger
         self.num_operators = 2 * self.num_dimensions + 2
@@ -209,6 +232,7 @@ class MultiTrapBase:
             self.setup_linearised_coherent_scattering_physics(**kwargs)
             self.setup_interactions()
             self.setup_static_cavity_shifts()
+            self.setup_librations()
             self.dimensions = {label: Dimension(self, label) for label in self.labels}
 
         # ------------------------------------------------------------------------------------------
@@ -280,6 +304,18 @@ class MultiTrapBase:
                 self.photon_recoil = False
         if self.photon_recoil:
             for label, dimension in self.dimensions.items():
+                if is_libration_axis(dimension.axis):
+                    # the recoil torque noise of the tweezer light (Trap.libration_recoil_heating_rates)
+                    Γ_rec = dimension.trap.libration_recoil_heating_rates[dimension.axis]
+                    Ω_bare = dimension.trap.Ωθ[dimension.axis]
+                    if Ω_bare > 0 and dimension.Ω != Ω_bare:
+                        Γ_rec = Γ_rec * Ω_bare / dimension.Ω
+                    elif not Ω_bare > 0:
+                        # no tweezer stiffness: the rate from the noise directly, S/(2 I ħ Ω)
+                        S = np.diag(dimension.trap.torque_noise_psd)[LIBRATION_AXIS_INDEX[dimension.axis]]
+                        Γ_rec = S / (2 * dimension.m * ħ * dimension.Ω)
+                    self.recoil_heating_rate_dict[label] = Γ_rec
+                    continue
                 Γ_rec = dimension.trap.photon_recoil_heating_rates[dimension.axis]
                 # the rate in phonons per second goes as x_zpf² ∝ 1/Ω, so it follows a static shift
                 # of the dimension's frequency (Trap uses the bare tweezer frequency)
@@ -341,7 +377,8 @@ class MultiTrapBase:
         """
         String to represent an instance of MultiTrap
         """
-        return f'MultiTrap({self.num_traps}×{self.Cartesian_axes_per_trap})'
+        axes = self.Cartesian_axes_per_trap
+        return f'MultiTrap({self.num_traps}×{axes if isinstance(axes, (int, np.integer)) else "".join(axes)})'
 
     def _log_construction(self):
         """
@@ -685,6 +722,10 @@ class MultiTrapBase:
             for kk, dim_k in enumerate(dims):
                 if jj == kk or dim_j.trap_index != dim_k.trap_index:
                     continue
+                if is_libration_axis(dim_j.axis) or is_libration_axis(dim_k.axis):
+                    # librations: from the static stiffness of setup_librations
+                    couplings[jj, kk] = self.librational_coupling_rate(dim_j, dim_k)
+                    continue
                 axes = ''.join(sorted(dim_j.axis + dim_k.axis))
                 couplings[jj, kk] = getattr(dim_j, f'g{axes}')
 
@@ -705,7 +746,8 @@ class MultiTrapBase:
             axis_index = {'x': 0, 'y': 1, 'z': 2}
             for jj, dim_j in enumerate(dims):
                 for kk, dim_k in enumerate(dims):
-                    if jj == kk:
+                    if jj == kk or dim_j.axis not in axis_index or dim_k.axis not in axis_index:
+                        # (the interactions exert no torques: librations are not coupled by them)
                         continue
                     K_jk = self.interaction_stiffness_blocks[
                         dim_j.trap_index - 1, dim_k.trap_index - 1, axis_index[dim_j.axis], axis_index[dim_k.axis]
@@ -952,7 +994,7 @@ class MultiTrapBase:
             # [J]
             # (the field the bead scatters is its trapping tweezer's focal field E0 by default, or
             # cavity_drive_field_ratio × E0 of another tweezer: see Trap.cavity_drive_field)
-            trap.Ed = 0.5 * trap.bead.α * trap.cavity_drive_field * self.cavity.E0
+            trap.Ed = 0.5 * drive_polarisability(trap) * trap.cavity_drive_field * self.cavity.E0
             # Cavity drive frequency for a particular bead in a particular tweezer trap
             # [2π·Hz]
             trap.ωd = trap.Ed / ħ
@@ -1096,7 +1138,7 @@ class MultiTrapBase:
         Raises ValueError if a modelled dimension is statically unstable (Ωtw² + K/m ≤ 0).
         """
         α = (self.cavity.A0 + 1j * self.cavity.P0) / 2
-        modelled_axes = 'xyz'[:self.Cartesian_axes_per_trap]
+        modelled_axes = ''.join(axis for axis in self.axes_per_trap if axis in 'xyz')
         self.static_cavity_hessians = {}
         self.static_shifted_Ωj = {}
         for trap in self.traps:
@@ -1144,6 +1186,124 @@ class MultiTrapBase:
                 ),
             )
 
+    def setup_librations(self):
+        """
+        Setup the librational dimensions 'α', 'β', 'γ' (small rotations about the lab x, y, z axes)
+        of each particle about its orientation `particle.orientation`, when they are modelled
+        (`Cartesian_axes_per_trap` a tuple of axis names that includes them)
+
+        For each trap n this computes, from the trap's elements (`Trap.torque_stiffness_tensor`:
+        the tweezer's alignment torque, electric and magnetic torques) and from the coherent-
+        scattering and cavity terms of `levisim.physics.coherent_scattering.librational_expansion`:
+
+            - `libration_stiffness[n]`: the 3×3 torque stiffness K_θθ [N·m/rad] = the elements'
+              + the off-diagonal coherent-scattering terms (always, like gxy) + the diagonal
+              coherent-scattering terms and the cavity term (with static_cavity_shifts, like the
+              translational static shifts)
+            - `librational_Ω[n]`: {'α': Ωα, ...} = √(K_jj/I_jj) with I the lab-frame inertia
+              (`Trap.Ij`); `override_Ω_dict` entries 'α', 'β', 'γ' are used as they are
+            - `rotranslational_stiffness[n]`: the 3×3 translation-libration block K_rθ [N/rad]
+              (coherent scattering always, the cavity term with static_cavity_shifts)
+            - `librational_light_couplings[n]`: c_j with G_j = c_j·θ_zpf,j
+
+        The linear model takes the lab-frame inertia and rotational gas damping to be diagonal (the
+        particle's principal axes along the lab axes, or a sphere); otherwise their diagonals are
+        used and a WARNING is logged. A static torque at the orientation (from the elements or the
+        static cavity field) means that the orientation is not an equilibrium; it is logged with
+        the angle |τ_j|/K_jj it would cause.
+
+        Raises ValueError if a modelled libration has K_jj ≤ 0 (a free or unstable rotation, e.g.
+        the rotation 'β' about the polarisation of a linearly polarised tweezer).
+        """
+        self.libration_stiffness = {}
+        self.librational_Ω = {}
+        self.rotranslational_stiffness = {}
+        self.librational_light_couplings = {}
+        self.librational_static_torques = {}
+        if not self.librational_axes:
+            return
+        α = (self.cavity.A0 + 1j * self.cavity.P0) / 2
+        for trap in self.traps:
+            n = trap.trap_index
+            expansion = librational_expansion(trap, self.cavity.E0, α)
+            K_CS = expansion['K_θθ_CS']
+            K = np.array(trap.torque_stiffness_tensor, dtype=float)
+            K = K + (K_CS - np.diag(np.diag(K_CS)))
+            K_rθ = np.array(expansion['K_rθ_CS'], dtype=float)
+            torque = np.array(trap.static_torque, dtype=float)
+            if self.static_cavity_shifts:
+                K = K + np.diag(np.diag(K_CS)) + expansion['K_θθ_cav']
+                K_rθ = K_rθ + expansion['K_rθ_cav']
+                torque = torque + expansion['torque']
+            self.libration_stiffness[n] = K
+            self.rotranslational_stiffness[n] = K_rθ
+            self.librational_light_couplings[n] = expansion['light']
+            self.librational_static_torques[n] = torque
+
+            inertia = np.asarray(trap.bead.lab_inertia_tensor, dtype=float)
+            damping = trap.Γrot_tensor
+            for name, tensor in (('inertia', inertia), ('rotational gas damping', damping)):
+                off = tensor - np.diag(np.diag(tensor))
+                if np.max(np.abs(off)) > 1e-9 * np.max(np.abs(tensor)):
+                    logger.warning(
+                        '{}: the lab-frame {} tensor of particle {} is not diagonal (its principal axes are not'
+                        ' along x, y, z); the librational dimensions use its diagonal', self, name, n,
+                    )
+            frequencies = {}
+            for axis in ('α', 'β', 'γ'):
+                j = LIBRATION_AXIS_INDEX[axis]
+                if trap.override_Ω_dict and axis in trap.override_Ω_dict:
+                    frequencies[axis] = float(trap.override_Ω_dict[axis])
+                    continue
+                if K[j, j] > 0:
+                    frequencies[axis] = float(np.sqrt(K[j, j] / trap.Ij[axis]))
+                    continue
+                frequencies[axis] = np.nan
+                if axis in self.librational_axes:
+                    msg = (
+                        f'libration {axis}{n} has no restoring torque (K = {K[j, j]:.4g} N·m/rad): it is a free or'
+                        ' unstable rotation and cannot be a MultiTrap dimension (for a linearly polarised tweezer the'
+                        " rotation 'β' about the polarisation is free; use an elliptical polarisation or leave it out)"
+                    )
+                    logger.error(msg)
+                    raise ValueError(msg)
+            self.librational_Ω[n] = frequencies
+            for axis in self.librational_axes:
+                j = LIBRATION_AXIS_INDEX[axis]
+                if torque[j] != 0 and K[j, j] > 0 and abs(torque[j]) / K[j, j] > 1e-6:
+                    logger.warning(
+                        '{}: static torque τ{} = {:.4g} N·m on particle {} at its orientation, which would turn it by'
+                        ' {:.4g} rad; the librations are linearised about the given orientation',
+                        self, axis, torque[j], n, torque[j] / K[j, j],
+                    )
+        logger.debug(
+            'Librations of {}: {}', self,
+            ', '.join(
+                f'Ω{axis}{n}/2π = {self.librational_Ω[n][axis] / kHz:.4g} kHz'
+                for n in self.librational_Ω for axis in self.librational_axes
+            ),
+        )
+
+    def librational_coupling_rate(self, dim_j, dim_k):
+        """
+        The direct coupling rate g_jk (`mechanical_coupling_matrix` convention) between two
+        dimensions of the same particle of which at least one is a libration, from the static
+        stiffness: -K_jk·zpf_j·zpf_k/ħ with K from `libration_stiffness` (two librations) or
+        `rotranslational_stiffness` (a translation and a libration)
+        [2π·Hz]
+        """
+        n = dim_j.trap_index
+        a, b = dim_j.axis, dim_k.axis
+        if is_libration_axis(a) and is_libration_axis(b):
+            K_jk = self.libration_stiffness[n][LIBRATION_AXIS_INDEX[a], LIBRATION_AXIS_INDEX[b]]
+        elif is_libration_axis(b):
+            K_jk = self.rotranslational_stiffness[n]['xyz'.index(a), LIBRATION_AXIS_INDEX[b]]
+        else:
+            K_jk = self.rotranslational_stiffness[n]['xyz'.index(b), LIBRATION_AXIS_INDEX[a]]
+        if K_jk == 0:
+            return 0.0
+        return hessian_to_coupling_rate(K_jk, dim_j.zpf, dim_k.zpf)
+
     # every toy_params key that setup_toy_parameters reads, besides those of the chosen ΩModel kind
     TOY_PARAMETER_KEYS = frozenset({
         'Ω_model', 'Ωz_to_Ωx_multiplier',
@@ -1190,7 +1350,7 @@ class MultiTrapBase:
         self.Ωjn_dict = self.Ω_model_object.frequencies(self.labels)
         self.Ω_model_description = self.Ω_model_object.description
 
-        if self.Cartesian_axes_per_trap == 3:
+        if 'z' in self.axes_per_trap:
             # allow for custom z frequencies, but if not provided, then always do a factor of x freqs
             if self.Ω_model != 'custom':
                 self.Ωz_to_Ωx_multiplier = params.get('Ωz_to_Ωx_multiplier', 10)
@@ -1200,15 +1360,15 @@ class MultiTrapBase:
                     self.Ωjn_dict[zn] = self.Ωjn_dict[xn] / self.Ωz_to_Ωx_multiplier
                 self.Ω_model_description += f'\n    Ωz_to_Ωx_multiplier = {self.Ωz_to_Ωx_multiplier:.1f}'
 
-        if self.Cartesian_axes_per_trap >= 1:
+        if 'x' in self.axes_per_trap:
             Ωxs = np.array([self.Ωjn_dict[label] for label in self.labels if label[0] == 'x'])
             self.Ω_model_description += f'\n    all Ωx = {np.array2string(Ωxs / kHz, precision=2, separator=", ")} kHz'
 
-        if self.Cartesian_axes_per_trap >= 2:
+        if 'y' in self.axes_per_trap:
             Ωys = np.array([self.Ωjn_dict[label] for label in self.labels if label[0] == 'y'])
             self.Ω_model_description += f'\n    all Ωy = {np.array2string(Ωys / kHz, precision=2, separator=", ")} kHz'
 
-        if self.Cartesian_axes_per_trap == 3:
+        if 'z' in self.axes_per_trap:
             Ωzs = np.array([self.Ωjn_dict[label] for label in self.labels if label[0] == 'z'])
             self.Ω_model_description += f'\n    all Ωz = {np.array2string(Ωzs / kHz, precision=2, separator=", ")} kHz'
 

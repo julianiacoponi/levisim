@@ -55,6 +55,8 @@ class Dimension:
         # remaining characters are the bead index
         self.label = label
         self.axis, self.trap_index = label[0], int(label[1:])
+        # a libration 'α', 'β', 'γ' (rotation about the lab x, y, z axis) rather than a translation
+        self.is_libration = self.axis in ('α', 'β', 'γ')
         self.sub = self.multitrap.label_to_sub[label]
         # needed to assign q1D
         self.noise_index = self.multitrap.label_to_noise_index[label]
@@ -109,15 +111,17 @@ class Dimension:
             self.T = self.multitrap.gas.T
 
         if self.m is None:
-            self.m = self.trap.bead.m
+            # for a libration 'α', 'β', 'γ' the moment of inertia about that lab axis
+            self.m = self.trap.Ij[self.axis] if self.is_libration else self.trap.bead.m
 
         if self.Ω is None:
             # the tweezer frequency, plus the static cavity shift if MultiTrap(static_cavity_shifts=True)
             self.Ω = self.mechanical_frequency(self.axis)
 
         if self.Γ is None:
-            # the gas damping of this axis (Trap.Γth for a sphere)
-            self.Γ = self.trap.Γth_j[self.axis]
+            # the gas damping of this axis (Trap.Γth for a sphere; the rotational gas damping
+            # Trap.Γrot_j for a libration)
+            self.Γ = self.trap.Γrot_j[self.axis] if self.is_libration else self.trap.Γth_j[self.axis]
 
         # Light-mech coupling goes H/ħ = -X·L
         # X = b† + b
@@ -146,6 +150,14 @@ class Dimension:
 
         if self.g is None:
             self.g = self.light_mech_coupling
+
+        if self.gxy is None and not isinstance(self.multitrap.Cartesian_axes_per_trap, (int, np.integer)):
+            # a tuple of axis names: the coherent-scattering couplings of the Cartesian pairs present
+            # (those with a libration are built by MultiTrap.librational_coupling_rate)
+            axes = self.multitrap.axes_per_trap
+            self.gxy = self.mech_mech_coupling('xy') if 'x' in axes and 'y' in axes else 0
+            self.gxz = self.mech_mech_coupling('xz') if 'x' in axes and 'z' in axes else 0
+            self.gyz = self.mech_mech_coupling('yz') if 'y' in axes and 'z' in axes else 0
 
         if self.gxy is None:
             if self.multitrap.Cartesian_axes_per_trap == 1:
@@ -179,7 +191,7 @@ class Dimension:
         # ------------------------------------------------------------------------------------------
         # Linear coupling of (x, y, z)-motion to the cavity light quadratures with tweezer phase included
         # [2π·Hz]
-        if not self.φ:
+        if not self.φ and round(sign * Φjn_CS / (π/2)) * (π/2) == sign * Φjn_CS:
             # NOTE: exact cos and sin of Φjn_CS = 0 or ±π/2, since np.cos(π/2) = 6.1e-17 would leave a
             # spurious amplitude-quadrature coupling of z (these are the values sympy gave, which was
             # used here before; it took about a second to import)
@@ -297,6 +309,12 @@ class Dimension:
 
         [rad]
         """
+        if self.is_libration:
+            # the phase of the complex coupling (0 for a linearly polarised tweezer), see
+            # light_mech_coupling
+            if not hasattr(self, '_libration_coupling_phase'):
+                _ = self.light_mech_coupling  # sets _libration_coupling_phase
+            return self._libration_coupling_phase
         return {
             'x': 0,
             'y': 0,
@@ -336,6 +354,18 @@ class Dimension:
         tweezer unless the trap has a `cavity_drive_tweezer`). For a bead away from that tweezer's
         focus the Gouy term is still the focal one, k - 1/zR; the x, y couplings do not have it.
         """
+        if self.is_libration:
+            # G = c·θ_zpf from levisim.physics.coherent_scattering.librational_expansion: a real
+            # coupling (to the amplitude quadrature, like x and y) for a linearly polarised tweezer;
+            # otherwise g = |G| and the phase goes into linearised_coherent_scattering_coupling_phase
+            from levisim.physics.rotation import LIBRATION_AXIS_INDEX
+            c = self.multitrap.librational_light_couplings[self.trap_index][LIBRATION_AXIS_INDEX[self.axis]]
+            G0 = complex(c * self.zero_point_fluctuation(self.axis))
+            if G0.imag == 0:
+                self._libration_coupling_phase = 0
+                return G0.real
+            self._libration_coupling_phase = float(np.angle(G0))
+            return abs(G0)
         kc, θtw = self.trap.drive_tweezer.k, self.trap.drive_tweezer.θ
         ωdsinθ = self.trap.ωd * np.sin(θtw)
         Φ = self.trap.bead.Φ
@@ -397,6 +427,8 @@ class Dimension:
         `MultiTrap.setup_static_cavity_shifts`)
         [2π·Hz]
         """
+        if axis in ('α', 'β', 'γ'):
+            return self.multitrap.librational_Ω[self.trap_index][axis]
         if getattr(self.multitrap, 'static_cavity_shifts', False) or getattr(self.multitrap, 'interactions', None):
             return self.multitrap.static_shifted_Ωj[self.trap_index][axis]
         return self.trap.Ωj[axis]
@@ -410,6 +442,8 @@ class Dimension:
         """
         if self.multitrap.toy_params:
             return 0.0
+        if self.is_libration:
+            return self.Ω - self.trap.Ωθ[self.axis]
         return self.Ω - self.trap.Ωj[self.axis]
 
     def zero_point_fluctuation(self, axis):
@@ -425,6 +459,9 @@ class Dimension:
         # whereas the dynamical optical spring is already in those equations and must not be folded
         # in here. (The old commented-out line called self.Ω_CS, which no longer exists anywhere in
         # levisim.)
+        if axis in ('α', 'β', 'γ'):
+            # a libration: θ_zpf = √(ħ/(2 I Ω)) with the moment of inertia about the lab axis [rad]
+            return np.sqrt(ħ/2 / (self.trap.Ij[axis] * self.mechanical_frequency(axis)))
         return np.sqrt(ħ/2 / (self.trap.bead.m * self.mechanical_frequency(axis)))
 
     ################################################################################################

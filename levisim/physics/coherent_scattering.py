@@ -54,7 +54,11 @@ from levisim.core.constants import ħ
 __all__ = [
     'cavity_axis',
     'cavity_drive',
+    'cavity_mode_polarisability',
+    'cavity_polarisation',
+    'drive_polarisability',
     'hessian_to_coupling_rate',
+    'librational_expansion',
     'optical_force',
     'optical_potential',
     'scattering_amplitude',
@@ -71,6 +75,128 @@ def cavity_axis(θ):
     [·]
     """
     return np.array([np.sin(θ), np.cos(θ), 0.0])
+
+
+def cavity_polarisation(θ):
+    """
+    Unit polarisation e_c = (-cos θ, sin θ, 0) of levisim's cavity mode, in the x-y plane and
+    perpendicular to the cavity axis d (`cavity_axis`), with e_c·ŷ = sin θ
+    [·]
+    """
+    return np.array([-np.cos(θ), np.sin(θ), 0.0])
+
+
+def _static_lab_polarisability(particle):
+    from levisim.physics.material import _as_tensor
+    return particle.lab_tensor(_as_tensor(particle.static_polarisability_tensor()))
+
+
+def _uses_scalar_drive(trap):
+    from levisim.physics.tweezer import _has_scalar_polarisability
+    return _has_scalar_polarisability(trap.bead) and trap.drive_tweezer.has_default_polarisation
+
+
+def drive_polarisability(trap):
+    """
+    The polarisability α_pol that scatters the drive tweezer's light into the cavity mode, defined so
+    that α_pol·sin θ = e_c·α·ê (e_c `cavity_polarisation`, ê the drive tweezer's polarisation, α the
+    particle's static lab-frame tensor); it enters Ed = α_pol·E_d·E0/2 (`Trap.Ed`)
+
+    For an isotropic sphere in levisim's y-polarised tweezer it is `Bead.α` itself (the same object,
+    so every number is unchanged). For an anisotropic particle it includes the cross-polarised
+    scattering of a tilted particle (e_c·α·ŷ rather than ŷ·α·ŷ). A drive whose e_c·α·ê is complex
+    (elliptical light) or non-zero at sin θ = 0 cannot be written in this form: NotImplementedError.
+    [Fm²]
+    """
+    if _uses_scalar_drive(trap):
+        return trap.bead.α
+    θ = trap.drive_tweezer.θ
+    s = complex(cavity_polarisation(θ) @ _static_lab_polarisability(trap.bead) @ np.asarray(trap.drive_tweezer.polarisation, dtype=complex))
+    if abs(np.sin(θ)) < 1e-12:
+        if s == 0:
+            return 0.0
+        raise NotImplementedError(
+            'the particle scatters into the cavity mode at θ = 0 (cross-polarised scattering, e_c·α·ê ='
+            f' {s:.4g} F·m²), which levisim\'s translational couplings (∝ sin θ) cannot express'
+        )
+    value = s / np.sin(θ)
+    if abs(value.imag) > 1e-12 * abs(value):
+        raise NotImplementedError(
+            'e_c·α·ê is complex (an elliptically polarised drive): the translational coherent-scattering'
+            ' couplings of MultiTrap need a real scattering amplitude'
+        )
+    return float(value.real)
+
+
+def cavity_mode_polarisability(trap):
+    """
+    The polarisability e_c·α·e_c of the particle for the cavity mode's own light (the cavity
+    dispersive term U_cav and the cavity pull); `Bead.α` for an isotropic sphere
+    [Fm²]
+    """
+    from levisim.physics.tweezer import _has_scalar_polarisability
+    if _has_scalar_polarisability(trap.bead):
+        return trap.bead.α
+    e_c = cavity_polarisation(trap.drive_tweezer.θ)
+    return float(np.real(e_c @ _static_lab_polarisability(trap.bead) @ e_c))
+
+
+def librational_expansion(trap, cavity_E0, α):
+    """
+    The coherent-scattering and cavity terms of the librations (small rotations θ = (θα, θβ, θγ) about
+    the lab axes at the particle's orientation) of one particle at its trap centre, from the same
+    potential as `optical_potential` with the polarisability tensor rotated, α(θ) = R(θ) α Rᵀ(θ) ::
+
+        U_CS  = -E_d·E0·Re(α_c*·F(r)·s(θ)),   s(θ) = e_c·α(θ)·ê,   F = f(r)·cos(k·d·r + Φ)·e^{iψ(z)}
+        U_cav = -E0²·|α_c|²·cos²(k·d·r + Φ)·c(θ),   c(θ) = e_c·α(θ)·e_c
+
+    (with s = α_pol·sin θ and c = α_pol for an isotropic sphere they are U_CS and U_cav of the module
+    docstring). At r = 0, F = cos Φ and ∇F = -k·sin Φ·d + i·(k - 1/zR)·cos Φ·ẑ. Returns a dict:
+
+        light       c_j such that the light-libration coupling is G_j = c_j·θ_zpf,j (complex, without
+                    the tweezer phase), c_j = (E_d·E0/2ħ)·cos Φ·∂_j s: rotations couple at the
+                    antinode, translations x, y at the node (Stickler et al., Phys. Rev. A 94,
+                    033818 (2016); Rudolph et al., Phys. Rev. A 103, 043514 (2021), Eq. (D5)). It
+                    reproduces Dimension.G of x, y, z with ∂_j s → ∇_j F·s/cos Φ (tests).
+        K_θθ_CS     -E_d·E0·Re(α_c*·cos Φ·∂_i∂_j s)                     [N·m/rad²]
+        K_θθ_cav    -E0²·|α_c|²·cos²Φ·∂_i∂_j c                          [N·m/rad²]
+        K_rθ_CS     -E_d·E0·Re(α_c*·∇_i F·∂_j s)  (rows x, y, z)         [N/rad]
+        K_rθ_cav    E0²·|α_c|²·k·sin 2Φ·d_i·∂_j c                        [N/rad]
+        torque      static torque -∂U/∂θ of the cavity terms at θ = 0     [N·m]
+
+    E_d = `Trap.cavity_drive_field`, E0 = `Cavity.E0` (field per photon), α_c the static intracavity
+    amplitude (bead frame), the static polarisability tensor α as for `Trap.Ed`. The cavity mode
+    polarised along z (perpendicular to levisim's cavity polarisation e_c) is not modelled, so the
+    rotations it would couple (about x for the default geometry) have no light coupling here.
+    """
+    from levisim.physics.rotation import rotated_tensor_derivatives
+    drive = trap.drive_tweezer
+    θc, k, zR = drive.θ, drive.k, drive.zR
+    Φ = trap.bead.Φ
+    α = complex(α)
+    e_c = cavity_polarisation(θc).astype(complex)
+    ê = np.asarray(drive.polarisation, dtype=complex)
+    d = cavity_axis(θc)
+    α_lab = _static_lab_polarisability(trap.bead)
+    dα, d2α = rotated_tensor_derivatives(α_lab)
+    # e_c is real, so e_c·T·v needs no conjugation
+    s_j = np.einsum('a,jab,b->j', e_c, dα, ê)
+    s_ij = np.einsum('a,ijab,b->ij', e_c, d2α, ê)
+    c_j = np.real(np.einsum('a,jab,b->j', e_c, dα, e_c))
+    c_ij = np.real(np.einsum('a,ijab,b->ij', e_c, d2α, e_c))
+    EdE0 = trap.cavity_drive_field * cavity_E0
+    F0 = np.cos(Φ)
+    grad_F = (-k * np.sin(Φ) * d).astype(complex)
+    grad_F[2] += 1j * (k - 1 / zR) * np.cos(Φ)
+    intensity = cavity_E0**2 * abs(α)**2
+    return {
+        'light': EdE0 / (2 * ħ) * F0 * s_j,
+        'K_θθ_CS': -EdE0 * np.real(np.conj(α) * F0 * s_ij),
+        'K_θθ_cav': -intensity * np.cos(Φ)**2 * c_ij,
+        'K_rθ_CS': -EdE0 * np.real(np.conj(α) * np.outer(grad_F, s_j)),
+        'K_rθ_cav': intensity * k * np.sin(2 * Φ) * np.outer(d, c_j),
+        'torque': EdE0 * np.real(np.conj(α) * F0 * s_j) + intensity * np.cos(Φ)**2 * c_j,
+    }
 
 
 def _split_position(r):
@@ -121,10 +247,10 @@ def optical_potential(r, trap, cavity_E0, α, terms=('tweezer', 'coherent_scatte
         A0, P0 = 2 * α.real, 2 * α.imag
         envelope = drive.E_field_amplitude(x, y, z) / drive.E0
         ψ = k * z - np.arctan(z / drive.zR)
-        Ed = 0.5 * trap.bead.α * trap.cavity_drive_field * cavity_E0
+        Ed = 0.5 * drive_polarisability(trap) * trap.cavity_drive_field * cavity_E0
         U = U - Ed * np.sin(θ) * envelope * standing_wave * (A0 * np.cos(ψ) + P0 * np.sin(ψ))
     if 'cavity' in terms:
-        U = U - trap.bead.α * cavity_E0**2 * abs(α)**2 * standing_wave**2
+        U = U - cavity_mode_polarisability(trap) * cavity_E0**2 * abs(α)**2 * standing_wave**2
     unknown = set(terms) - {'tweezer', 'coherent_scattering', 'cavity'}
     if unknown:
         raise ValueError(f'unknown optical potential terms {sorted(unknown)}')
@@ -157,7 +283,7 @@ def static_cavity_hessian(trap, cavity_E0, α):
     α = complex(α)
     A0 = 2 * α.real
     s, c = np.sin(θ), np.cos(θ)
-    Ed = 0.5 * trap.bead.α * trap.cavity_drive_field * cavity_E0
+    Ed = 0.5 * drive_polarisability(trap) * trap.cavity_drive_field * cavity_E0
 
     cs_prefactor = Ed * s * A0 * np.cos(Φ)
     K_CS = np.diag([
@@ -166,7 +292,7 @@ def static_cavity_hessian(trap, cavity_E0, α):
         cs_prefactor * (kz**2 + 1 / zR**2),
     ])
     d = cavity_axis(θ)
-    K_cav = 2 * trap.bead.α * cavity_E0**2 * abs(α)**2 * k**2 * np.cos(2 * Φ) * np.outer(d, d)
+    K_cav = 2 * cavity_mode_polarisability(trap) * cavity_E0**2 * abs(α)**2 * k**2 * np.cos(2 * Φ) * np.outer(d, d)
     return K_CS + K_cav
 
 
@@ -186,11 +312,11 @@ def static_cavity_force(trap, cavity_E0, α):
     α = complex(α)
     A0, P0 = 2 * α.real, 2 * α.imag
     s = np.sin(θ)
-    Ed = 0.5 * trap.bead.α * trap.cavity_drive_field * cavity_E0
+    Ed = 0.5 * drive_polarisability(trap) * trap.cavity_drive_field * cavity_E0
     d = cavity_axis(θ)
     # -∂U_CS/∂r = Ed·s·[-k·sin Φ·A0·d + cos Φ·P0·kz·ẑ];  -∂U_cav/∂r = -α_pol·E0²·|α|²·k·sin 2Φ·d
     F_CS = Ed * s * (-k * np.sin(Φ) * A0 * d + np.array([0.0, 0.0, np.cos(Φ) * P0 * kz]))
-    F_cav = -trap.bead.α * cavity_E0**2 * abs(α)**2 * k * np.sin(2 * Φ) * d
+    F_cav = -cavity_mode_polarisability(trap) * cavity_E0**2 * abs(α)**2 * k * np.sin(2 * Φ) * d
     return F_CS + F_cav
 
 
@@ -303,10 +429,10 @@ def optical_force(r, trap, cavity_E0, α, terms=('tweezer', 'coherent_scattering
     if 'coherent_scattering' in terms or 'cavity' in terms:
         g = scattering_geometry(r, trap)
     if 'coherent_scattering' in terms:
-        Ed = 0.5 * trap.bead.α * trap.cavity_drive_field * cavity_E0
+        Ed = 0.5 * drive_polarisability(trap) * trap.cavity_drive_field * cavity_E0
         F = F + 2 * Ed * np.real(np.conj(α) * _amplitude_gradient(g))
     if 'cavity' in terms:
-        F = F - (trap.bead.α * cavity_E0**2 * abs(α)**2 * g['k'] * np.sin(2 * g['u']))[..., None] * g['d']
+        F = F - (cavity_mode_polarisability(trap) * cavity_E0**2 * abs(α)**2 * g['k'] * np.sin(2 * g['u']))[..., None] * g['d']
     return F
 
 
@@ -329,10 +455,10 @@ def cavity_drive(r, trap, cavity_E0, α, φ=0.0, terms=('coherent_scattering', '
     g = scattering_geometry(r, trap)
     drive = np.zeros(np.shape(g['u']), dtype=complex)
     if 'coherent_scattering' in terms:
-        ωd = 0.5 * trap.bead.α * trap.cavity_drive_field * cavity_E0 / ħ
+        ωd = 0.5 * drive_polarisability(trap) * trap.cavity_drive_field * cavity_E0 / ħ
         D = g['s'] * g['f'] * np.cos(g['u']) * np.exp(1j * g['ψ'])
         drive = drive + 1j * ωd * np.exp(1j * φ) * D
     if 'cavity' in terms:
-        δ = trap.bead.α * cavity_E0**2 / ħ
+        δ = cavity_mode_polarisability(trap) * cavity_E0**2 / ħ
         drive = drive + 1j * δ * np.cos(g['u'])**2 * α
     return drive
