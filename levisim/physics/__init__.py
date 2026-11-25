@@ -26,6 +26,7 @@ __all__ = [
     'Material',
     'MissingOpticalFieldError',
     'NewtonianGravity',
+    'OpticalBinding',
     'Particle',
     'PaulTrap',
     'PhotonRecoil',
@@ -54,7 +55,13 @@ from levisim.physics.fields import (
 from levisim.physics.focal_expansion import FocalExpansion, polarisation_matrix
 from levisim.physics.focussing_optics import FocussingOptics
 from levisim.physics.gas import Gas
-from levisim.physics.interactions import Casimir, Coulomb, Interaction, NewtonianGravity
+from levisim.physics.interactions import (
+    Casimir,
+    Coulomb,
+    Interaction,
+    NewtonianGravity,
+    OpticalBinding,
+)
 from levisim.physics.kick import Kick
 from levisim.physics.material import Material
 from levisim.physics.particle import Particle, Sphere
