@@ -879,7 +879,7 @@ class MultiTrapBase:
         in the bead displacement, only the off-diagonal terms of the coherent-scattering potential
         (gxy ∝ A0, gxz and gyz ∝ P0). The same expansion has diagonal "cotrapping" terms
         ∝ A0·cos Φ, and the bead also sits in the cavity's own standing-wave intensity (the
-        dispersive potential V_c), whose curvature ∝ |α|²·cos 2Φ adds diagonal terms and an x-y
+        dispersive potential V_c), whose curvature ∝ ``|α|²·cos 2Φ`` adds diagonal terms and an x-y
         term along the cavity axis. These are the 3 × 3 Hessians K of
         `levisim.physics.coherent_scattering.static_cavity_hessian` [N/m], one per trap, kept in
         `self.static_cavity_hessians` (zero unless `static_cavity_shifts=True`). With
