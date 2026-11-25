@@ -34,8 +34,10 @@ centre gives exactly `MultiTrap`'s linearised Hamiltonian H/ħ = -Δa†a - Σ q
 the linear term in r of -2·Ed·Re(α_n*·D_n) is -ħ·g_j·q_j·(a_n + a_n†) for x, y (∝ sin Φ) and
 -ħ·g_z·q_z·i(a_n† - a_n) for z (∝ cos Φ, through ψ ≈ (k - 1/zR)·z), with G_j = g_j·e^{iφ_n}
 (`Dimension.G`); the r_j·r_k terms are gxy, gxz, gyz and the static shifts of
-`static_cavity_hessian`. The tests check this numerically: the Jacobian of the drift below at
-the node equals `MultiTrap.drift_matrix` (in quadratures) to round-off.
+`static_cavity_hessian`. `tests/test_cavity_nonlinear.py::test_jacobian_equals_the_drift_matrix_at_the_node`
+checks this numerically: at the node the Jacobian of the drift below (damping='symmetric') equals
+`MultiTrap.drift_matrix` in quadratures to 1.5 × 10⁻¹³ of its largest entry (measured for 1×2, 2×2,
+1×3, 2×3, 3×2; the test requires 10⁻⁸).
 
 Quadratures and scaling
 -----------------------

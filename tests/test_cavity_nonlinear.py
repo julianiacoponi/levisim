@@ -312,10 +312,13 @@ def test_unstable_system_grows_at_max_growth_rate_then_saturates():
         assert 0 < i0 < i1
         rates.append(np.polyfit(t[i0:i1], np.log(E[k, i0:i1]), 1)[0] / 2)
     assert np.mean(rates) == pytest.approx(mtrap.max_growth_rate, rel=0.03)
-    # it saturates: the energy peaks within the run and decays; the motion stays bounded and finite
+    # it saturates: every trajectory peaks within the run and has decayed below 10% of its peak by the
+    # end (8 ms; the slowest of the 4 is at 6%, still decaying), the median below 1%; the motion stays
+    # bounded and finite
     assert np.all(np.isfinite(sim.states))
     peak = E.max(axis=1)
     assert np.all(np.argmax(E, axis=1) < E.shape[1] - 1)
+    assert np.all(E[:, -1] < 0.1 * peak)
     assert np.median(E[:, -1] / peak) < 1e-2
     y = sim.states[..., 2 + 2] * sim.nonlinear_model.zpf[0, 1]
     assert np.abs(y).max() < 1e-6

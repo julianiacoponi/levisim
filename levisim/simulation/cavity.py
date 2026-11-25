@@ -643,7 +643,10 @@ class CavitySimulation(StochasticSimulation):
             self.discretise_split_step()
             use_numba = resolve_backend(self.backend, N * M) == 'numba'
             if use_numba and self.backend == 'auto' and n > AUTO_NUMBA_MAX_STATE:
-                # as for the linear model: the dense linear flow dominates and NumPy's BLAS is faster
+                # the threshold of the linear model, kept for consistency: above it the dense linear flow
+                # dominates the step. Measured for the nonlinear model at n = 386 (64 particles) the two
+                # backends were within the run-to-run spread of a shared machine (NumPy 690-750 μs,
+                # numba 256-910 μs per step for one trajectory), so this choice is not benchmark-proven
                 use_numba = False
             if use_numba and not model.compilable:
                 log = logger.warning if self.backend == 'numba' else logger.debug

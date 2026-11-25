@@ -421,6 +421,8 @@ which runs the same split step on the same random numbers as the NumPy loop (agr
 | 64 (386) | 64 | 180–1740 μs per trajectory | 540–760 μs per trajectory |
 
 The NumPy loop is dominated by Python overhead for small systems; for 64 particles the dense
-386 × 386 linear flow dominates, so `backend='auto'` uses NumPy above state dimension 128, as for
-the linear model. Traps with force elements other than one tweezer, its `PhotonRecoil`, `Gravity`,
+386 × 386 linear flow dominates. `backend='auto'` uses NumPy above state dimension 128, the
+threshold measured for the linear model; for the nonlinear model at 64 particles the two backends
+were within the run-to-run spread of these measurements, so that choice is not benchmark-proven
+here. Traps with force elements other than one tweezer, its `PhotonRecoil`, `Gravity`,
 `HarmonicPotential` and `Feedback`, and runs with `interactions`, use the NumPy loop.
