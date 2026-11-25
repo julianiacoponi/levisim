@@ -36,7 +36,7 @@ levisim's kz = k - 1/zR (k the TWEEZER wavenumber). Second order in the displace
 
 The wavenumber kc of the standing wave is the cavity's, `Cavity.k` = (ωtw - Δ)/c. Every function
 here takes it as the keyword `kc`; ``kc=None`` uses the tweezer wavenumber instead, which is what
-`MultiTrap` does unless `cavity_wavenumber=True` (the two differ by |Δ|/ωtw ~ 6 × 10⁻¹⁰).
+`MultiTrap` does unless `cavity_wavenumber=True` (the two differ by abs(Δ)/ωtw ~ 6 × 10⁻¹⁰).
 The cavity mode's transverse envelope (waist ~ 61 μm) is left out unless `cavity_waist` is given
 (it changes the second derivatives by ~2/(k·w)² ~ 10⁻⁵), and the cross term uses the static
 polarisability `Bead.α` (as Ed does) where the tweezer term uses Re `Trap.α_eff` (as `Trap.kj` does).
