@@ -6,6 +6,28 @@ All notable changes to `levisim` are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-25
+
+### Added
+- `MultiTrap(cavity_wavenumber=True)`: the cavity standing wave, and so the couplings
+  gx, gy, gxy, gxz, gyz, uses the cavity wavenumber `Cavity.k` = (ωtw - Δ)/c instead of the
+  tweezer's (a relative change of |Δ|/ωtw ~ 6 × 10⁻¹⁰). The axial factor kz = k - 1/zR keeps the
+  tweezer wavenumber. New `Dimension.standing_wave_k`.
+- `MultiTrap(static_cavity_shifts=True)`: the trap frequencies include the static stiffness of
+  the cavity field, i.e. the cotrapping (diagonal) terms of the coherent-scattering potential and
+  the dispersive potential of the cavity intensity (which also adds to gxy). The shifted
+  frequencies are used throughout: mechanical susceptibilities and drift matrix, zero-point
+  fluctuations (and so every coupling), thermal occupancies and photon-recoil heating rates.
+  Measured frequencies (`override_Ω_dict`) are not shifted again. New
+  `MultiTrap.static_cavity_hessians`, `MultiTrap.static_shifted_Ωj`,
+  `Dimension.mechanical_frequency`, `Dimension.static_cavity_shift`.
+- `levisim.physics.coherent_scattering`: the full (un-linearised) optical potential of a bead in
+  its tweezer and the static cavity field (`optical_potential`), its static Hessian
+  (`static_cavity_hessian`) and force (`static_cavity_force`), with tests against finite
+  differences of the potential. Documentation page "Cavity wavenumber and static cavity shifts".
+
+Both keywords are off by default: every result of 0.1.0 is unchanged unless they are passed.
+
 ### Changed
 - README figures for the quickstart and the stochastic simulations redrawn and extended: an
   annotated homodyne spectrum with the displacement spectrum of each motion, a cavity-detuning sweep

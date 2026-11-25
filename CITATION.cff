@@ -5,8 +5,8 @@ type: software
 authors:
   - family-names: Iacoponi
     given-names: Julian
-version: 0.1.0
-date-released: 2026-11-20
+version: 0.1.1
+date-released: 2026-11-25
 license: GPL-3.0-or-later
 repository-code: "https://github.com/julianiacoponi/levisim"
 repository-artifact: "https://pypi.org/project/levisim/"
