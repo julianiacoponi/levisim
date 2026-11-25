@@ -289,23 +289,23 @@ class AnalyticMixin:
         D2 = G @ h
         Dm2 = G_star @ h_tilde
         P = 2j * h_left @ I @ h_tilde_left
-        return dict(
-            μ=μ,
-            W=W,
-            W_inv_blocks=W_inv_blocks,
-            h=h,
-            h_tilde=h_tilde,
-            h_left=h_left,
-            h_tilde_left=h_tilde_left,
-            D={0: D0, 2: D2, -2: Dm2},
-            D0_bar=D0_bar,
-            P=P,
-            M_norm=1 + χC * D0 - χC_star * D0_bar - self.cavity.ξC(ω) * P,
-            thermal_a=B_inv.T @ (G - 2j * χC_star * (I.T @ h)),
-            thermal_a_dag=B_inv.T @ (G_star - 2j * χC * (I.T @ h_tilde)),
-            groups=groups,
-            is_bead_local=False,
-        )
+        return {
+            'μ': μ,
+            'W': W,
+            'W_inv_blocks': W_inv_blocks,
+            'h': h,
+            'h_tilde': h_tilde,
+            'h_left': h_left,
+            'h_tilde_left': h_tilde_left,
+            'D': {0: D0, 2: D2, -2: Dm2},
+            'D0_bar': D0_bar,
+            'P': P,
+            'M_norm': 1 + χC * D0 - χC_star * D0_bar - self.cavity.ξC(ω) * P,
+            'thermal_a': B_inv.T @ (G - 2j * χC_star * (I.T @ h)),
+            'thermal_a_dag': B_inv.T @ (G_star - 2j * χC * (I.T @ h_tilde)),
+            'groups': groups,
+            'is_bead_local': False,
+        }
 
     def D0_bar(self, ω):
         """
