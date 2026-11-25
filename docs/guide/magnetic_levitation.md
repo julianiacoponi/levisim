@@ -149,8 +149,8 @@ against the field scale and the simulated axial line sits 0.7 % below the harmon
 A conducting sphere of radius $R$ and conductivity $\sigma$ moving with velocity $\mathbf{v}$ through the
 field sees the uniform change $\dot{\mathbf{B}} = J\mathbf{v}$; the induced field
 $\mathbf{E} = -\tfrac12\dot{\mathbf{B}}\times\mathbf{r}$ dissipates $P = (2\pi/15)\sigma R^5|\dot{\mathbf{B}}|^2$,
-the low-frequency limit of a conducting sphere in an oscillating uniform field (Landau and Lifshitz,
-*Electrodynamics of Continuous Media*, 2nd ed., §59). In levisim's $F = -\Gamma p$ form,
+the quasi-static eddy-current loss of a sphere in a uniform, slowly varying field (derived in the
+`EddyCurrentDamping` docstring). In levisim's $F = -\Gamma p$ form,
 
 $$
 \Gamma = \frac{\sigma R^2}{10\rho}\,J^\mathsf{T}J .

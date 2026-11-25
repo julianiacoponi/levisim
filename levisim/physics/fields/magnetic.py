@@ -266,9 +266,9 @@ class EddyCurrentDamping(ForceElement):
 
         Γ = γ/m = σ R² JᵀJ / (10 ρ)
 
-    the low-frequency (skin depth ≫ R), small-particle (B varies little over the sphere) limit; it is
-    the same dissipation as that of a conducting sphere in a uniform field oscillating at low
-    frequency (Landau and Lifshitz, Electrodynamics of Continuous Media, 2nd ed., §59, problem 1).
+    the low-frequency (skin depth ≫ R), small-particle (B varies little over the sphere) limit, derived
+    here as written above (the quasi-static eddy-current loss of a sphere in a uniform, slowly varying
+    field).
     The fluctuating force of the same dissipation at the conductor's temperature T,
     〈F_i F_j〉 = 2 kB T γ_ij δ(t - t'), is added in the time-domain simulation (noise_in_simulation).
 
