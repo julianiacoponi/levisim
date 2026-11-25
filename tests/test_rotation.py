@@ -426,10 +426,10 @@ def test_free_space_jacobian_matches_trap_libration_frequencies():
 # --------------------------------------------------------------------------------------------------
 def controlled_simulation(**kwargs):
     trap = Trap(tweezer=Tweezer(polarisation=Tweezer.elliptical_polarisation(0.2)), particle=aligned_spheroid(), gas=Gas(P=1 * mbar))
-    common = dict(trap=trap, num_samples=1500, Δt=5e-9, seed=3, recoil=True,
-                  parametric_feedback=dict(gain=1e-7, lab_axis=(1, 0, 0)),
-                  torque_drive=dict(amplitude=(0, 0, 1e-22), ω=2 * π * 1e5), angular_damping=(1e3, 0, 0),
-                  ω0=(1e4, 2e4, 3e4))
+    common = {'trap': trap, 'num_samples': 1500, 'Δt': 5e-9, 'seed': 3, 'recoil': True,
+                  'parametric_feedback': {'gain': 1e-7, 'lab_axis': (1, 0, 0)},
+                  'torque_drive': {'amplitude': (0, 0, 1e-22), 'ω': 2 * π * 1e5}, 'angular_damping': (1e3, 0, 0),
+                  'ω0': (1e4, 2e4, 3e4)}
     common.update(kwargs)
     return RigidBodySimulation(**common)
 
@@ -458,7 +458,7 @@ def test_angular_damping_and_torque_drive():
     I = particle.inertia_tensor[2, 2]
     # a constant torque about the symmetry axis spins the particle up linearly; damping saturates it
     sim = RigidBodySimulation(trap=free_trap(particle), num_samples=2000, Δt=1e-8, gas_damping=False, backend='numpy',
-                              torque_drive=dict(offset=(0, 0, 1e-24)), angular_damping=(0, 0, 2e5))
+                              torque_drive={'offset': (0, 0, 1e-24)}, angular_damping=(0, 0, 2e5))
     ω = sim.angular_velocities_lab()[:, 2]
     t = sim.time_array
     expected = 1e-24 / (I * 2e5) * (1 - np.exp(-2e5 * t))
