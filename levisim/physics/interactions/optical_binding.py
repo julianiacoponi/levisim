@@ -29,7 +29,7 @@ only; the dipoles are held fixed. Two orders are available:
 - ``order='self_consistent'``: the coupled-dipole equations p = α·(E_tw + 𝔊·p) are solved exactly
   (all orders of scattering), and the force is the total force on each dipole in its local field,
   less the force of its own tweezer on the isolated particle. It agrees with 'first' to relative
-  order |k³α/(4πε0)|/(kd) at large separations d.
+  order k³·abs(α)/(4πε0·kd) at large separations d.
 
 The forces on the particles are computed separately: they are NOT equal and opposite. The
 difference, F_1 + F_2 ≠ 0, is the momentum carried away by the scattered light (the interference
