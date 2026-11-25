@@ -98,7 +98,7 @@ def _drift(t, X, P, A, e, T, Q, out):
         c1 = ω_lab[2]*n0 - ω_lab[0]*n2
         c2 = ω_lab[0]*n1 - ω_lab[1]*n0
         ṡ = Q[k, 4]*c0 + Q[k, 5]*c1 + Q[k, 6]*c2
-        η = -Q[k, 0] * s * ṡ
+        η = Q[k, 0] * s * ṡ
         η_max = Q[k, 7]
         if η > η_max:
             η = η_max

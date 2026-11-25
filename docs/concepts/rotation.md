@@ -100,7 +100,19 @@ translational and rotational motions are coupled. After every step the quaternio
 (a projection method; `StochasticSimulation.project_state`). Options: `recoil=True` adds the
 recoil force and torque noise (at the initial orientation, fixed in the body frame), `power_modulation`
 modulates the tweezer intensity (parametric feedback), `external_torque` and `external_force` take
-callables of $(t, X)$ (drives and feedback).
+callables of $(t, X)$ (drives and feedback); the built-in `parametric_feedback`, `torque_drive` and
+`angular_damping` also run in the compiled loop.
+
+Kasdin's stochastic Runge–Kutta scheme is slightly dissipative on an undamped oscillator, at a rate
+growing as $(\Omega\Delta t)^3$: an 800 kHz libration loses energy at about 6 × 10³ s⁻¹ with 25 steps
+per period and 6 s⁻¹ with 250. Where heating or cooling rates matter, resolve the fastest libration
+with a few hundred steps per period.
+
+For a particle aligned with a linear polarisation, the point-dipole torque depends only on the angle
+between the axis and the polarisation, so the two tilts (α and γ) are degenerate and the angular
+momentum of the conical motion about the polarisation is conserved by any modulation of the tweezer
+power: single-channel parametric feedback cannot take the pair below $\Omega|\ell|$ (see the
+van der Laan et al. (2021) reproduction).
 
 ```{figure} figures/rotation_rigid_body.png
 :width: 100%

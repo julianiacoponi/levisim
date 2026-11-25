@@ -93,8 +93,12 @@ class RigidBodySimulation(StochasticSimulation):
             `Tweezer` (gradient force with the orientation-dependent polarisability ê*·α_eff·ê,
             alignment and spin torque, any polarisation), `Feedback` (cold damping of the lab
             momenta), and every other element through its own `force` and `torque`
-        num_samples [1e6], Δt [0.1 μs], RK_method ['vector_4'], seed, detection_floor, zero_mean:
-            as `StochasticSimulation`
+        num_samples [1e6], Δt [0.01 μs], RK_method ['vector_4'], seed, detection_floor, zero_mean:
+            as `StochasticSimulation`. Kasdin's stochastic Runge–Kutta scheme ('vector_4') is slightly
+            dissipative on an undamped oscillator, at a rate growing as (ΩΔt)³: for a libration at
+            Ω/2π = 800 kHz the energy decays at ≈ 6 × 10³ s⁻¹ with 25 steps per period and ≈ 6 s⁻¹
+            with 250, so resolve the fastest libration with a few hundred steps when its energy
+            matters (heating and feedback cooling rates)
         X0 [None]: initial state (13 entries, see the module docstring); by default the particle at
             rest at the origin in its orientation
         r0, v0, ω0 [zeros]: initial position [m], lab velocity [m/s] and lab angular velocity
@@ -117,7 +121,7 @@ class RigidBodySimulation(StochasticSimulation):
         parametric_feedback [None]: a dict, or a list of dicts, of parametric feedback on the tweezer
             intensity (van der Laan et al., Phys. Rev. Lett. 127, 123605 (2021)): with the measured
             angle s = ê·(R b̂), the lab component ê of a body axis b̂, the intensity is multiplied by
-            1 + η, η = clip(-gain·s·ṡ, ±max_modulation). Keys: gain [s], body_axis, lab_axis,
+            1 + η, η = clip(gain·s·ṡ, ±max_modulation); a positive gain stiffens the trap while the angle grows and so cools it. Keys: gain [s], body_axis, lab_axis,
             max_modulation [0.5]
         torque_drive [None]: dict(amplitude=(τx, τy, τz) [N·m], ω [rad/s], phase [rad], offset [N·m]):
             a lab-frame torque offset + amplitude·cos(ω t + phase)
@@ -268,7 +272,7 @@ class RigidBodySimulation(StochasticSimulation):
                 e = np.array([ex, ey, ez])
                 s = e @ n
                 ṡ = e @ _cross(ω_lab, n)
-                factor = factor + min(max(-gain * s * ṡ, -η_max), η_max)
+                factor = factor + min(max(gain * s * ṡ, -η_max), η_max)
         if self.power_modulation is not None:
             factor = factor + float(self.power_modulation(t, X))
         for tweezer, α_body, e in self._optics:

@@ -483,3 +483,26 @@ def test_angular_damping_and_torque_drive():
     t = sim.time_array
     expected = 1e-24 / (I * 2e5) * (1 - np.exp(-2e5 * t))
     assert np.max(np.abs(ω - expected)) < 1e-6 * expected[-1]
+
+
+def test_parametric_feedback_cools_at_the_harmonic_rate():
+    # η = G·s·ṡ with s = x̂·(R ẑ_body) = -θγ removes the energy of a harmonic librator at G Ω² E²/2K,
+    # so E(t) = E0/(1 + G Ω² E0 t/2K); a negative gain heats
+    trap = Trap(tweezer=Tweezer(), particle=aligned_spheroid(), gas=Gas(P=1 * mbar))
+    Ω, K, I = trap.Ωθ['γ'], trap.torque_stiffness_tensor[2, 2], trap.Ij['γ']
+    E0 = 0.5 * I * 1e4**2
+    period = 2 * π / Ω
+    num_samples, Δt = 40_000, period / 400
+    T = num_samples * Δt
+    gain = 2 * K / (Ω**2 * E0 * T)  # halves the energy over the run
+    energies = {}
+    for sign in (1, -1):
+        sim = RigidBodySimulation(trap=trap, num_samples=num_samples, Δt=Δt, gas_damping=False, ω0=(0, 0, 1e4),
+                                  parametric_feedback={'gain': sign * gain, 'body_axis': (0, 0, 1), 'lab_axis': (1, 0, 0)})
+        n = sim.lab_directions((0, 0, 1))
+        ω = sim.angular_velocities_lab()
+        θ, θ_dot = -n[:, 0], -np.cross(ω, n)[:, 0]
+        E = 0.5 * I * θ_dot**2 + 0.5 * K * θ**2
+        energies[sign] = E[-400:].mean()  # over the last period
+    assert energies[1] == pytest.approx(E0 / 2, rel=0.03)
+    assert energies[-1] > E0
