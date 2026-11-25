@@ -135,3 +135,23 @@ def test_coulomb_normal_modes_and_beating_match_the_stiffness_blocks():
     assert frequencies[np.argmax(spectrum)] == pytest.approx(ω_minus, abs=2*np.pi / (num_samples * Δt))
     spectrum = np.abs(np.fft.rfft((y1 - y2) * np.hanning(len(y1))))
     assert frequencies[np.argmax(spectrum)] == pytest.approx(ω_plus, abs=2*np.pi / (num_samples * Δt))
+
+
+def test_paul_traps_with_electrode_noise_and_coulomb():
+    """Multi-particle runs accept per-particle noise blocks wider than 6 × 4 (a PaulTrap's electrode noise)"""
+    import warnings
+
+    from levisim.physics import Coulomb, Gas, PaulTrap, Sphere, Trap
+    from levisim.simulation.multi_particle import MultiParticleFreeSpaceSimulation
+    traps = []
+    for X in (-150e-6, 150e-6):
+        paul = PaulTrap.ring(V_rf=300.0, Ω_rf=2 * np.pi * 200e3, r0=0.5e-3, voltage_noise_psd=1e-14,
+                             noise_distances=(1e-3, 1e-3, 1e-3))
+        traps.append(Trap(fields=[paul], particle=Sphere(r=200e-9, charge=300), gas=Gas(P=0.1), position=(X, 0, 0)))
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        sim = MultiParticleFreeSpaceSimulation(traps=traps, interactions=[Coulomb()], num_samples=2000, Δt=0.05e-6,
+                                               seed=1, backend='numpy')
+    assert sim.noise_matrix().shape[0] == 12
+    assert sim.noise_matrix().shape[1] == len(sim.noise_spectral_densities()) > 8
+    assert np.all(np.isfinite(sim.traces['x2'].values))

@@ -68,6 +68,10 @@ class MultiParticleFreeSpaceSimulation(StochasticSimulation):
         for n, trap in enumerate(self.traps):
             single = object.__new__(FreeSpaceSimulation)
             single.rk_loop_debug = self.rk_loop_debug
+            # the per-particle configure reads the time step and integrator (e.g. to warn when Δt does
+            # not resolve a PaulTrap's rf drive)
+            single.Δt = self.Δt
+            single.RK_method = self.RK_method
             single.configure(trap=trap, X0=self.X0[6*n:6*n + 6], gravity=self.gravity,
                              gravity_direction=self.gravity_direction_given)
             self.single_particle_systems.append(single)
@@ -115,10 +119,16 @@ class MultiParticleFreeSpaceSimulation(StochasticSimulation):
         return dynamics
 
     def noise_matrix(self):
-        """Block-diagonal noise matrix, one (6 × 4) FreeSpaceSimulation block per particle [·]"""
-        G = np.zeros((6 * self.num_particles, 4 * self.num_particles))
-        for n, single in enumerate(self.single_particle_systems):
-            G[6*n:6*n + 6, 4*n:4*n + 4] = single.noise_matrix()
+        """
+        Block-diagonal noise matrix, one FreeSpaceSimulation block per particle: 6 × 4, plus one column
+        per principal axis of an element's simulated noise (e.g. a PaulTrap's electrode noise) [·]
+        """
+        blocks = [single.noise_matrix() for single in self.single_particle_systems]
+        G = np.zeros((6 * self.num_particles, sum(block.shape[1] for block in blocks)))
+        column = 0
+        for n, block in enumerate(blocks):
+            G[6*n:6*n + 6, column:column + block.shape[1]] = block
+            column += block.shape[1]
         return G
 
     def noise_spectral_densities(self):
