@@ -554,8 +554,9 @@ class CurrentLoop(MagneticFieldSource):
     A circular current loop of radius a carrying current I, centred at `centre` with its normal along
     `axis` (current anticlockwise about the axis, so B points along +axis at the centre)
 
-    Exact field from the complete elliptic integrals K(k²), E(k²) (scipy's parameter convention), in
-    the form of Simpson, Lane, Immer and Youngquist, NASA/TM-2013-217919 (2001), Eq. (12)-(13) ::
+    Exact field from the complete elliptic integrals K(k²), E(k²) (scipy's parameter convention; the
+    standard result, e.g. Jackson, Classical Electrodynamics, 3rd ed., §5.5, written in cylindrical
+    components, and checked against direct Biot-Savart quadrature in the tests) ::
 
         α² = a² + ρ² + z² - 2aρ,  β² = a² + ρ² + z² + 2aρ,  k² = 1 - α²/β²,  C = μ0 I/π
         B_ρ = C z / (2 α² β ρ) [(a² + ρ² + z²) E(k²) - α² K(k²)]
@@ -713,9 +714,6 @@ class CoilPair(FieldSum):
         s = np.asarray(s, dtype=float)
         h = self.separation / 2
         return self.sources[0].on_axis_field(s - h) + self.sources[1].on_axis_field(s + h) * (-1 if self.anti else 1)
-
-    def B(self, r):
-        return super().B(r)
 
     def __repr__(self):
         return (

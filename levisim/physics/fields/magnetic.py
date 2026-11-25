@@ -149,8 +149,20 @@ class MagneticTrap(ForceElement):
         return χ * np.eye(3) if χ.ndim == 0 else χ
 
     def _response(self, particle):
-        """V/μ0 and the lab-frame χ_eff"""
-        return particle.V / μ0, self.susceptibility(particle)
+        """
+        V/μ0 and the lab-frame χ_eff, cached for the last particle (recomputed if its material,
+        orientation, volume or this element's settings change), since a simulation calls this every step
+        """
+        key = (
+            id(particle), id(particle.material), particle.orientation.tobytes(), particle.V,
+            self.shape_correction, None if self.demagnetising_factors is None else self.demagnetising_factors.tobytes(),
+        )
+        cached = self.__dict__.get('_response_cache')
+        if cached is not None and cached[0] == key and cached[1] is particle:
+            return cached[2]
+        value = (particle.V / μ0, self.susceptibility(particle))
+        self.__dict__['_response_cache'] = (key, particle, value)
+        return value
 
     # ----------------------------------------------------------------------------------------------
     # ForceElement interface
