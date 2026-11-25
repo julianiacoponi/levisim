@@ -391,8 +391,8 @@ def test_initial_states_and_argument_checks(m1x2):
     assert np.array_equal(zero.states[:, 0], np.zeros((1, n)))
     given = m1x2.simulate(num_samples=2, initial_state=np.arange(n, dtype=float), store_state=True, seed=0)
     assert np.array_equal(given.states[0, 0], np.arange(n))
-    with pytest.raises(NotImplementedError, match='cavity-nonlinear'):
-        m1x2.simulate(model='nonlinear')
+    with pytest.raises(TypeError, match="only to model='nonlinear'"):
+        m1x2.simulate(num_samples=2, substeps=2)
     with pytest.raises(ValueError, match='RK_method'):
         m1x2.simulate(RK_method='vector_4')
     with pytest.raises(TypeError, match='unknown keyword'):
