@@ -34,6 +34,7 @@ papers/penny2023_sympathetic_cooling.ipynb               300   # [12 s with numb
 papers/krisnanda2020_gravity_entanglement.ipynb          180   # [15 s]
 papers/hoang2016_torsional_vibration.ipynb               180   # [10 s with numba]
 papers/reimann2018_ghz_rotation.ipynb                    180   # [3 s with numba]
+papers/ahn2020_torque_sensing.ipynb                      600   # [80 s with numba]
 
 # archive (outputs stripped)
 archive/animations/3x2_truncated_heatmap.ipynb                     180   # [6 s]

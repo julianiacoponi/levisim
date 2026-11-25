@@ -3,24 +3,28 @@ RigidBodySimulation: translation and rotation of one rigid particle in a free-sp
 
 The state is ::
 
-    X = [x, y, z,  p1, p2, p3,  qw, qx, qy, qz,  L1, L2, L3]
+    X = [x, y, z,  px, py, pz,  qw, qx, qy, qz,  L1, L2, L3]
 
-with the lab-frame position r, the centre-of-mass momentum p_b and the angular momentum L_b both in
-the BODY frame, and the orientation quaternion q (body → lab, R = R(q)). The equations of motion
-are ::
+with the lab-frame position r and momentum p, the orientation quaternion q (body → lab, R = R(q))
+and the angular momentum L_b in the BODY frame. The equations of motion are ::
 
-    dr/dt   = R p_b / m
-    dp_b/dt = Rᵀ F(r, q, t) - ω × p_b - Γ_cm p_b            + ξ_p
+    dr/dt   = p / m
+    dp/dt   = F(r, q, t) - R Γ_cm Rᵀ p                      + ξ_p
     dq/dt   = ½ q ⊗ (0, ω),            ω = I⁻¹ L_b
     dL_b/dt = Rᵀ τ(r, q, t) - ω × L_b - Γ_rot L_b           + ξ_L
 
-Keeping the momenta in the body frame makes the gas friction tensors Γ_cm, Γ_rot (Martinetz et al.,
-Phys. Rev. E 97, 052112 (2018), from levisim.physics.shapes) and the matching diffusion tensors
-constant, so the noise is additive (constant G in dX = F dt + G dW) and the integrators of
-levisim.simulation.integrators apply unchanged. With a surface at the gas temperature the noises
-satisfy the fluctuation-dissipation relation, 〈ξ ξᵀ〉 = 2 kB T Γ diag(m, I) δ(t - t'). After every
-step the quaternion is renormalised (a projection method), so ‖q‖ = 1 to round-off; the energy
-error of the deterministic part is that of the integrator (fourth order for 'vector_4').
+with the body-frame gas friction tensors Γ_cm, Γ_rot (Martinetz et al., Phys. Rev. E 97, 052112
+(2018), from levisim.physics.shapes). The angular momentum is kept in the body frame, so that the
+rotational friction and its diffusion tensor 2 kB T Γ_rot I are constant and the noise is additive
+(constant G in dX = F dt + G dW, as the integrators of levisim.simulation.integrators need); the
+rotational fluctuation-dissipation relation holds exactly. The translational momentum is kept in the
+lab frame (a body-frame momentum would rotate with a spinning particle and force Δt ≪ 1/Ω_rot); its
+noise is the lab-frame diffusion tensor at the INITIAL orientation, 2 kB T m R0 Γ_cm R0ᵀ, while the
+friction follows the orientation. This is exact for a sphere and for librations about the initial
+orientation; for a freely rotating anisotropic particle the translational noise lags the friction
+by the anisotropy of Γ_cm (a few per cent for the shapes of levisim). After every step the
+quaternion is renormalised (a projection method), so ‖q‖ = 1 to round-off; the energy error of the
+deterministic part is that of the integrator (fourth order for 'vector_4').
 """
 
 import numpy as np
@@ -197,12 +201,14 @@ class RigidBodySimulation(StochasticSimulation):
         ]
 
         # gas friction (body frame) and its noise; for a sphere the translational rate is the
-        # Trap's Γth (Epstein), for other shapes Martinetz's tensor
+        # Trap's Γth (Epstein), for other shapes Martinetz's tensor. The translational noise is the
+        # lab-frame tensor at the initial orientation (see the module docstring)
         if self.gas_damping:
-            self.Γ_cm = R0.T @ np.asarray(self.trap.Γth_tensor, dtype=float) @ R0
+            Γ_lab0 = np.asarray(self.trap.Γth_tensor, dtype=float)
+            self.Γ_cm = R0.T @ Γ_lab0 @ R0
             self.Γ_rot = np.asarray(particle.rotational_damping_tensor(self.trap.gas), dtype=float)
             T = self.trap.gas.T if self.gas_noise else 0.0
-            S_p = 2 * kB * T * self.m * self.Γ_cm
+            S_p = 2 * kB * T * self.m * Γ_lab0
             S_L = 2 * kB * T * self.Γ_rot @ self.inertia
         else:
             self.Γ_cm = np.zeros((3, 3))
@@ -211,7 +217,7 @@ class RigidBodySimulation(StochasticSimulation):
             S_L = np.zeros((3, 3))
         if self.recoil:
             for tweezer in self.tweezers:
-                S_p = S_p + R0.T @ tweezer.noise(particle) @ R0
+                S_p = S_p + np.asarray(tweezer.noise(particle), dtype=float)
                 S_L = S_L + R0.T @ tweezer.recoil_torque_noise(particle) @ R0
         self.momentum_noise_psd = S_p
         self.angular_momentum_noise_psd = S_L
@@ -221,12 +227,11 @@ class RigidBodySimulation(StochasticSimulation):
             r0 = np.asarray(kwargs.get('r0', np.zeros(3)), dtype=float)
             v0 = np.asarray(kwargs.get('v0', np.zeros(3)), dtype=float)
             ω0 = np.asarray(kwargs.get('ω0', np.zeros(3)), dtype=float)
-            p_b = R0.T @ (self.m * v0)
             L_b = self.inertia @ (R0.T @ ω0)
-            X0 = np.concatenate([r0, p_b, self.q_reference, L_b])
+            X0 = np.concatenate([r0, self.m * v0, self.q_reference, L_b])
         self.X0 = np.asarray(X0, dtype=float)
         if self.X0.shape != (13,):
-            raise ValueError(f'X0 must have 13 entries (r, p_body, q, L_body), not shape {self.X0.shape}')
+            raise ValueError(f'X0 must have 13 entries (r, p, q, L_body), not shape {self.X0.shape}')
         logger.debug(
             'RigidBodySimulation of {} with {} tweezer(s), {} feedback, other elements {}',
             type(particle).__name__, len(self.tweezers), len(self.feedbacks), self.other_elements,
@@ -307,17 +312,16 @@ class RigidBodySimulation(StochasticSimulation):
         return F, τ_b, R
 
     def drift(self, t, X):
-        p_b = X[3:6]
+        p = X[3:6]
         q = X[6:10]
         L_b = X[10:13]
         F, τ_b, R = self.forces_and_torques(t, X)
         ω = self.inertia_inverse @ L_b
-        p_lab = R @ p_b
         if self.feedbacks:
-            F = F - self.Γ_feedback * p_lab
+            F = F - self.Γ_feedback * p
         dX = np.empty(13)
-        dX[0:3] = p_lab / self.m
-        dX[3:6] = R.T @ F - _cross(ω, p_b) - self.Γ_cm @ p_b
+        dX[0:3] = p / self.m
+        dX[3:6] = F - R @ (self.Γ_cm @ (R.T @ p))
         dX[6:10] = _quaternion_rate(q, ω)
         dX[10:13] = τ_b - _cross(ω, L_b) - self.Γ_rot @ L_b
         return dX

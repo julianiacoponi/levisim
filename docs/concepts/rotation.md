@@ -84,13 +84,16 @@ sim = RigidBodySimulation(trap=trap, num_samples=200_000, Δt=5e-9, seed=1)
 sim.traces['γ'], sim.lab_directions((0, 0, 1)), sim.angular_velocities_lab()
 ```
 
-The state is $(r, p_b, q, L_b)$ with both momenta in the body frame, so that the gas friction tensors
-and their noise are constant and additive; the equations are
+The state is $(r, p, q, L_b)$, with the angular momentum in the body frame (so that the rotational
+friction and its noise are constant and additive) and the translational momentum in the lab frame:
 
 $$
-\dot r = Rp_b/m,\quad \dot p_b = R^\top F - \omega\times p_b - \Gamma_\text{cm}p_b + \xi_p,\quad
+\dot r = p/m,\quad \dot p = F - R\Gamma_\text{cm}R^\top p + \xi_p,\quad
 \dot q = \tfrac12 q\otimes(0,\omega),\quad \dot L_b = \tau_b - \omega\times L_b - \Gamma_\text{rot}L_b + \xi_L .
 $$
+
+The rotational noise satisfies the fluctuation-dissipation relation exactly; the translational noise
+is that of the initial orientation, exact for a sphere and for librations (see the module docstring).
 
 The tweezer force uses the orientation-dependent $\hat e^*\cdot\alpha_\text{eff}\cdot\hat e$, so the
 translational and rotational motions are coupled. After every step the quaternion is renormalised

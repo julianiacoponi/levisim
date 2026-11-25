@@ -1,7 +1,7 @@
 """
 Compiled (numba) time loops of RigidBodySimulation
 
-The kernels advance the 13-entry state [r, p_body, q, L_body] with the arithmetic of
+The kernels advance the 13-entry state [r, p, q, L_body] with the arithmetic of
 `RigidBodySimulation.drift` for a trap of at most one `Tweezer` (any polarisation) plus `Feedback`,
 with gas damping, recoil noise and the built-in controls (parametric_feedback, torque_drive,
 angular_damping), for both integrators. They take the random numbers from the simulation's own
@@ -80,13 +80,13 @@ def _drift(t, X, P, A, e, T, Q, out):
         for j in range(3):
             ω[i] += T[0, i, j] * X[10 + j]
     ω_lab = np.zeros(3)
-    p_lab = np.zeros(3)
     L_lab = np.zeros(3)
+    p_body = np.zeros(3)
     for i in range(3):
         for j in range(3):
             ω_lab[i] += R[i, j] * ω[j]
-            p_lab[i] += R[i, j] * X[3 + j]
             L_lab[i] += R[i, j] * X[10 + j]
+            p_body[i] += R[j, i] * X[3 + j]
 
     factor = 1.0
     for k in range(Q.shape[0]):
@@ -155,19 +155,16 @@ def _drift(t, X, P, A, e, T, Q, out):
                 τ_b[i] += R[j, i] * τ_lab[j]
 
     for i in range(3):
-        F[i] -= P[_FB + i] * p_lab[i]
+        F[i] -= P[_FB + i] * X[3 + i]
 
-    p0, p1, p2 = X[3], X[4], X[5]
     L0, L1, L2 = X[10], X[11], X[12]
+    # R Γ_cm Rᵀ p, with Γ_cm in the body frame
+    damp_body = np.zeros(3)
     for i in range(3):
-        out[i] = p_lab[i] / m
+        damp_body[i] = T[1, i, 0]*p_body[0] + T[1, i, 1]*p_body[1] + T[1, i, 2]*p_body[2]
     for i in range(3):
-        RtF = R[0, i]*F[0] + R[1, i]*F[1] + R[2, i]*F[2]
-        damp = T[1, i, 0]*p0 + T[1, i, 1]*p1 + T[1, i, 2]*p2
-        out[3 + i] = RtF - damp
-    out[3] -= ω[1]*p2 - ω[2]*p1
-    out[4] -= ω[2]*p0 - ω[0]*p2
-    out[5] -= ω[0]*p1 - ω[1]*p0
+        out[i] = X[3 + i] / m
+        out[3 + i] = F[i] - (R[i, 0]*damp_body[0] + R[i, 1]*damp_body[1] + R[i, 2]*damp_body[2])
     out[6] = 0.5 * (-qx*ω[0] - qy*ω[1] - qz*ω[2])
     out[7] = 0.5 * (qw*ω[0] + qy*ω[2] - qz*ω[1])
     out[8] = 0.5 * (qw*ω[1] - qx*ω[2] + qz*ω[0])
