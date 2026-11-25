@@ -96,6 +96,8 @@ class RigidBodySimulation(StochasticSimulation):
         r0, v0, ω0 [zeros]: initial position [m], lab velocity [m/s] and lab angular velocity
             [rad/s], used when X0 is not given
         gas_damping [True]: rotational and translational gas friction and their thermal noise
+        gas_noise [True]: with gas_damping, include the thermal noise (False keeps only the friction,
+            e.g. to see a driven rotation's deterministic spin-up)
         recoil [False]: the recoil force noise (`Tweezer.noise`) and torque noise
             (`Tweezer.recoil_torque_noise`) of the tweezer light, both evaluated at the initial
             orientation and kept fixed in the body frame (exact for librations about it)
@@ -140,6 +142,7 @@ class RigidBodySimulation(StochasticSimulation):
         R0 = quaternion_to_rotation_matrix(self.q_reference)
 
         self.gas_damping = bool(kwargs.get('gas_damping', True))
+        self.gas_noise = bool(kwargs.get('gas_noise', True))
         self.recoil = bool(kwargs.get('recoil', False))
         self.power_modulation = kwargs.get('power_modulation')
         self.external_torque = kwargs.get('external_torque')
@@ -198,7 +201,7 @@ class RigidBodySimulation(StochasticSimulation):
         if self.gas_damping:
             self.Γ_cm = R0.T @ np.asarray(self.trap.Γth_tensor, dtype=float) @ R0
             self.Γ_rot = np.asarray(particle.rotational_damping_tensor(self.trap.gas), dtype=float)
-            T = self.trap.gas.T
+            T = self.trap.gas.T if self.gas_noise else 0.0
             S_p = 2 * kB * T * self.m * self.Γ_cm
             S_L = 2 * kB * T * self.Γ_rot @ self.inertia
         else:
