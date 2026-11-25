@@ -32,7 +32,25 @@ its growth is then simulated faithfully (until the linearisation no longer holds
 Ensembles: `num_trajectories=K` advances K independent trajectories as one array, which is the
 cheap way to smooth averaged spectra.
 
-Model 'nonlinear' is the split-step model of the design plan; it is not part of this module yet.
+Model 'nonlinear' (split-step)
+------------------------------
+The state is the cavity amplitude and the 3D position and momentum of every particle, with the
+full (un-linearised) tweezer and coherent-scattering potential and the cavity drive derived from
+the same energy (`levisim.simulation.nonlinear_cavity`). It is stored as the deviation u from the
+TRUE equilibrium of the nonlinear drift (found by Newton's method), in the quadratures of the
+linear model, so that the records, ports and detection are those of the linear model. The drift
+is split as du = J·u dt + B dW + R(u) dt, with J the Jacobian at the equilibrium and R the
+nonlinear remainder. Each sample interval Δt is cut into `substeps` steps h = Δt/M, and each step
+is a Strang splitting ::
+
+    L(h/2) ∘ N(h) ∘ L(h/2)
+
+where L is the EXACT linear flow of the augmented system (state and record integrals), with its
+Van Loan noise, and N(h) integrates du/dt = R(u) with one Runge-Kutta step ('rk4' or 'rk2'); the
+record integrals are linear in u and are advanced only by L. Consecutive half steps inside a sample
+are merged into full ones. With R = 0 (every term linearised) the scheme is the exact linear model.
+`integrator='heun'` integrates the same equations with the plain Heun scheme instead (a
+cross-check; it has time-step error in the fast cavity too).
 """
 
 import time
@@ -77,6 +95,13 @@ _BASE_KWARGS = {
 _CAVITY_KWARGS = {
     'model', 'detection', 'num_trajectories', 'initial_state', 'store_state', 'chunk_size',
 }
+# keyword arguments of model='nonlinear' only
+_NONLINEAR_KWARGS = {
+    'damping', 'terms', 'linearised_terms', 'interactions', 'trap_positions', 'feedback',
+    'integrator', 'substeps', 'nonlinear_stage',
+}
+INTEGRATORS = ('split', 'heun')
+NONLINEAR_STAGES = ('rk4', 'rk2')
 
 
 def van_loan_discretisation(A, Q_c, Δt, max_norm_step=0.5):
@@ -163,8 +188,9 @@ class CavitySimulation(StochasticSimulation):
 
     Keyword arguments (defaults in brackets)::
 
-        model ['linear']: 'linear', the exact linear model (see the module docstring); 'nonlinear'
-            raises NotImplementedError (a later round-5 track, round5/wip/cavity-nonlinear)
+        model ['linear']: 'linear', the exact linear model, or 'nonlinear', the split-step model of
+            the full tweezer and coherent-scattering potential (see the module docstring; needs a
+            MultiTrap with physical parameters)
         detection [None]: a list of records (levisim.simulation.records: Homodyne, Heterodyne,
             PhotonNumber, Position). None records Homodyne() of every cavity mode (labelled
             'homodyne', or 'homodyne_<cavity>' with several modes) and Position of every mechanical mode
@@ -179,6 +205,24 @@ class CavitySimulation(StochasticSimulation):
             is compiled; it consumes the same random numbers as the NumPy loop
         chunk_size [2¹⁴]: time steps per block of pre-generated random numbers
 
+    Keyword arguments of model='nonlinear' only (see `NonlinearCavityModel` for the first six)::
+
+        damping ['velocity']: 'velocity' (-Γ·p) or 'symmetric' (MultiTrap's rotating-wave form)
+        terms, linearised_terms: which drift terms to include, and which to linearise about the
+            equilibrium ('elements', 'coherent_scattering', 'cavity', 'interactions')
+        interactions [()], trap_positions [None]: pair forces (objects with
+            forces(positions, particles, t)) and the lab-frame trap centres [m]
+        feedback [False]: include the damping of the traps' Feedback elements
+        integrator ['split']: 'split' (exact linear flow + Runge-Kutta remainder) or 'heun'
+        substeps [1]: integration steps per sample interval
+        nonlinear_stage ['rk4']: Runge-Kutta step of the remainder, 'rk4' or 'rk2'
+
+    With model='nonlinear', the state (initial_state arrays, self.states, self.u_final) is the
+    deviation from the equilibrium `self.nonlinear_model.u_eq`, in the quadratures of
+    `self.system` (the model linearised at that equilibrium, labels 'cavity', 'x1', 'y1', 'z1',
+    ...); 'zero' or 'equilibrium' starts at the equilibrium, 'steady' samples the linearised
+    steady state about it. Position records are displacements from the equilibrium position.
+
     Results: self.traces (label -> Trace of trajectory 0, so the analysis path of `Experiment`
     data applies, e.g. SpectralDensityEstimate(sim, ('homodyne', 'homodyne'))), self.records
     (label -> array (K, num_samples) of every trajectory), `trajectory(k)` (the traces of
@@ -189,11 +233,17 @@ class CavitySimulation(StochasticSimulation):
     """
 
     def __init__(self, system, **kwargs):
-        unknown = set(kwargs) - _BASE_KWARGS - _CAVITY_KWARGS
+        unknown = set(kwargs) - _BASE_KWARGS - _CAVITY_KWARGS - _NONLINEAR_KWARGS
         if unknown:
             raise TypeError(f'CavitySimulation got unknown keyword arguments {sorted(unknown)}')
         if 'RK_method' in kwargs:
-            raise ValueError("CavitySimulation's linear model is discretised exactly; it takes no RK_method")
+            raise ValueError(
+                "CavitySimulation takes no RK_method: the linear model is discretised exactly, and the nonlinear"
+                " model is chosen with integrator='split' or 'heun'"
+            )
+        nonlinear_only = sorted(set(kwargs) & _NONLINEAR_KWARGS)
+        if nonlinear_only and kwargs.get('model', 'linear') != 'nonlinear':
+            raise TypeError(f"keyword arguments {nonlinear_only} apply only to model='nonlinear'")
         self.source_system = system
         super().__init__(**kwargs)
 
@@ -205,15 +255,13 @@ class CavitySimulation(StochasticSimulation):
         self.model = kwargs.get('model', 'linear')
         if self.model not in MODELS:
             raise ValueError(f'Unknown model={self.model!r}; use one of {MODELS}')
-        if self.model == 'nonlinear':
-            raise NotImplementedError(
-                "model='nonlinear' (the split-step nonlinear cavity simulation) is not implemented yet: it is a"
-                " later round-5 track (round5/wip/cavity-nonlinear). Use model='linear'."
-            )
         self.RK_method = 'exact (Van Loan)'
+        self.nonlinear_model = None
 
         system = self.source_system
-        if isinstance(system, QuadratureSystem):
+        if self.model == 'nonlinear':
+            self._configure_nonlinear(system, kwargs)
+        elif isinstance(system, QuadratureSystem):
             self.mtrap = None
             self.system = system
         elif hasattr(system, 'drift_matrix') and hasattr(system, 'quantum_factor_per_noise_operator'):
@@ -239,6 +287,42 @@ class CavitySimulation(StochasticSimulation):
         duplicates = sorted({label for label in labels if labels.count(label) > 1})
         if duplicates:
             raise ValueError(f'records with the same label {duplicates}: give each record its own label=...')
+
+    def _configure_nonlinear(self, system, kwargs):
+        """Builds the NonlinearCavityModel and its linearisation, and reads the integrator options"""
+        from levisim.simulation.nonlinear_cavity import (
+            NONLINEAR_TERMS,
+            NonlinearCavityModel,
+        )
+        if isinstance(system, QuadratureSystem) or not hasattr(system, 'drift_matrix'):
+            raise TypeError(
+                "model='nonlinear' needs a MultiTrap with physical parameters (tweezers and particles), not a"
+                f' {type(system).__name__}'
+            )
+        self.mtrap = system
+        self.nonlinear_model = NonlinearCavityModel(
+            system,
+            damping=kwargs.get('damping', 'velocity'),
+            terms=kwargs.get('terms', NONLINEAR_TERMS),
+            linearised_terms=kwargs.get('linearised_terms', ()),
+            interactions=kwargs.get('interactions', ()),
+            trap_positions=kwargs.get('trap_positions'),
+            feedback=kwargs.get('feedback', False),
+        )
+        self.system = self.nonlinear_model.quadrature_system
+        self.integrator_name = kwargs.get('integrator', 'split')
+        if self.integrator_name not in INTEGRATORS:
+            raise ValueError(f'integrator={self.integrator_name!r}: use one of {INTEGRATORS}')
+        self.substeps = int(kwargs.get('substeps', 1))
+        if self.substeps < 1:
+            raise ValueError(f'substeps = {self.substeps} should be ≥ 1')
+        self.nonlinear_stage = kwargs.get('nonlinear_stage', 'rk4')
+        if self.nonlinear_stage not in NONLINEAR_STAGES:
+            raise ValueError(f'nonlinear_stage={self.nonlinear_stage!r}: use one of {NONLINEAR_STAGES}')
+        if self.integrator_name == 'split':
+            self.RK_method = f'split step (exact linear flow, {self.nonlinear_stage} remainder, {self.substeps} per sample)'
+        else:
+            self.RK_method = f'Heun ({self.substeps} per sample)'
 
     def default_detection(self):
         """Homodyne() of every cavity mode and Position of every mechanical mode"""
@@ -314,9 +398,14 @@ class CavitySimulation(StochasticSimulation):
         return float(self._cavity_object('the heterodyne frequency Ωhet').Ωhet)
 
     def static_field(self, cavity):
-        """Static intracavity field α = (A0 + i·P0)/2 of the MultiTrap's cavity [√photons]"""
+        """
+        Static intracavity field α = (A0 + i·P0)/2 of the MultiTrap's cavity; with model='nonlinear',
+        the field at the true equilibrium of the nonlinear drift [√photons]
+        """
         if not self._is_multitrap_cavity(cavity):
             raise ValueError(f'the static field of cavity mode {cavity!r} is not known: pass α=... to PhotonNumber')
+        if self.nonlinear_model is not None:
+            return self.nonlinear_model.α_eq
         c = self.mtrap.cavity
         return complex(c.A0 + 1j * c.P0) / 2
 
@@ -325,7 +414,11 @@ class CavitySimulation(StochasticSimulation):
         return float(self._cavity_object('the optical frequency').ω)
 
     def zero_point_fluctuation(self, mode):
-        """x_zpf of a mechanical mode, from the MultiTrap's Dimension [m]"""
+        """x_zpf of a mechanical mode, from the MultiTrap's Dimension (or the nonlinear model's scaling) [m]"""
+        if self.nonlinear_model is not None:
+            model = self.nonlinear_model
+            index = model.labels.index(mode) - 1
+            return float(model.zpf[index // 3, index % 3])
         if self.mtrap is None:
             raise ValueError(f"x_zpf of {mode!r} is not known for a QuadratureSystem: use Position({mode!r}, units='zpf')")
         zpf = float(self.mtrap.dimensions[mode].zpf)
@@ -389,10 +482,11 @@ class CavitySimulation(StochasticSimulation):
         K = self.num_trajectories
         spec = self.initial_state_spec
         if isinstance(spec, str):
-            if spec == 'zero':
+            if spec == 'zero' or (spec == 'equilibrium' and self.nonlinear_model is not None):
                 return np.zeros((K, n))
             if spec != 'steady':
-                raise ValueError(f"initial_state={spec!r}: use 'steady', 'zero' or an array")
+                options = "'steady', 'zero', 'equilibrium'" if self.nonlinear_model is not None else "'steady', 'zero'"
+                raise ValueError(f'initial_state={spec!r}: use {options} or an array')
             growth = self.system.largest_growth_rate()
             if growth >= 0:
                 raise ValueError(
@@ -419,6 +513,8 @@ class CavitySimulation(StochasticSimulation):
         """
         Advances the augmented system exactly over num_samples intervals and records the traces
         """
+        if self.nonlinear_model is not None:
+            return self._simulate_nonlinear()
         start_time = time.perf_counter()
         aug = self.build_augmented_system()
         self.discretise()
@@ -480,6 +576,177 @@ class CavitySimulation(StochasticSimulation):
         self.record(np.transpose(Y, (1, 0, 2)) / self.Δt)
         logger.info('Simulated {} samples ({:.4g} ms) in {:.2f} s: traces {}',
                     N, self.time_length / ms, time.perf_counter() - start_time, list(self.traces))
+
+    # ------------------------------------------------------------------------------------------
+    # integration of the nonlinear model
+    # ------------------------------------------------------------------------------------------
+    def nonlinear_flow(self, u, h, t=0.0):
+        """
+        One Runge-Kutta step ('rk4' or 'rk2', `nonlinear_stage`) of du/dt = R(u), the nonlinear
+        remainder, over h from time t; u has shape (K, n) [quadratures]
+        """
+        R = self.nonlinear_model.remainder
+        if self.nonlinear_stage == 'rk2':
+            k1 = R(u, t)
+            return u + h * R(u + (h / 2) * k1, t + h / 2)
+        k1 = R(u, t)
+        k2 = R(u + (h / 2) * k1, t + h / 2)
+        k3 = R(u + (h / 2) * k2, t + h / 2)
+        k4 = R(u + h * k3, t + h)
+        return u + (h / 6) * (k1 + 2 * k2 + 2 * k3 + k4)
+
+    def discretise_split_step(self):
+        """
+        Transition matrices and noise factors of the exact linear flows of the split step, over h/2
+        and h (h = Δt/substeps), for the WHOLE augmented state (the records' integrals continue
+        across the flows of one sample): self.split = {'Φ_half', 'L_half', 'Φ_full', 'L_full', 'h'}
+        """
+        aug = self.augmented
+        Q_c = aug['B'] @ aug['N'] @ aug['B'].T
+        h = self.Δt / self.substeps
+        Φ_half, Q_half = van_loan_discretisation(aug['A'], Q_c, h / 2)
+        Φ_full, Q_full = van_loan_discretisation(aug['A'], Q_c, h)
+        self.split = {
+            'h': h,
+            'Φ_half': Φ_half, 'L_half': _psd_square_root(Q_half),
+            'Φ_full': Φ_full, 'L_full': _psd_square_root(Q_full),
+        }
+        return self.split
+
+    def _simulate_nonlinear(self):
+        """
+        Integrates the nonlinear model (split step or Heun) over num_samples intervals and records
+        the traces; the state is the deviation from the equilibrium
+        """
+        start_time = time.perf_counter()
+        model = self.nonlinear_model
+        aug = self.build_augmented_system()
+        self.discretise()        # Φ, Q of the linearised model over Δt, for record_spectrum
+        n, q = aug['n'], aug['q']
+        K, N, M = self.num_trajectories, self.num_samples, self.substeps
+        growth = self.system.largest_growth_rate()
+        if growth > 0:
+            logger.warning('Simulating a linearly unstable system (largest growth rate {:.4g} s⁻¹ at the equilibrium)', growth)
+        logger.info(
+            'Simulating {} samples of Δt = {:.4g} μs ({:.4g} ms), {} trajectories, nonlinear model ({}) with {} records, seed={!r}',
+            N, self.Δt / μs, self.time_length / ms, K, self.RK_method, len(self.detection), self.seed,
+        )
+        u = self.initial_state()
+        Y = np.empty((N, K, q))
+        states = np.empty((N + 1, K, n)) if self.store_state else None
+        if states is not None:
+            states[0] = u
+
+        self.backend_used = 'numpy'
+        kernel = None
+        if self.integrator_name == 'split':
+            self.discretise_split_step()
+            use_numba = resolve_backend(self.backend, N * M) == 'numba'
+            if use_numba and self.backend == 'auto' and n > AUTO_NUMBA_MAX_STATE:
+                # as for the linear model: the dense linear flow dominates and NumPy's BLAS is faster
+                use_numba = False
+            if use_numba and not model.compilable:
+                log = logger.warning if self.backend == 'numba' else logger.debug
+                log('No compiled kernel for this nonlinear configuration (interactions or other force elements): using NumPy')
+                use_numba = False
+            if use_numba:
+                from levisim.simulation.backends.numba_nonlinear import split_step_chunk
+                kernel = split_step_chunk
+                self.backend_used = 'numba'
+                self.threading = choose_threading(num_setups=K, num_particles=model.num_particles)
+        else:
+            if self.backend == 'numba':
+                logger.warning("integrator='heun' has no compiled kernel: using NumPy")
+            B̃ = aug['B']
+            w, V = np.linalg.eigh(aug['N'])
+            L_c = B̃ @ (V * np.sqrt(np.clip(w, 0, None)))      # L_c·L_cᵀ = B̃ÑB̃ᵀ
+        for start in range(0, N, self.chunk_size):
+            nn = min(self.chunk_size, N - start)
+            if self.integrator_name == 'split':
+                normals = self.standard_normals((nn, M + 1, K, n + q))
+                ξ = np.empty_like(normals)
+                ξ[:, [0, M]] = normals[:, [0, M]] @ self.split['L_half'].T
+                if M > 1:
+                    ξ[:, 1:M] = normals[:, 1:M] @ self.split['L_full'].T
+                if kernel is not None:
+                    u = kernel(self, ξ, u, Y[start:start + nn],
+                               states[start + 1:start + nn + 1] if states is not None else None,
+                               self.threading.axis == 'setups')
+                else:
+                    u = self._split_step_numpy(ξ, u, start, Y[start:start + nn],
+                                               states[start + 1:start + nn + 1] if states is not None else None)
+            else:
+                normals = self.standard_normals((nn, M, K, L_c.shape[1]))
+                u = self._heun_numpy(normals, L_c, u, start, Y[start:start + nn],
+                                     states[start + 1:start + nn + 1] if states is not None else None)
+            if not np.all(np.isfinite(u)):
+                logger.warning('The nonlinear simulation diverged (non-finite state) before sample {}', start + nn)
+        self.u_final = u
+        self.states = None if states is None else np.transpose(states, (1, 0, 2))
+        self.X = self.states
+        elapsed = time.perf_counter() - start_time
+        logger.debug('Integrated {} steps × {} trajectories in {:.3f} s ({:.3f} μs per sample, {} backend)',
+                     N, K, elapsed, 1e6 * elapsed / max(N, 1), self.backend_used)
+        self.record(np.transpose(Y, (1, 0, 2)) / self.Δt)
+        logger.info('Simulated {} samples ({:.4g} ms) in {:.2f} s: traces {}',
+                    N, self.time_length / ms, time.perf_counter() - start_time, list(self.traces))
+
+    def _split_step_numpy(self, ξ, u, start, Y, states):
+        """The NumPy reference loop of the split step over one chunk (see the module docstring)"""
+        n = u.shape[1]
+        M, h = self.substeps, self.split['h']
+        Φh_T = self.split['Φ_half'].T
+        Φf_T = self.split['Φ_full'].T
+        z = np.zeros((u.shape[0], ξ.shape[-1]))
+        for k in range(ξ.shape[0]):
+            z[:, :n] = u
+            z[:, n:] = 0.0
+            z = z @ Φh_T + ξ[k, 0]
+            t0 = (start + k) * self.Δt
+            for i in range(M):
+                z[:, :n] = self.nonlinear_flow(z[:, :n], h, t0 + i * h)
+                z = z @ (Φf_T if i < M - 1 else Φh_T) + ξ[k, i + 1]
+            u = z[:, :n].copy()
+            Y[k] = z[:, n:]
+            if states is not None:
+                states[k] = u
+        return u
+
+    def _heun_numpy(self, normals, L_c, u, start, Y, states):
+        """Heun's scheme for the augmented system (state and record integrals) over one chunk"""
+        aug = self.augmented
+        A_T = aug['A'].T
+        n = u.shape[1]
+        M = self.substeps
+        h = self.Δt / M
+        R = self.nonlinear_model.remainder
+        L_T = L_c.T * np.sqrt(h)
+        z = np.zeros((u.shape[0], A_T.shape[0]))
+        for k in range(normals.shape[0]):
+            z[:, :n] = u
+            z[:, n:] = 0.0
+            t0 = (start + k) * self.Δt
+            for i in range(M):
+                t = t0 + i * h
+                dW = normals[k, i] @ L_T
+                f1 = z @ A_T
+                f1[:, :n] += R(z[:, :n], t)
+                z_pred = z + h * f1 + dW
+                f2 = z_pred @ A_T
+                f2[:, :n] += R(z_pred[:, :n], t + h)
+                z = z + (h / 2) * (f1 + f2) + dW
+            u = z[:, :n].copy()
+            Y[k] = z[:, n:]
+            if states is not None:
+                states[k] = u
+        return u
+
+    @property
+    def absolute_states(self):
+        """With model='nonlinear' and store_state=True: the states including the equilibrium, u_eq + u"""
+        if self.nonlinear_model is None or self.states is None:
+            raise ValueError("absolute_states needs model='nonlinear' and store_state=True")
+        return self.states + self.nonlinear_model.u_eq
 
     # ------------------------------------------------------------------------------------------
     # recording
