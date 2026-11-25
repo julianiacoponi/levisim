@@ -409,7 +409,7 @@ system).
 The nonlinear model has its own compiled kernel (`levisim.simulation.backends.numba_nonlinear`),
 which runs the same split step on the same random numbers as the NumPy loop (agreement to
 7 × 10⁻¹⁵ relative). Per sample (one step, `substeps=1`), on the same machine under shared load
-(the spread between two runs was up to 2×):
+(three runs; individual entries varied by up to 10× between runs, so the ranges are indicative only):
 
 | particles (state dimension) | trajectories | NumPy | numba |
 |---|---|---|---|
@@ -417,7 +417,7 @@ which runs the same split step on the same random numbers as the NumPy loop (agr
 | 1 (8) | 64 | 7–27 μs per trajectory | 0.45–1.5 μs per trajectory |
 | 8 (50) | 1 | 390–1000 μs | 8–12 μs |
 | 8 (50) | 64 | 13–34 μs per trajectory | 2.8–7.0 μs per trajectory |
-| 64 (386) | 1 | 690–750 μs | 630–910 μs |
+| 64 (386) | 1 | 690–750 μs | 256–910 μs |
 | 64 (386) | 64 | 180–1740 μs per trajectory | 540–760 μs per trajectory |
 
 The NumPy loop is dominated by Python overhead for small systems; for 64 particles the dense
