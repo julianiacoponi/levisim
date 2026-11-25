@@ -74,8 +74,9 @@ multiplier $|\lambda|$ (`mathieu_floquet_multiplier`) every rf period.
 
 Left: the first stability region; a ring trap maps a radial point $(a, q)$ to $(-2a, -2q)$ on its
 axis. Right: at $a = 0$ the pseudopotential underestimates $\beta$ by 0.2 % at $q = 0.1$, 0.8 % at
-0.2, 3.3 % at 0.4 and 12 % at 0.7; the next order is better by two to four orders of magnitude
-($5 \times 10^{-6}$ at $q$ = 0.2, $2 \times 10^{-4}$ at 0.4). The tests check both edges of the
+0.2, 3.3 % at 0.4 and 12 % at 0.7; the next order is $2 \times 10^{-7}$, $5 \times 10^{-6}$,
+$2 \times 10^{-4}$ and $9 \times 10^{-3}$ at the same $q$, i.e. better by four orders of magnitude at
+$q$ = 0.1, falling to one order (a factor 13) at 0.7. The tests check both edges of the
 region against the Floquet multiplier and the small-$q$ limit for $a = -0.01, 0, 0.01$.
 
 ## Two levels of description
