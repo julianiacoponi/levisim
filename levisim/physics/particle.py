@@ -139,8 +139,10 @@ class Particle:
     - Φ: trapping position phase along the cavity axis, Φ = k·x0 [·] (π/2: node, 0: antinode)
     - orientation: unit quaternion (w, x, y, z) of the body frame relative to the lab frame (see
       `quaternion_to_rotation_matrix`). It turns the body-frame tensors into lab-frame ones
-      (`lab_polarisability_tensor`, `lab_inertia_tensor`, ...). It is fixed (there are no
-      rotational dynamics yet) but may be reassigned.
+      (`lab_polarisability_tensor`, `lab_inertia_tensor`, ...). It is the reference
+      (equilibrium) orientation of the librational dimensions of `MultiTrap` and the initial
+      orientation of a `RigidBodySimulation`, and may be reassigned.
+    - dipole_moment: permanent electric dipole moment in the body frame [C·m] (default None)
 
     Subclasses define the shape through `V`, `A`, `inertia_tensor` and `static_polarisability_tensor`,
     and may define the gas-damping tensors. Body-frame quantities are cached on first access, as in

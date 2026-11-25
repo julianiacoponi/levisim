@@ -1210,7 +1210,7 @@ class MultiTrapBase:
         particle's principal axes along the lab axes, or a sphere); otherwise their diagonals are
         used and a WARNING is logged. A static torque at the orientation (from the elements or the
         static cavity field) means that the orientation is not an equilibrium; it is logged with
-        the angle |τ_j|/K_jj it would cause.
+        the angle abs(τ_j)/K_jj it would cause.
 
         Raises ValueError if a modelled libration has K_jj ≤ 0 (a free or unstable rotation, e.g.
         the rotation 'β' about the polarisation of a linearly polarised tweezer).

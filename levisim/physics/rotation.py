@@ -14,11 +14,11 @@ Conventions ::
                   'β' is the rotation about the polarisation, which the tweezer does not confine.
 
 Torques (time-averaged over the optical cycle; complex field amplitudes E with
-E(t) = Re(E e^{-iωt}), the convention in which levisim's tweezer force is -∇(-¼ Re α|E|²)) ::
+E(t) = Re(E e^{-iωt}), the convention in which levisim's tweezer force is -∇(-¼ Re α‖E‖²)) ::
 
     optical          τ = ½ Re(p* × E),   p = α_eff,lab E,   α_eff,lab = R α_eff,body Rᵀ
     static electric  τ = p0 × E + (α_static,lab E) × E          (p0 = R p0,body, permanent dipole)
-    magnetic         τ = μ × B + (V/μ0) (χ_lab B) × B            (μ = R μ_body; small |χ|)
+    magnetic         τ = μ × B + (V/μ0) (χ_lab B) × B            (μ = R μ_body; small ‖χ‖)
 
 The optical torque contains the spin torque ½ Im(α) Im(E* × E) of circular and elliptical light,
 which drives continuous rotation (Arita et al., Nat. Commun. 4, 2374 (2013); Reimann et al., Phys.
@@ -36,10 +36,10 @@ and the two-sided torque noise is ::
     S_τ = ħ k³/(12π ε0) · Re(M M†)                                                [N²m²/Hz]
 
 normalised so that the same construction for the force reproduces levisim's translational recoil
-noise (`Tweezer.noise`, (2, 1, 7)·ħ k⁵ |α|² E0²/(60π ε0)). In the principal frame of α, for
-rotation about axis i (j, k the other two) it is ħ k³ (α_j - α_k)² (|E_j|² + |E_k|²)/(12π ε0),
+noise (`Tweezer.noise`, (2, 1, 7)·ħ k⁵ ‖α‖² E0²/(60π ε0)). In the principal frame of α, for
+rotation about axis i (j, k the other two) it is ħ k³ (α_j - α_k)² (‖E_j‖² + ‖E_k‖²)/(12π ε0),
 which is the rotational recoil heating of Rudolph et al., Phys. Rev. A 103, 043514 (2021), Eq. (31b)
-(their ξ_q = S_τ,q·θ_zpf²/ħ², with the photon scattering rate γsc ε² χ² written as k³|α|²E0²/(12π ε0 ħ)).
+(their ξ_q = S_τ,q·θ_zpf²/ħ², with the photon scattering rate γsc ε² χ² written as k³‖α‖²E0²/(12π ε0 ħ)).
 """
 
 import numpy as np
@@ -113,7 +113,7 @@ def quaternion_conjugate(q):
 
 def quaternion_from_rotation_vector(θ):
     """
-    Unit quaternion of the rotation by |θ| about θ/|θ| (the exponential map); θ in rad
+    Unit quaternion of the rotation by ‖θ‖ about θ/‖θ‖ (the exponential map); θ in rad
     [·]
     """
     θ = np.asarray(θ, dtype=float)
@@ -129,7 +129,7 @@ def rotation_vector_between(q_reference, q):
     """
     The lab-frame rotation vector θ with R(q) = exp([θ]×) R(q_reference), i.e. the small-angle
     librational coordinates (θα, θβ, θγ) of `q` about `q_reference`. The sign of q is chosen so that
-    |θ| ≤ π.
+    ‖θ‖ ≤ π.
     [rad]
     """
     δ = quaternion_multiply(q, quaternion_conjugate(q_reference))
@@ -183,7 +183,7 @@ def magnetic_torque(B, magnetic_moment=None, χ_lab=None, V=None):
     """
     Torque μ × B + (V/μ0)(χ B) × B of a static magnetic field B (lab frame, T) on a permanent moment
     μ [A·m²] and on the moment V χ B/μ0 induced in a body of volume V [m³] and susceptibility tensor χ
-    (lab frame; small |χ|, no demagnetisation correction)
+    (lab frame; small ‖χ‖, no demagnetisation correction)
     [N·m]
     """
     from levisim.core.constants import μ0

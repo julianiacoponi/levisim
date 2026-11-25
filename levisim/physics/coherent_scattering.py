@@ -151,7 +151,7 @@ def librational_expansion(trap, cavity_E0, α):
         U_cav = -E0²·|α_c|²·cos²(k·d·r + Φ)·c(θ),   c(θ) = e_c·α(θ)·e_c
 
     (with s = α_pol·sin θ and c = α_pol for an isotropic sphere they are U_CS and U_cav of the module
-    docstring). At r = 0, F = cos Φ and ∇F = -k·sin Φ·d + i·(k - 1/zR)·cos Φ·ẑ. Returns a dict:
+    docstring). At r = 0, F = cos Φ and ∇F = -k·sin Φ·d + i·(k - 1/zR)·cos Φ·ẑ. Returns a dict ::
 
         light       c_j such that the light-libration coupling is G_j = c_j·θ_zpf,j (complex, without
                     the tweezer phase), c_j = (E_d·E0/2ħ)·cos Φ·∂_j s: rotations couple at the

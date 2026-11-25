@@ -404,7 +404,7 @@ class Tweezer(ForceElement):
         Time-averaged optical torque ½ Re(p* × E) on the particle at r, p = α_eff,lab E
         (`levisim.physics.rotation.optical_torque`); `orientation` (a unit quaternion) defaults to
         the particle's own. It contains the alignment torque of an anisotropic polarisability and
-        the spin torque ½ Im(α_eff)·|E|²·Im(ê* × ê) of circularly or elliptically polarised light,
+        the spin torque ½ Im(α_eff)·‖E‖²·Im(ê* × ê) of circularly or elliptically polarised light,
         which acts on a sphere too. t is not used.
         [N·m]
         """

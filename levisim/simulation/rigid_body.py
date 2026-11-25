@@ -19,7 +19,7 @@ Phys. Rev. E 97, 052112 (2018), from levisim.physics.shapes) and the matching di
 constant, so the noise is additive (constant G in dX = F dt + G dW) and the integrators of
 levisim.simulation.integrators apply unchanged. With a surface at the gas temperature the noises
 satisfy the fluctuation-dissipation relation, 〈ξ ξᵀ〉 = 2 kB T Γ diag(m, I) δ(t - t'). After every
-step the quaternion is renormalised (a projection method), so |q| = 1 to round-off; the energy
+step the quaternion is renormalised (a projection method), so ‖q‖ = 1 to round-off; the energy
 error of the deterministic part is that of the integrator (fourth order for 'vector_4').
 """
 
@@ -226,7 +226,7 @@ class RigidBodySimulation(StochasticSimulation):
                 0.5 * (4 * y / wy**2) * U,
                 0.5 * (4 * z / wz**2) * U * (1 - 2 * ellipse),
             ])
-            # τ_b = Rᵀ·½Re(p* × E) = ½|E|²·Re((α_body u)* × u)
+            # τ_b = Rᵀ·½Re(p* × E) = ½‖E‖²·Re((α_body u)* × u)
             τ_b = τ_b + 0.5 * amplitude2 * np.real(_cross(np.conj(v), u))
         if self.other_elements:
             orientation = q / np.sqrt(q @ q)
@@ -335,12 +335,12 @@ class RigidBodySimulation(StochasticSimulation):
         return 0.5 * np.einsum('ni,ni->n', X[:, 10:13], self.angular_velocities_body(X))
 
     def translational_kinetic_energies(self, X=None):
-        """|p|²/2m of every state [J]"""
+        """‖p‖²/2m of every state [J]"""
         X = self.X if X is None else np.atleast_2d(X)
         return 0.5 * np.einsum('ni,ni->n', X[:, 3:6], X[:, 3:6]) / self.m
 
     def quaternion_norm_error(self, X=None):
-        """max | |q| - 1 | over the states [·]"""
+        """max abs(‖q‖ - 1) over the states [·]"""
         X = self.X if X is None else np.atleast_2d(X)
         return float(np.max(np.abs(np.linalg.norm(X[:, 6:10], axis=1) - 1)))
 
