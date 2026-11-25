@@ -10,7 +10,7 @@ is what `MultiTrap` linearises. The two methods are the interface shared with ev
 - ``stiffness_blocks(positions0, particles)`` -> ndarray (N, N, 3, 3) [N/m], with
   ``K[j, k, a, b] = -∂F_j,a/∂r_k,b`` at positions0
 
-`PairInteraction` is the common case of a central pair potential U(|r_j - r_k|), for which the
+`PairInteraction` is the common case of a central pair potential U(r) of the distance r between two particles, for which the
 forces, the potential and the stiffness blocks follow from U'(r) and U''(r) in closed form.
 """
 
@@ -140,7 +140,7 @@ class Interaction:
 
 class PairInteraction(Interaction):
     """
-    A central pair potential U_jk(r), r = |r_j - r_k|, summed over the pairs
+    A central pair potential U_jk(r) of the centre-to-centre distance r, summed over the pairs
 
     Subclasses implement `pair_derivatives(r, particle_j, particle_k)`, returning (U, dU/dr,
     d²U/dr²) at the centre-to-centre distance r [J, N, N/m]. Then, with r̂ = (r_j - r_k)/r, ::

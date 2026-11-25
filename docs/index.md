@@ -28,6 +28,7 @@ concepts/conventions
 concepts/calculation_methods
 concepts/stability
 concepts/static_cavity_shifts
+concepts/interactions
 concepts/particles_and_materials
 concepts/traps_as_fields
 guide/index

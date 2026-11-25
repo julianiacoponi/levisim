@@ -673,6 +673,7 @@ class MultiTrapBase:
               [z1, z2] (the rate at which z2 drives z1) to g_12 and entry [z2, z1] to g_21; a single
               number g instead of the pair means g_12 = g_21 = g. The values are added to any
               intra-bead coupling of the same pair.
+
         [2π·Hz]
         """
         couplings = np.zeros((self.num_dimensions, self.num_dimensions))
