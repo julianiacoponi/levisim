@@ -14,8 +14,8 @@ Python spectra are tested against.
 :alt: Homodyne spectrum of two particles in one cavity
 
 Homodyne spectrum of the cavity output for two particles moving in $x$ and $y$
-(the [quickstart](getting_started.md#quickstart)). Dotted lines mark each motion's bare
-trap frequency $\Omega_{j_n}$.
+(the [quickstart](getting_started.md#quickstart)), with each motion's bare trap frequency
+$\Omega_{j_n}$ and the four normal modes marked; below it, the displacement spectrum of each motion.
 :::
 
 ```{toctree}

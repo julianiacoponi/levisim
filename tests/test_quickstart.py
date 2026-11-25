@@ -67,3 +67,15 @@ def test_stability_depends_on_the_phase_difference(φ1, φ2, stable):
 def test_builtin_phases_log_the_instability_warning(warnings_logged):
     MultiTrap(num_traps=2, Cartesian_axes_per_trap=2, gas_kwargs=DEFAULT_gas_kwargs, cavity_kwargs=DEFAULT_cavity_kwargs)
     assert any('positive real part' in message for message in warnings_logged)
+
+
+def test_readme_phonon_occupancy_snippet_gives_the_quoted_numbers(tmp_path, monkeypatch):
+    """The README's second quickstart snippet (steady-state occupancies) runs on the quickstart system"""
+    monkeypatch.chdir(tmp_path)
+    text = (REPO_ROOT / 'README.md').read_text(encoding='utf-8')
+    section = text[text.index('## Quickstart'):text.index('## Three papers in levisim')]
+    first, second = re.findall(r'```python\n(.*?)```', section, flags=re.DOTALL)[:2]
+    namespace = {}
+    exec(compile(first + second, 'README.md', 'exec'), namespace)
+    assert namespace['labels'] == ['x1', 'y1', 'x2', 'y2']
+    assert np.allclose(namespace['n'], [139, 161, 76, 486], atol=0.5)
