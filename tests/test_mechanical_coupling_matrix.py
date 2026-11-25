@@ -21,6 +21,7 @@ from levisim.physics.bead import Bead
 LAM = QuantumLinearTheoryMethod.LINEAR_AMPLIFIER_MODEL
 NUMERICAL_H = QuantumLinearTheoryMethod.NUMERICAL_HYBRIDISATION
 ANALYTIC_INSIDE = QuantumLinearTheoryMethod.ANALYTIC_INSIDE_CAVITY
+ANALYTIC_OUTPUT = QuantumLinearTheoryMethod.ANALYTIC_CAVITY_OUTPUT
 OMEGA_RANGE = np.arange(250, 320, 5.0) * kHz
 
 
@@ -83,26 +84,34 @@ def test_drift_matrix_is_written_from_the_matrix_including_off_bead_and_asymmetr
     assert len(changed) == 8
 
 
-def test_off_bead_entry_raises_in_hybridisation_and_analytic_methods(make_mtrap):
+def test_off_bead_entry_is_used_by_hybridisation_and_analytic_methods(make_mtrap):
+    """An inter-bead entry (formerly NotImplementedError) enters Rjk and the analytic closed form"""
     mtrap = make_mtrap('2×2', ω_range=OMEGA_RANGE, toy_params=OFF_NODE_toy_params_pairs)
+    R_before = mtrap.hybridisation_function_value('x1', 'x2', 300 * kHz)
     matrix = mtrap.mechanical_coupling_matrix.copy()
     matrix[mtrap.label_to_index['x1'], mtrap.label_to_index['x2']] = 1 * kHz
     mtrap.mechanical_coupling_matrix = matrix
     mtrap.setup_linear_amplifier_model_matrices()
-    mtrap.homodyne_spectrum(LAM)  # the drift matrix handles it
-    with pytest.raises(NotImplementedError, match='different beads'):
-        mtrap.hybridisation_function_value('x1', 'x2', 300 * kHz)
-    with pytest.raises(NotImplementedError, match='different beads'):
-        mtrap.homodyne_spectrum(ANALYTIC_INSIDE)
+    μ, M = mtrap.dimensions['x1'].μm(300 * kHz), mtrap.dimensions['x1'].M(300 * kHz)
+    R_after = mtrap.hybridisation_function_value('x1', 'x2', 300 * kHz)
+    assert R_after - R_before == pytest.approx(1j * μ / M * 1 * kHz, rel=1e-12)
+    lam = np.asarray(mtrap.homodyne_spectrum(LAM))
+    mtrap._analytic_kernel_cache = None
+    analytic = np.asarray(mtrap.homodyne_spectrum(ANALYTIC_INSIDE))
+    np.testing.assert_allclose(analytic, lam, rtol=1e-12)
 
 
-def test_asymmetric_intra_bead_entry_raises_in_analytic_methods(make_mtrap):
+def test_asymmetric_intra_bead_entry_is_kept_by_the_analytic_methods(make_mtrap):
     mtrap = make_mtrap('1×2', ω_range=OMEGA_RANGE, toy_params=OFF_NODE_toy_params_pairs)
     matrix = mtrap.mechanical_coupling_matrix.copy()
     matrix[0, 1] += 1 * kHz
     mtrap.mechanical_coupling_matrix = matrix
-    with pytest.raises(NotImplementedError, match='not symmetric'):
-        _ = mtrap.intra_bead_coupling_matrix
+    mtrap.setup_linear_amplifier_model_matrices()
+    assert mtrap.mechanical_coupling_structure()[0] is False
+    np.testing.assert_array_equal(mtrap.intra_bead_coupling_matrix, matrix)
+    np.testing.assert_allclose(
+        np.asarray(mtrap.homodyne_spectrum(ANALYTIC_OUTPUT)), np.asarray(mtrap.homodyne_spectrum(LAM)), rtol=1e-12,
+    )
 
 
 def test_asymmetric_intra_bead_coupling_agrees_between_LAM_and_numerical_hybridisation(make_mtrap):
