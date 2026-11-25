@@ -17,6 +17,12 @@ fields".
 - `PaulTrap`: a quadrupole radio-frequency trap for a charged particle (full rf force, secular
   stiffness, Mathieu parameters and stability), with the presets `PaulTrap.ring` and `PaulTrap.linear`
 - `UniformElectricField`: F = Q E, a stray or compensation field
+- `MagneticTrap`: a static magnetic field acting on a magnetisable (diamagnetic) particle,
+  U = -(V/2μ0) B·χ_eff·B, with the field from a source in `levisim.physics.fields.magnetic_sources`
+  (`LocalFieldExpansion`, `MultipoleField`, `CurrentLoop`, `CoilPair`, `CuboidMagnet`, `FieldSum`,
+  `CallableField`)
+- `EddyCurrentDamping`: velocity damping (and its thermal noise) of a conducting sphere in a field
+  gradient
 """
 
 from levisim.physics.fields.base import SIMULATION_GROUPS, ForceElement
@@ -34,22 +40,52 @@ from levisim.physics.fields.elements import (
     HarmonicPotential,
     PhotonRecoil,
 )
+from levisim.physics.fields.magnetic import (
+    EddyCurrentDamping,
+    MagneticTrap,
+    demagnetising_factors_of,
+    effective_susceptibility,
+)
+from levisim.physics.fields.magnetic_sources import (
+    CallableField,
+    CoilPair,
+    CuboidMagnet,
+    CurrentLoop,
+    FieldSum,
+    LocalFieldExpansion,
+    MagneticFieldSource,
+    MultipoleField,
+    real_solid_harmonic,
+)
 
 __all__ = [
     'SIMULATION_GROUPS',
+    'CallableField',
+    'CoilPair',
+    'CuboidMagnet',
+    'CurrentLoop',
+    'EddyCurrentDamping',
     'Feedback',
+    'FieldSum',
     'ForceElement',
     'Gravity',
     'HarmonicPotential',
     'Kick',
+    'LocalFieldExpansion',
+    'MagneticFieldSource',
+    'MagneticTrap',
+    'MultipoleField',
     'PaulTrap',
     'PhotonRecoil',
     'Tweezer',
     'UniformElectricField',
+    'demagnetising_factors_of',
+    'effective_susceptibility',
     'mathieu_characteristic_exponent',
     'mathieu_first_region_stable',
     'mathieu_floquet_multiplier',
     'mathieu_secular_beta',
+    'real_solid_harmonic',
 ]
 
 
