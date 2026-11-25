@@ -28,6 +28,7 @@ showcase/index
 concepts/conventions
 concepts/calculation_methods
 concepts/stability
+concepts/static_cavity_shifts
 guide/index
 notebooks
 ```
