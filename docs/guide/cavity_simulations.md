@@ -4,7 +4,9 @@ This page describes `levisim.CavitySimulation`, which simulates the light leavin
 (homodyne, heterodyne and photon-flux records) together with the positions of the particles that
 scatter into it, from the same linear model that `MultiTrap` uses for spectra. The usual entry point
 is `MultiTrap.simulate`, which returns a `CavitySimulation` holding the `MultiTrap` by composition;
-one `MultiTrap` serves any number of runs.
+one `MultiTrap` serves any number of runs. With `model='nonlinear'` the same class integrates the
+full, un-linearised tweezer and coherent-scattering potential instead (see
+[the nonlinear model](#the-nonlinear-model)), with the same records.
 
 ## A worked example
 
@@ -96,8 +98,8 @@ the cancellation inside the block exponential harmless.
 `initial_state='steady'` (the default) draws $u_0$ from `steady_state_covariance`. A linearly
 unstable system has no steady state, so it raises `ValueError` there; with `initial_state='zero'`
 (or a given array) its growth is simulated faithfully, as in panel (d). The linearisation stops
-being physical long before the amplitudes in panel (d) are reached; the nonlinear model of the
-design plan will show where the growth saturates.
+being physical long before the amplitudes in panel (d) are reached; the nonlinear model below
+shows where the growth saturates.
 
 ## Records and their conventions
 
@@ -211,6 +213,172 @@ SpectralDensityEstimate(experiment, ('homodyne', 'homodyne'), num_segments=8)
 `sim.record_spectrum` includes η, the electronic noise, the detection floor and the conversion to
 volts; it does not include LO phase noise.
 
+## The nonlinear model
+
+```python
+sim = mtrap.simulate(model='nonlinear', num_samples=2**20, Δt=0.1*μs, seed=1,
+                     detection=[Homodyne(), Position('z1')])
+sim.nonlinear_model.r_eq      # equilibrium displacement of every particle [m]
+sim.nonlinear_model.α_eq      # static intracavity amplitude there [√photons]
+```
+
+`model='nonlinear'` needs a `MultiTrap` with physical parameters. It keeps the records, ports,
+detection and ensembles of the linear model, but it integrates the full potential of every
+particle in three dimensions.
+
+### One energy for the drive and the force
+
+In this chapter I write everything from one classical energy: the dipole energy of every particle
+in its tweezer and in the cavity field, which is `levisim.physics.coherent_scattering.optical_potential`
+(the function whose second derivatives already give `Trap.kj`, the couplings $g_j$, $g_{xy}$,
+$g_{xz}$, $g_{yz}$ and the static cavity shifts) plus the free cavity:
+
+$$
+H = -\hbar\Delta|\alpha|^2 + \sum_n \Big[\frac{p_n^2}{2m_n} + U_{\mathrm{tw}}(r_n)
+    - 2E_{d,n}\,\mathrm{Re}\big(\alpha_n^* D_n(r_n)\big)
+    - \alpha_{\mathrm{pol}} E_0^2 |\alpha|^2 \cos^2(k\,\mathbf{d}\cdot r_n + \Phi_n)\Big],
+$$
+
+with $\alpha_n = \alpha e^{-i\phi_n}$ the cavity amplitude in the frame of tweezer $n$ and
+
+$$
+D_n(r) = \sin\theta\; f(r)\, \cos(k\,\mathbf{d}\cdot r + \Phi_n)\, e^{i\psi(z)},\qquad
+\psi(z) = kz - \arctan(z/z_R),
+$$
+
+the amplitude with which the particle scatters its tweezer light into the cavity mode
+(`scattering_amplitude`): the standing wave, the tweezer envelope $f$, and the tweezer phase
+including the Gouy phase. The classical equations $\dot\alpha = -(i/\hbar)\,\partial H/\partial\alpha^*$
+and $\dot p_n = -\nabla_n H$ give, with cavity decay and the baths,
+
+$$
+\dot\alpha = (i\Delta - \kappa/2)\,\alpha + \sum_n i\,\omega_{d,n} e^{i\phi_n} D_n(r_n)
+  + \sum_n i\,\delta_n \cos^2(k\,\mathbf{d}\cdot r_n + \Phi_n)\,\alpha + \sum_j \sqrt{\kappa_j}\,\alpha_{\mathrm{in},j},
+$$
+
+$$
+\dot p_n = F_{\mathrm{elements}}(r_n) + 2E_{d,n}\,\mathrm{Re}\big(\alpha_n^*\nabla D_n\big)
+  - \alpha_{\mathrm{pol}} E_0^2 |\alpha|^2 k \sin\big(2(k\,\mathbf{d}\cdot r_n + \Phi_n)\big)\,\mathbf{d}
+  + \sum_m F_{nm} - \Gamma_n p_n + \text{noise},
+$$
+
+with $\omega_d = E_d/\hbar$ (`Trap.ωd`) and $\delta = \alpha_{\mathrm{pol}}E_0^2/\hbar$, the pull of
+the cavity frequency by one particle (a few Hz for a 60 nm bead, which `MultiTrap` leaves out). The
+drive (`cavity_drive`) and the back-action force (`optical_force`) are therefore conjugate by
+construction. Expanding $H$ to second order about the trap centre reproduces `MultiTrap`'s
+linearised Hamiltonian: the term linear in $r$ of $-2E_d\mathrm{Re}(\alpha_n^* D_n)$ gives
+$g_x, g_y \propto -\sin\Phi$ on the amplitude quadrature and $g_z \propto (k - 1/z_R)\cos\Phi$ on the
+phase quadrature, rotated by $e^{i\phi_n}$ into $G_j$ (`Dimension.G`), and the quadratic terms give
+$g_{xy}$, $g_{xz}$, $g_{yz}$ and the static shifts. `F_elements` is every force element of the trap
+(the Gaussian-beam tweezer force of `Tweezer.force`, `PhotonRecoil`, `Gravity`,
+`HarmonicPotential`, ...), and $F_{nm}$ the pair forces of optional `interactions=[...]`
+(objects with `forces(positions, particles, t)`, the round-5 interaction interface).
+
+The state is kept in levisim's quadratures ($\alpha = (A + iP)/2$, $r_j = x_{\mathrm{zpf},j} X_j$),
+with $\Omega_j$ and $x_{\mathrm{zpf},j}$ those of `Dimension` (including the static shifts), so
+that the linearised model *is* a `QuadratureSystem` with the labels `cavity, x1, y1, z1, x2, ...`.
+Two forms of damping are available: `damping='velocity'` (default, $-\Gamma p$ with momentum
+diffusion, the physical Langevin form, as in `FreeSpaceSimulation`) and `damping='symmetric'`
+(both quadratures damped at $\Gamma/2$, the rotating-wave form of `MultiTrap`'s drift matrix). The
+bath occupation includes the photon-recoil heating of `Trap.photon_recoil_heating_rates` when
+`MultiTrap(photon_recoil=True)` (the default).
+
+### The equilibrium
+
+The simulation does not start at the trap centre but at the equilibrium of the full drift, found
+by Newton's method (with a trust region of 20 nm per step, which the strongly driven systems need)
+and kept as `sim.nonlinear_model.u_eq`, `r_eq` and `α_eq`. The state, `initial_state` arrays and
+the `Position` records are deviations from it. `initial_state='equilibrium'` (or `'zero'`) starts
+exactly there; `'steady'` (the default) draws from the steady state of the model linearised there.
+
+At the node the static field vanishes and the equilibrium is the trap centre. There, the Jacobian
+of the nonlinear drift (with `damping='symmetric'`) equals `MultiTrap.drift_matrix` in quadratures
+to $1.5\times10^{-13}$ of its largest entry for 1×2, 2×2, 1×3, 2×3 and 3×2: the nonlinear model and
+the frequency-domain theory are the same physics at linear order.
+
+Off the node they differ, because `MultiTrap` linearises at the trap centre while the scattering
+force moves the particle. For one 60.1 nm bead at $\Phi = \pi/4$ in the shelf cavity the
+equilibrium is $(-2.8, -3.8, 34.5)$ nm, consistent with the ~33 nm estimate of
+`static_cavity_force`; the static field there is $|\alpha| = 1401$ (`MultiTrap`: 1359) with its
+phase rotated by 11°, through the scattering phase $\psi(z_{\mathrm{eq}})$. The table below
+(`docs/guide/tables/cavity_nonlinear_off_node.csv`) compares the linearisation at the true
+equilibrium with `MultiTrap`'s:
+
+| system | $r_{\mathrm{eq}}$ [nm] | drift-matrix difference | mode frequency shifts [kHz] | max growth rate [s⁻¹], `MultiTrap` → equilibrium (all three axes) |
+|---|---|---|---|---|
+| 1×2, Φ = 45° | (−2.8, −3.8, 34.5) | 1.4% | +0.093, +0.078 | −1639 → −1564 (−1522) |
+| 1×3, Φ = 45° | (−2.8, −3.8, 34.5) | 3.5% | −0.011, +0.093, +0.078 | −1597 → −1522 |
+| 1×3, Φ = 30° | (−2.4, −3.2, 50.5) | 6.0% | −0.023, +0.037, +0.036 | −713 → −669 |
+| 2×2, Φ = 45°, 52°, φ₂ = 0° | (−5.4, −7.2, 67.2); (−6.3, −7.7, 63.6) | 2.8% | +0.375, +0.159, +0.281, +0.227 | −365 → −387 (−35) |
+| 2×2, Φ = 45°, 52°, φ₂ = 90° | (−3.6, −4.8, 112.1); (−6.2, −7.5, −8.6) | 4.3% | −1.095, +0.570, +0.178, −0.593 | −404 → −903 (**+323**) |
+| 3×2, Φ = 45°, 52°, 59°, φₙ = 0° | z ≈ 87–96 | 4.0% | +0.26 to +0.91 | −386 → −434 (−59) |
+
+The mode frequencies move by 0.01–1.1 kHz and the optical damping by up to a factor of 2. The
+largest effect is in the last column: `MultiTrap` with two axes per particle leaves out z, which
+off the node is coupled to the light ($g_z \propto \cos\Phi$). With every axis included, the
+2×2 system at $\phi_2 = 90°$, which `MultiTrap` (2 axes) reports as stable, is *unstable*
+(+323 s⁻¹). That is a statement about the choice of modelled axes as much as about the
+linearisation point, and the nonlinear simulation, which always has all three axes, shows it.
+
+### The split-step integrator
+
+The cavity is the fast part ($|\Delta|\Delta t = 0.28$ at Δt = 0.1 μs), and it is linear. Each
+step therefore advances the system linearised at the equilibrium *exactly*, with the Van Loan
+propagator and noise of the linear model (including the record integrals), and integrates only the
+nonlinear remainder $R(u) = F(u_{\mathrm{eq}} + u) - J u$ with a Runge-Kutta step, in a Strang
+splitting $L(h/2)\,N(h)\,L(h/2)$ with $h = \Delta t/$`substeps`. With every term linearised
+(`linearised_terms=('elements', 'coherent_scattering', 'cavity')`) the remainder is identically
+zero and the scheme is the exact linear model. `integrator='heun'` integrates the same equations
+with Heun's scheme as a cross-check; at Δt = 0.1 μs its stationary variance is wrong by up to 7.5%
+(1×3, Φ = π/4) from the linear part alone, and by 0.1% at 0.025 μs, while the split step has no
+error in the linear part at any Δt.
+
+The order of the scheme was measured, not assumed (panel b below): on a shared Brownian path (fine
+exact increments composed exactly, reference h = 7.8 ns), the strong error at 10× the thermal
+amplitude falls as $h^{1.96}$ to $h^{2.03}$ over h = 0.016–0.5 μs, the second order of the Strang
+splitting. At the thermal amplitude the error is 50× smaller (1.5 × 10⁻⁵ of the state's rms at
+h = 0.125 μs) and the slope drops to 1.1 at small h, where the splitting error no longer dominates
+the rounding of the noise composition.
+
+### Validation
+
+![Validation of the nonlinear model: tweezer softening, measured convergence order and small-amplitude spectra](figures/cavity_nonlinear_validation.png)
+
+(a) With the cavity coupling off (`terms=('elements',)`), a bead released at amplitude $a$ along
+x oscillates at the frequency of the exact period of the 1D Gaussian well, a Duffing-like softening
+of 5.4 kHz at 200 nm and 11.8 kHz at 300 nm: the split step at Δt = 0.1 μs is within 2 × 10⁻⁵
+(150.9872 kHz against the exact 150.9859 kHz at 200 nm), and `FreeSpaceSimulation` of the same trap
+agrees once its Kasdin RK4 step is small enough (150.9862 kHz at Δt = 0.01 μs; at 0.1 μs it gives
+151.31 kHz). The spectra cannot show this amplitude dependence. (b) The measured convergence order
+described above. (c) The ratio of the simulated homodyne PSD (1×2 at the node, `damping='symmetric'`,
+16 trajectories × 2¹⁷ samples) to the exact linear theory: at 300 K the z motion has an rms of
+196 nm, comparable to the optical wavelength, and the nonlinear terms mix it into the light
+(features at 2Ω_z, Ω_x ± Ω_z, ...; band medians 1.13 at 1-100 kHz); at 30 mK (rms 2 nm) the median
+ratio is within 1.2% of 1 in every band. The relative pathwise difference from the linear model
+scales with the amplitude, a factor 10 per 100× in temperature (0.0146 at 3 K, 0.0011 at 30 mK).
+
+### Beyond the spectra: an unstable system saturates
+
+![Growth and saturation of the unstable 2×2 system](figures/cavity_nonlinear_growth.png)
+
+The default 2×2 system (tweezer phases 0° and 90°) is linearly unstable, max_growth_rate =
+2677.5 s⁻¹. Started at the equilibrium, the x and y energy grows at the fitted rate
+2677.6 ± 20.5 s⁻¹ (4 trajectories) until about 4.3 ms, where y reaches 400–460 nm, a phase
+$k\,\mathbf{d}\cdot r \approx 1.7$–1.9 rad along the standing wave (panel a). What limits it is
+the standing wave: with the coherent-scattering and cavity terms linearised, every trajectory
+leaves the trap; with them kept and only the tweezer made harmonic, the growth still stops, at a
+lower energy. The tweezer's Gaussian anharmonicity shapes the peak (10^9.35 against 10^8.37
+phonons), but it is not what stops the growth. Past the peak the energy moves from y into z
+(panel b), whose
+coupling to the light is a nonlinear function of the large y excursion, and the x-y energy decays
+back to the bath level over ~8 ms. With the z motion started from its thermal state instead of
+exactly at the equilibrium, the instability never develops beyond a few hundred phonons: the
+nonlinear mixing with a thermal z already saturates it. None of this is visible in a spectrum,
+which for this system is formal (`MultiTrap` warns that there is no steady state).
+
+`python docs/guide/scripts/cavity_nonlinear_example.py` regenerates both figures, the table and
+every number above (seeded; about a minute with numba).
+
 ## Validation
 
 `tests/test_cavity_simulation.py` holds the fast versions of the validation ladder:
@@ -237,3 +405,22 @@ $n = 34$, 10.0 and 4.5 μs; $n = 66$, 16.4 and 8.8 μs; $n = 130$, 31.9 and 31.6
 the cost is the BLAS products, so `backend='auto'` uses NumPy there. With several trajectories the
 compiled loop runs one thread per trajectory (0.4-0.7 μs per sample and trajectory for the 1×2
 system).
+
+The nonlinear model has its own compiled kernel (`levisim.simulation.backends.numba_nonlinear`),
+which runs the same split step on the same random numbers as the NumPy loop (agreement to
+7 × 10⁻¹⁵ relative). Per sample (one step, `substeps=1`), on the same machine under shared load
+(the spread between two runs was up to 2×):
+
+| particles (state dimension) | trajectories | NumPy | numba |
+|---|---|---|---|
+| 1 (8) | 1 | 360–800 μs | 0.9–1.4 μs |
+| 1 (8) | 64 | 7–27 μs per trajectory | 0.45–1.5 μs per trajectory |
+| 8 (50) | 1 | 390–1000 μs | 8–12 μs |
+| 8 (50) | 64 | 13–34 μs per trajectory | 2.8–7.0 μs per trajectory |
+| 64 (386) | 1 | 690–750 μs | 630–910 μs |
+| 64 (386) | 64 | 180–1740 μs per trajectory | 540–760 μs per trajectory |
+
+The NumPy loop is dominated by Python overhead for small systems; for 64 particles the dense
+386 × 386 linear flow dominates, so `backend='auto'` uses NumPy above state dimension 128, as for
+the linear model. Traps with force elements other than one tweezer, its `PhotonRecoil`, `Gravity`,
+`HarmonicPotential` and `Feedback`, and runs with `interactions`, use the NumPy loop.

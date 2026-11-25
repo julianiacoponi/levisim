@@ -113,7 +113,7 @@ class NonlinearCavityModel:
     into one cavity mode (see the module docstring)
 
     ``NonlinearCavityModel(mtrap, **options)``, with a physical-parameter `MultiTrap` (its traps,
-    beads, tweezers, cavity, gas and bath occupations). Options:
+    beads, tweezers, cavity, gas and bath occupations). Options::
 
         damping ['velocity']: 'velocity' (-Γ·p, the physical Langevin form) or 'symmetric' (the
             rotating-wave form of MultiTrap's drift matrix)
@@ -462,8 +462,8 @@ class NonlinearCavityModel:
         Each Newton step is scaled down, if needed, so that no particle moves by more than
         max_displacement_step [m] (a trust region: the potential is periodic on the scale λ/2, and a
         full step from the trap centre can overshoot into the next well when the static field is
-        strong). Converged when the Newton step is below tol relative to max(1, |U|) on every
-        quadrature. Returns u_eq (absolute quadratures).
+        strong). Converged when the Newton step is below tol on every
+        quadrature (relative to max(1, abs(U))). Returns u_eq (absolute quadratures).
         """
         U = np.zeros(self.n)
         X_rows = np.array([2 + 2 * j for j in range(3 * self.num_particles)])
