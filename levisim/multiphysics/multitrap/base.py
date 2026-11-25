@@ -170,6 +170,9 @@ class MultiTrapBase:
         # direct interactions between the particles (levisim.physics.interactions), physical
         # parameters only (toy parameters give direct couplings as toy_params['g_direct'])
         self.interactions = list(kwargs.get('interactions') or [])
+        # whether each particle's own block of the interactions' stiffness shifts its frequencies,
+        # including frequencies given through override_Ω_dict (see setup_static_cavity_shifts)
+        self.interaction_frequency_shifts = bool(kwargs.get('interaction_frequency_shifts', True))
         if self.interactions and self.toy_params:
             msg = "interactions=[...] needs physical parameters; with toy_params give toy_params['g_direct'] instead"
             logger.error(msg)
@@ -736,6 +739,9 @@ class MultiTrapBase:
               is logged if the positions along the cavity axis disagree with the Φs
             - interactions: list of `levisim.physics.interactions.Interaction` (Coulomb,
               NewtonianGravity, Casimir, ...) between the particles; see `setup_interactions`
+            - interaction_frequency_shifts: add each particle's own block of the interactions'
+              stiffness to its frequencies, also to those given through override_Ω_dict (default
+              True; pass False for measured frequencies that already contain it)
             - φn_dict: {n: φn} tweezer phases [rad] for any of the traps n = 1, ..., num_traps; they
               replace the phase of that trap's tweezer (given or built-in). The `Tweezer` instances
               passed in are not modified: a trap whose phase is replaced gets a copy of its tweezer.
@@ -1082,7 +1088,10 @@ class MultiTrapBase:
 
         With `interactions`, each trap's own block of the interactions' stiffness
         (`setup_interactions`) is added to K before the frequencies are shifted, whether or not
-        static_cavity_shifts is on; `static_cavity_hessians` keeps the cavity part alone.
+        static_cavity_shifts is on; `static_cavity_hessians` keeps the cavity part alone. Unlike the
+        cavity part, it is also added to frequencies given through override_Ω_dict (taken as the
+        trap's own frequencies), unless MultiTrap(interaction_frequency_shifts=False) says that
+        they were measured with the interaction present.
 
         Raises ValueError if a modelled dimension is statically unstable (Ωtw² + K/m ≤ 0).
         """
@@ -1097,19 +1106,25 @@ class MultiTrapBase:
             else:
                 K = np.zeros((3, 3))
             self.static_cavity_hessians[n] = K
-            if self.interactions:
-                # the particle's own block of the interactions' stiffness (setup_interactions)
-                K = K + self.interaction_stiffness_blocks[n - 1, n - 1]
+            # the particle's own block of the interactions' stiffness (setup_interactions); it is
+            # added to frequencies given through override_Ω_dict as well, unless
+            # interaction_frequency_shifts=False says those already contain it
+            K_interaction = None
+            if self.interactions and self.interaction_frequency_shifts:
+                K_interaction = self.interaction_stiffness_blocks[n - 1, n - 1]
             shifted = {}
             for ii, axis in enumerate('xyz'):
                 Ω_tw = trap.Ωj[axis]
                 # NOTE: frequencies given through override_Ω_dict are measured ones, which already
                 # contain whatever static shift the cavity field causes, so it is not added again
                 # (the x-y coupling of the cavity's dispersive potential still is)
-                if K[ii, ii] == 0 or trap.override_Ω_dict:
+                K_jj = 0.0 if trap.override_Ω_dict else K[ii, ii]
+                if K_interaction is not None:
+                    K_jj = K_jj + K_interaction[ii, ii]
+                if K_jj == 0:
                     shifted[axis] = Ω_tw
                     continue
-                relative = K[ii, ii] / (trap.bead.m * Ω_tw**2)
+                relative = K_jj / (trap.bead.m * Ω_tw**2)
                 if 1 + relative <= 0 and axis in modelled_axes:
                     msg = (
                         f'the static cavity field and interactions make {axis}{n} statically unstable: Ω{axis}{n},tw/2π ='
