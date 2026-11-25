@@ -10,8 +10,8 @@ Writes docs/concepts/figures/optical_binding.png.
 """
 from pathlib import Path
 
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 
 from levisim.core.constants import π
 from levisim.core.logger import set_console_level
