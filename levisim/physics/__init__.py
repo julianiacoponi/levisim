@@ -23,6 +23,7 @@ __all__ = [
     'Material',
     'MissingOpticalFieldError',
     'Particle',
+    'PaulTrap',
     'PhotonRecoil',
     'Rod',
     'Sphere',
@@ -30,6 +31,7 @@ __all__ = [
     'TabulatedParticle',
     'Trap',
     'Tweezer',
+    'UniformElectricField',
     'polarisation_matrix',
 ]
 
@@ -41,7 +43,9 @@ from levisim.physics.fields import (
     ForceElement,
     Gravity,
     HarmonicPotential,
+    PaulTrap,
     PhotonRecoil,
+    UniformElectricField,
 )
 from levisim.physics.focal_expansion import FocalExpansion, polarisation_matrix
 from levisim.physics.focussing_optics import FocussingOptics

@@ -3,6 +3,8 @@ FreeSpaceSimulation: stochastic Runge-Kutta simulation of the motion of a bead i
 tweezer trap (formerly `levisim.data.Simulation`)
 """
 
+import warnings
+
 import numpy as np
 
 from levisim.core.constants import kB
@@ -51,6 +53,8 @@ class FreeSpaceSimulation(StochasticSimulation):
         zero_mean [True]: subtract each trace's mean
         store_momenta [False]: also store px, py, pz traces [kg·m/s] (self.px etc., traces 'px', ...)
         store_radial [False]: also store the radial trace r = √(x² + y²) [m] (self.r, traces 'r')
+        (a trap with a PaulTrap needs Δt ≤ 1/(20 f_rf), else a UserWarning; its electrode noise is
+            added as extra white force noise, see field_noise_modes)
         backend ['auto']: 'auto', 'numpy' or 'numba' (compiled loop, `pip install levisim[fast]`),
             see StochasticSimulation; every option above has a compiled kernel, for a trap made of
             one tweezer plus feedback, kicks, photon recoil and gravity (or override_Ω_dict); traps
@@ -82,6 +86,34 @@ class FreeSpaceSimulation(StochasticSimulation):
             )
         self.store_momenta = bool(kwargs.get('store_momenta', False))
         self.store_radial = bool(kwargs.get('store_radial', False))
+        self._check_time_step()
+
+    def _check_time_step(self):
+        """
+        Warns if Δt is longer than an element's max_time_step (a PaulTrap's 1/(20 f_rf)): the
+        integrators evaluate an explicitly time-dependent force at their stage times, which is accurate
+        only when Δt resolves the drive
+        """
+        heun = getattr(self.RK_method, 'name', self.RK_method) == 'vector_2'
+        for element in self.trap.fields:
+            Δt_max = element.max_time_step(self.trap.bead)
+            if Δt_max is None:
+                continue
+            if self.Δt > Δt_max:
+                warnings.warn(
+                    f'FreeSpaceSimulation: Δt = {self.Δt:.4g} s does not resolve {element.label}: use '
+                    f'Δt ≤ {Δt_max:.4g} s (20 steps per rf period or more)',
+                    UserWarning,
+                    stacklevel=4,
+                )
+            elif heun and self.Δt > Δt_max / 5:
+                warnings.warn(
+                    f"FreeSpaceSimulation: RK_method='vector_2' (Heun, second order) shifts the secular "
+                    f'frequency of a {element.label} by ~1.6% at 20 steps per rf period: use '
+                    f"RK_method='vector_4' or Δt ≤ {Δt_max / 5:.4g} s (100 steps per period)",
+                    UserWarning,
+                    stacklevel=4,
+                )
 
     # ------------------------------------------------------------------------------------------
     # system hooks of StochasticSimulation
@@ -95,18 +127,50 @@ class FreeSpaceSimulation(StochasticSimulation):
         return self.dynamics_vector(t, X)
 
     def noise_matrix(self):
-        """Constant noise matrix G, see noise_matrix_RK4 [·]"""
-        return self.noise_matrix_RK4(0, self.X0)
+        """
+        Constant noise matrix G, see noise_matrix_RK4 [·]; with elements whose noise enters the
+        simulation (noise_in_simulation, e.g. a PaulTrap's electrode noise) one more column per
+        principal axis of their summed force noise (see field_noise_modes)
+        """
+        G = self.noise_matrix_RK4(0, self.X0)
+        modes = self.field_noise_modes()
+        if modes is None:
+            return G
+        _, directions = modes
+        extra = np.vstack([np.zeros((3, directions.shape[1])), directions])
+        return np.hstack([G, extra])
 
     def noise_spectral_densities(self):
         """
         Two-sided force spectral densities of the four independent noises (thermal x, y, z and
-        directed), (Sth,x, Sth,y, Sth,z, Sdir): Sth on every axis for a sphere, Trap.Sth_j for a
-        non-spherical particle whose gas damping differs between axes
+        directed), (Sth,x, Sth,y, Sth,z, Sdir) (Sth on every axis for a sphere, Trap.Sth_j for a
+        non-spherical particle whose gas damping differs between axes), followed by those of the
+        elements' simulated noise, if any (see field_noise_modes)
         [N²/Hz]
         """
         Sth = self.trap.Sth_j
-        return np.array([Sth['x'], Sth['y'], Sth['z'], self.trap.Sdir])
+        S = np.array([Sth['x'], Sth['y'], Sth['z'], self.trap.Sdir])
+        modes = self.field_noise_modes()
+        if modes is None:
+            return S
+        return np.concatenate([S, modes[0]])
+
+    def field_noise_modes(self):
+        """
+        The force noise of the elements with noise_in_simulation (a PaulTrap's electrode noise), as
+        independent white noises: (spectral densities λ_k [N²/Hz], unit directions as the columns of a
+        3×K array) from the eigen-decomposition of the summed two-sided 3×3 matrix; None if there is
+        none, which leaves G and S (and so the random-number stream) exactly as without such elements
+        """
+        elements = [element for element in self.trap.fields if element.noise_in_simulation]
+        if not elements:
+            return None
+        S = sum(np.asarray(element.noise(self.trap.bead), dtype=float) for element in elements)
+        if not np.any(S):
+            return None
+        λ, U = np.linalg.eigh(0.5 * (S + S.T))
+        keep = λ > 1e-12 * np.max(np.abs(λ))
+        return λ[keep], U[:, keep]
 
     def record(self, X):
         """

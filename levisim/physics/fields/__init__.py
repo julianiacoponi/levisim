@@ -14,9 +14,20 @@ fields".
 - `Feedback`: cold damping -Γfb,j·pj
 - `PhotonRecoil`: the scattering force of a tweezer along its axis
 - `Kick`: a step-like impulse, defined in `levisim.physics.kick`
+- `PaulTrap`: a quadrupole radio-frequency trap for a charged particle (full rf force, secular
+  stiffness, Mathieu parameters and stability), with the presets `PaulTrap.ring` and `PaulTrap.linear`
+- `UniformElectricField`: F = Q E, a stray or compensation field
 """
 
 from levisim.physics.fields.base import SIMULATION_GROUPS, ForceElement
+from levisim.physics.fields.electric import (
+    PaulTrap,
+    UniformElectricField,
+    mathieu_characteristic_exponent,
+    mathieu_first_region_stable,
+    mathieu_floquet_multiplier,
+    mathieu_secular_beta,
+)
 from levisim.physics.fields.elements import (
     Feedback,
     Gravity,
@@ -31,8 +42,14 @@ __all__ = [
     'Gravity',
     'HarmonicPotential',
     'Kick',
+    'PaulTrap',
     'PhotonRecoil',
     'Tweezer',
+    'UniformElectricField',
+    'mathieu_characteristic_exponent',
+    'mathieu_first_region_stable',
+    'mathieu_floquet_multiplier',
+    'mathieu_secular_beta',
 ]
 
 
