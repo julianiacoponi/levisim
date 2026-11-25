@@ -41,17 +41,17 @@ def setup_matplotlib():
     set_plt_rcParams_to_xmgrace_style()
 
 
-def save(fig, name, dpi=180):
+def save(fig, name, dpi=180, folder=FIGURES):
     """
-    Saves a README figure into docs/guide/figures/showcase/<name>.png and returns the path
+    Saves a README figure into docs/guide/figures/showcase/<name>.png (or into `folder`) and returns the path
 
     The PNG is reduced to a 256-colour palette (with dithering), which keeps the colour maps smooth
     to the eye at a third of the size of the full-colour file.
     """
     import io
     from PIL import Image
-    FIGURES.mkdir(parents=True, exist_ok=True)
-    path = FIGURES / f'{name}.png'
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f'{name}.png'
     buffer = io.BytesIO()
     fig.savefig(buffer, dpi=dpi, format='png')
     buffer.seek(0)

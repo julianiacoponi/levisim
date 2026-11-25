@@ -77,9 +77,27 @@ ax.set_ylabel(r'$S_{hh}(\omega)$ (shot-noise units)')
 fig.savefig('quickstart_homodyne.png')
 ```
 
-![Homodyne spectrum of two particles in one cavity](docs/guide/figures/quickstart_homodyne.png)
+![The homodyne spectrum of two particles in one cavity, with its four normal modes marked, above the displacement spectrum of each motion](docs/guide/figures/quickstart_homodyne.png)
 
-Frequencies are angular throughout: `kHz` is $`2\pi \times 10^3`$ rad/s, so dividing by it gives ordinary kHz for plotting. The homodyne spectrum is in shot-noise units, tending to 1 far from the mechanical peaks. The dotted lines in the figure (drawn by the full script, `docs/guide/scripts/quickstart_homodyne.py`) mark each motion's bare trap frequency $`\Omega_{j_n}`$. The two $`x`$ peaks, at 150.2 and 155.1 kHz, sit 1.9 and 1.3 kHz below their bare frequencies because of the optical spring. The cavity hybridises the two $`y`$ motions into a broad, bright mode at 131.7 kHz (linewidth 2.8 kHz) and a narrow, nearly dark mode at 136.5 kHz (linewidth 94 Hz).
+The figure is this plot with annotations, drawn by the full script `docs/guide/scripts/quickstart_homodyne.py`. Frequencies are angular throughout: `kHz` is $`2\pi \times 10^3`$ rad/s, so dividing by it gives ordinary kHz for plotting.
+
+- **(a)** The homodyne spectrum is in shot-noise units, tending to 1 far from the mechanical peaks. The coloured ticks mark each motion's bare trap frequency $`\Omega_{j_n}`$ and the arrows the shift of each normal mode from it. The two $`x`$ peaks, at 150.2 and 155.1 kHz, sit 1.9 and 1.3 kHz below their bare frequencies because of the optical spring. The cavity hybridises the two $`y`$ motions into a broad, bright mode at 131.7 kHz (linewidth 2.8 kHz) and a narrow, nearly dark mode at 136.5 kHz (linewidth 94 Hz). The colour under the curve mixes the colours of the four motions in proportion to what each contributes to the light.
+- **(b)** The displacement spectrum of each motion (`mtrap.all_position_power_spectra`, in units of its zero-point variance) shows who moves in each peak. Both $`y`$ motions take part in both $`y`$ modes, with $`y_2`$ making up 76% of the dark one, whereas each $`x`$ mode is mostly one particle.
+
+The same object gives the steady state as well as the spectra, here the phonon occupancy of each motion:
+
+```python
+from levisim.analysis.gaussian_states import mean_phonon_numbers
+from levisim.multiphysics.covariance import dimension_covariance, steady_state_covariance
+
+labels = list(mtrap.dimensions)                                  # ['x1', 'y1', 'x2', 'y2']
+V = steady_state_covariance(mtrap)                               # Lyapunov equation of the drift matrix
+n = mean_phonon_numbers(dimension_covariance(mtrap, V, labels))  # 139, 161, 76, 486
+```
+
+![The homodyne spectrum and the phonon occupancy of each motion as the cavity detuning is swept](docs/guide/figures/quickstart_detuning.png)
+
+The second figure, from the same script, repeats both calculations for detunings $`-\Delta/2\pi`$ from 200 to 1000 kHz. **(a)** Closer to resonance the cavity damps the modes more: the bright $`y`$ mode broadens from 0.25 to 11 kHz, while the dark one stays narrower than 0.13 kHz throughout. **(b)** The gas alone would hold every motion at $`n \approx 4 \times 10^7`$. The cavity cools the $`x`$ motions to 41 and 44 phonons and $`y_1`$ to 134, but $`y_2`$ never goes below 405, because it holds most of the dark mode, which the cavity hardly damps.
 
 **Stability.** The tweezer phases matter. With unequal phases the cavity-mediated coupling between the particles gains a non-reciprocal part $`\propto \sin(\phi_2 - \phi_1)`$, which can anti-damp a hybridised mode of near-degenerate motions. For this system a phase difference $`|\phi_2 - \phi_1|`$ between about 54° and 126° (modulo 180°) makes it linearly unstable: with the second tweezer's built-in phase of 90° one $`y`$ mode grows at $`\mathrm{Re}\,\lambda = +2.7 \times 10^3`$ s⁻¹, which is why the quickstart sets 30°. `MultiTrap` logs a WARNING when its drift matrix has an eigenvalue with positive real part, and reports its stability explicitly: `mtrap.is_stable`, `mtrap.max_growth_rate` (the largest $`\mathrm{Re}\,\lambda`$, in s⁻¹), `mtrap.unstable_modes` (frequency and growth rate of each growing mode) and `mtrap.drift_eigenvalues`, all also shown by `mtrap.info`. The stationary spectra of an unstable system are still finite numbers, but they are formal: they describe no physical steady state. The guide page *Linear stability of a system* (`docs/guide/stability.md`) lists which ready-made systems are unstable, and the concepts page *Eigenvalue stability of coupled resonators* (`docs/concepts/stability.md`) explains the theory.
 
@@ -393,22 +411,29 @@ from levisim.data.simulation import Simulation
 from levisim.physics.trap import Trap
 
 trap = Trap()  # 485 mW, 1064 nm tweezer; 60.1 nm bead; 4e-3 mbar; β = √2, ψ = 45°
-sim = Simulation(trap=trap, num_samples=400_000, Δt=0.1*μs, seed=2026, detection_floor=1e-27)
-Sxx = SpectralDensityEstimate(sim, 'xx', num_segments=40)  # one-sided, fitted automatically
-print(trap.T_eff['x'], Sxx.temperature_via_fit)            # 1.235 K vs 1.174 K (one 40 ms run)
+sim = Simulation(trap=trap, num_samples=2_000_000, Δt=0.1*μs, seed=2026, detection_floor=1e-27)
+Sxx = SpectralDensityEstimate(sim, 'xx', num_segments=100)  # one-sided, Δf = 0.5 kHz, fitted automatically
+print(trap.T_eff['x'], Sxx.temperature_via_fit)             # 1.235 K vs 1.214 K (one 200 ms run)
 ```
 
+![The z trace of the whole run, a short stretch of the x and y traces, and the distribution of the position in the x-y plane](docs/guide/figures/stochastic_traces.png)
+
+The traces of this run. **(a)** $`z`$ is not cooled, so the gas heats it from rest towards 300 K, at the rate $`\Gamma_\mathrm{th}`$ ($`1/\Gamma_\mathrm{th}`$ = 37 ms). The dashed lines are the expected $`\pm 2 z_\mathrm{rms}(t)`$; the energy of an uncooled motion fluctuates by about its own size, and this run happens to stay on the cold side (116 nm rms, against 225 nm at 300 K). **(b)** $`x`$ and $`y`$ are feedback-cooled to about 1 K, a few nm. **(c)** The directed force acts on $`x`$ and $`y`$ together, yet the distribution of the position in the $`x`$–$`y`$ plane is round (dashed: one and two standard deviations): because $`\Omega_x \neq \Omega_y`$ the correlation coefficient is only 0.006.
+
 Estimates are one-sided by default and fit $`S = A\Gamma/((\Omega^2 - \omega^2)^2 + \Gamma^2\omega^2)`$ with
-$`A = 2k_BT_\mathrm{eff}/m`$ (two-sided). Use `window='blackmanharris'` when the off-resonance tail matters:
-the rectangular window leaks the resonance into it (+51% at 0.3–0.5 MHz in this example; 1.8% with
-the window). Frequencies follow `levisim.core.units`, where `Hz = 2π`, so `trap.Ωx / kHz` is
+$`A = 2k_BT_\mathrm{eff}/m`$ (two-sided). Frequencies follow `levisim.core.units`, where `Hz = 2π`, so `trap.Ωx / kHz` is
 $`\Omega_x/2\pi`$ in kHz.
 
-![Simulated and theoretical spectra](docs/guide/figures/stochastic_psd.png)
+![Simulated and theoretical spectra of x and y, and their co-spectrum](docs/guide/figures/stochastic_psd.png)
 
-The figure shows one-sided $`S_{xx}`$, $`S_{yy}`$ and the co-spectrum $`C_{xy}`$, simulated and from
-`SpectralDensityTheory`, made by [`docs/guide/scripts/stochastic_example.py`](docs/guide/scripts/stochastic_example.py)
-(about 25 s). Tests: `tests/test_simulation.py`, `tests/test_trap_physics.py`,
+**(a)** One-sided $`S_{xx}`$ and $`S_{yy}`$, simulated (points) and from `SpectralDensityTheory` (lines). **(b)** The co-spectrum $`C_{xy}`$ resolves the correlation that the traces hide: the directed force moves $`x`$ and $`y`$ in phase outside the two resonances and in antiphase between them, and the two signs nearly cancel in the covariance. The grey band is the theory $`\pm`$ one standard deviation of an estimate from 100 segments.
+
+Use `window='blackmanharris'` when the off-resonance tail matters: the rectangular window leaks the resonance into it (+25% at 0.3–0.5 MHz in this example; within 0.1% with the window).
+
+![The spectrum of x up to the Nyquist frequency with two windows, and the ratio of each estimate to the theory](docs/guide/figures/stochastic_broadband.png)
+
+**(a)** $`S_{xx}`$ from 1 kHz to the Nyquist frequency, down to the $`10^{-27}`$ m²/Hz detection floor. **(b)** The ratio of each estimate to theory plus floor. All three figures are made by [`docs/guide/scripts/stochastic_example.py`](docs/guide/scripts/stochastic_example.py)
+(a few minutes). Tests: `tests/test_simulation.py`, `tests/test_trap_physics.py`,
 `tests/test_spectral_density_estimate.py`.
 
 **Limitations.** The dynamics are classical, with ideal cold damping and no rotation. Photon recoil

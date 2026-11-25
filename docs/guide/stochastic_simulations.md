@@ -227,7 +227,7 @@ dimensions of time³. `fit_PSD` reports `Afit`, `Γfit`, `Ωfit` in angular unit
 
 The `window` keyword (`'hann'`, `'blackmanharris'`, …) is normalised to unit mean square, which
 preserves broadband levels. Use it when the tail matters: the rectangular window's sidelobes leak
-the resonance into the tail and, in the example below, inflate the 0.3–0.5 MHz band by 51%.
+the resonance into the tail and, in the example below, inflate the 0.3–0.5 MHz band by 25%.
 
 ## Worked example
 
@@ -238,42 +238,56 @@ from levisim.data.simulation import Simulation
 from levisim.physics.trap import Trap
 
 trap = Trap()                       # 485 mW, 1064 nm; 60.1 nm silica bead; 4e-3 mbar; β = √2, ψ = 45°
-sim = Simulation(trap=trap, num_samples=400_000, Δt=0.1*μs, seed=2026, detection_floor=1e-27)
+sim = Simulation(trap=trap, num_samples=2_000_000, Δt=0.1*μs, seed=2026, detection_floor=1e-27)
 
-Sxx = SpectralDensityEstimate(sim, 'xx', num_segments=40)     # one-sided, Δf = 1 kHz, 40 averages
-Sxy = SpectralDensityEstimate(sim, 'xy', num_segments=40)
+Sxx = SpectralDensityEstimate(sim, 'xx', num_segments=100)    # one-sided, Δf = 0.5 kHz, 100 averages
+Sxy = SpectralDensityEstimate(sim, 'xy', num_segments=100)
 theory = trap.theory                                          # SpectralDensityTheory, one-sided
 
 print(trap.T_eff['x'], Sxx.temperature_via_fit)               # equipartition vs fit
 ```
 
-The full script, [`scripts/stochastic_example.py`](scripts/stochastic_example.py), runs in about 25 s
-and prints:
+The full script, [`scripts/stochastic_example.py`](scripts/stochastic_example.py), runs in a few
+minutes (most of it the 200 ms simulation) and prints:
 
 | quantity | $x$ | $y$ |
 |---|---|---|
 | $T_\mathrm{eff}$ (`Trap.T_eff`) | 1.235 K | 1.038 K |
-| $T$ from $\mathrm{Var}$ (floor variance removed) | 1.250 K | 0.956 K |
-| $T$ from the PSD fit | 1.174 K | 0.947 K |
-| $\Omega_\mathrm{fit}/\Omega$ | 0.9973 | 0.9983 |
-| $\Gamma_\mathrm{fit}/\Gamma$ | 0.989 | 1.237 |
+| $T$ from $\mathrm{Var}$ (floor variance removed) | 1.215 K | 0.981 K |
+| $T$ from the PSD fit | 1.214 K | 0.965 K |
+| $\Omega_\mathrm{fit}/\Omega$ | 0.9980 | 0.9989 |
+| $\Gamma_\mathrm{fit}/\Gamma$ | 1.117 | 1.116 |
 
-These single-run numbers scatter by the expected amount: a 40 ms run is about 530 (630) correlation
-times long, i.e. a ~6% standard error on the temperatures, and the linewidth fit from 40 averages is
-less precise still. The Blackman–Harris estimate matches theory plus floor to 1.8% in 0.3–0.5 MHz and
-0.4% in 1–4.5 MHz. The simulated $\mathrm{Cov}(x, y) = 0.087$ nm² against $\int C_{xy}\,\mathrm{d}f = 0.067$ nm²;
-the correlation coefficient is below 1% here because $\Omega_x \neq \Omega_y$, so this single-run difference
-is within its statistical error.
+These single-run numbers scatter by the expected amount: a 200 ms run is about 2600 (3100)
+correlation times long, i.e. a ~3% standard error on the temperatures. The linewidth fit is less
+precise: a 0.5 kHz bin is a quarter of the 2.1 and 2.5 kHz lines, so few bins define each peak.
+The Blackman–Harris estimate matches theory plus floor
+to 0.1% in both 0.3–0.5 MHz and 1–4.5 MHz. The simulated $\mathrm{Cov}(x, y) = 0.061$ nm² against
+$\int C_{xy}\,\mathrm{d}f = 0.068$ nm²; the correlation coefficient is 0.006 because
+$\Omega_x \neq \Omega_y$, so this single-run difference is within its statistical error.
+
+![Traces of the run](figures/stochastic_traces.png)
+
+*(a) $z$ over the whole run: it is not cooled, so the gas heats it from rest towards 300 K at the
+rate $\Gamma_\mathrm{th}$ (dashed: the expected $\pm 2 z_\mathrm{rms}(t)$; an uncooled motion's energy
+fluctuates by about its own size, and this run stays on the cold side, 116 nm rms against 225 nm at
+300 K). $x$ is drawn on the same scale. (b) 150 µs of the feedback-cooled $x$ and $y$. (c) The
+distribution of the position in the $x$–$y$ plane (dashed: one and two standard deviations), round
+although the directed force acts along 45°.*
 
 ![Resonant PSDs and co-spectrum](figures/stochastic_psd.png)
 
-*Top: one-sided $S_{xx}$ and $S_{yy}$ from the simulation (points) with `SpectralDensityTheory` plus the
-detection floor (lines). Bottom: the co-spectrum $C_{xy}$, which changes sign between the resonances.*
+*(a) One-sided $S_{xx}$ and $S_{yy}$ from the simulation (points) with `SpectralDensityTheory` plus the
+detection floor (lines). (b) The co-spectrum $C_{xy}$: $x$ and $y$ move in phase outside the two
+resonances and in antiphase between them, which is why the covariance nearly cancels. Grey band: the
+theory $\pm$ one standard deviation of a 100-segment estimate (`SpectralDensityTheory.σCxy`).*
 
 ![Broadband PSD and detection floor](figures/stochastic_broadband.png)
 
-*$S_{xx}$ from 1 kHz to the Nyquist frequency, with rectangular (light) and Blackman–Harris (dark)
-windows. The windowed estimate follows the theory down to the $10^{-27}$ m²/Hz detection floor.*
+*(a) $S_{xx}$ from 1 kHz to the Nyquist frequency, with rectangular and Blackman–Harris windows.
+(b) Each estimate divided by theory plus floor, averaged in logarithmic frequency bins: the
+rectangular window's leakage peaks at +50% near 0.7 MHz, while the windowed estimate follows the
+theory down to the $10^{-27}$ m²/Hz detection floor.*
 
 ## Outputs and units
 

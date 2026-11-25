@@ -82,8 +82,9 @@ ax.set_ylabel(r'$S_{hh}(\omega)$ (shot-noise units)')
 fig.savefig('quickstart_homodyne.png')
 ```
 
-The full script, which also marks each motion's trap frequency, is
-`docs/guide/scripts/quickstart_homodyne.py`; it runs in about a second after import.
+The figure below is drawn by the full script, `docs/guide/scripts/quickstart_homodyne.py`, which
+annotates this plot and adds the displacement spectrum of each motion and a sweep of the cavity
+detuning; it runs in about ten seconds after import.
 
 `DEFAULT_cavity_kwargs` and `DEFAULT_gas_kwargs` are the standard parameter sets kept in
 {mod}`~levisim.multiphysics.utils.shelf`. Leaving `cavity_kwargs` out does not give the same cavity:
@@ -93,15 +94,29 @@ the same 61 µm waist. Couplings, linewidths and stability differ between the tw
 a number refers to.
 
 ```{figure} guide/figures/quickstart_homodyne.png
-:width: 90%
-:alt: Homodyne spectrum with four peaks between 130 and 160 kHz
+:width: 95%
+:alt: Homodyne spectrum with four peaks between 130 and 160 kHz, above the displacement spectrum of each motion
 
-Homodyne spectrum $S_{hh}(\omega)$ for the system above (tweezer phases 0° and 30°). Dotted lines:
-bare trap frequencies $\Omega_{y_1}/2\pi = 135.8$, $\Omega_{y_2}/2\pi = 137.6$,
-$\Omega_{x_2}/2\pi = 152.1$ and $\Omega_{x_1}/2\pi = 156.3$ kHz. The $x$ peaks at 150.2 and
-155.1 kHz sit 1.9 and 1.3 kHz below their bare frequencies (optical spring). The cavity hybridises
-the two $y$ motions into a broad, bright mode at 131.7 kHz (linewidth 2.8 kHz) and a narrow, nearly
-dark mode at 136.5 kHz (linewidth 94 Hz).
+(a) Homodyne spectrum $S_{hh}(\omega)$ for the system above (tweezer phases 0° and 30°). Coloured
+ticks: bare trap frequencies $\Omega_{y_1}/2\pi = 135.8$, $\Omega_{y_2}/2\pi = 137.6$,
+$\Omega_{x_2}/2\pi = 152.1$ and $\Omega_{x_1}/2\pi = 156.3$ kHz; arrows: the shift of each normal
+mode from them. The $x$ peaks at 150.2 and 155.1 kHz sit 1.9 and 1.3 kHz below their bare
+frequencies (optical spring). The cavity hybridises the two $y$ motions into a broad, bright mode at
+131.7 kHz (linewidth 2.8 kHz) and a narrow, nearly dark mode at 136.5 kHz (linewidth 94 Hz). The
+colour under the curve mixes the motions' colours by what each contributes to the light.
+(b) Displacement spectrum of each motion, in units of its zero-point variance: both $y$ motions
+take part in both $y$ modes, while each $x$ mode is mostly one particle.
+```
+
+```{figure} guide/figures/quickstart_detuning.png
+:width: 100%
+:alt: Homodyne spectrum and phonon occupancies against the cavity detuning
+
+The same system for detunings $-\Delta/2\pi$ from 200 to 1000 kHz (dashed: the quickstart's
+450 kHz). (a) Homodyne spectrum: closer to resonance the bright $y$ mode broadens (0.25 to 11 kHz)
+while the dark one stays narrower than 0.13 kHz. (b) Steady-state phonon occupancy of each motion
+(`steady_state_covariance` and `mean_phonon_numbers`), against about $4 \times 10^7$ from the gas
+alone. $y_2$, which holds most of the dark mode, never goes below 405 phonons.
 ```
 
 ```{note}
