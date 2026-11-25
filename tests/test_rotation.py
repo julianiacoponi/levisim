@@ -419,3 +419,47 @@ def test_free_space_jacobian_matches_trap_libration_frequencies():
     frequencies = np.sort(np.abs(eigenvalues.imag))[::2]
     expected = np.sort([trap.Ωθ['α'], trap.Ωθ['β'], trap.Ωθ['γ']])
     assert np.allclose(frequencies, expected, rtol=1e-6, atol=1.0)
+
+
+# --------------------------------------------------------------------------------------------------
+# built-in controls and the compiled loop
+# --------------------------------------------------------------------------------------------------
+def controlled_simulation(**kwargs):
+    trap = Trap(tweezer=Tweezer(polarisation=Tweezer.elliptical_polarisation(0.2)), particle=aligned_spheroid(), gas=Gas(P=1 * mbar))
+    common = dict(trap=trap, num_samples=1500, Δt=5e-9, seed=3, recoil=True,
+                  parametric_feedback=dict(gain=1e-7, lab_axis=(1, 0, 0)),
+                  torque_drive=dict(amplitude=(0, 0, 1e-22), ω=2 * π * 1e5), angular_damping=(1e3, 0, 0),
+                  ω0=(1e4, 2e4, 3e4))
+    common.update(kwargs)
+    return RigidBodySimulation(**common)
+
+
+@pytest.mark.parametrize('method', ['vector_4', 'vector_2'])
+def test_numba_rigid_body_matches_numpy(method):
+    pytest.importorskip('numba')
+    from levisim.simulation.backends import numba_available
+    if not numba_available():
+        pytest.skip('numba disabled')
+    a = controlled_simulation(backend='numpy', RK_method=method)
+    b = controlled_simulation(backend='numba', RK_method=method)
+    assert b.backend_used == 'numba'
+    scale = np.abs(a.X).max(axis=0) + 1e-300
+    assert np.max(np.abs(a.X - b.X) / scale) < 1e-12
+    assert b.quaternion_norm_error() < 1e-14
+
+
+def test_callables_run_the_numpy_loop():
+    sim = controlled_simulation(backend='auto', num_samples=50, external_torque=lambda t, X: np.zeros(3))
+    assert sim.backend_used == 'numpy'
+
+
+def test_angular_damping_and_torque_drive():
+    particle = Spheroid(a=70*nm, b=50*nm)
+    I = particle.inertia_tensor[2, 2]
+    # a constant torque about the symmetry axis spins the particle up linearly; damping saturates it
+    sim = RigidBodySimulation(trap=free_trap(particle), num_samples=2000, Δt=1e-8, gas_damping=False, backend='numpy',
+                              torque_drive=dict(offset=(0, 0, 1e-24)), angular_damping=(0, 0, 2e5))
+    ω = sim.angular_velocities_lab()[:, 2]
+    t = sim.time_array
+    expected = 1e-24 / (I * 2e5) * (1 - np.exp(-2e5 * t))
+    assert np.max(np.abs(ω - expected)) < 1e-6 * expected[-1]

@@ -106,6 +106,20 @@ class RigidBodySimulation(StochasticSimulation):
         external_force [None]: callable (t, X) -> lab-frame force [N]
         record_angular_velocity [False]: also record the lab angular velocity traces 'ωx', 'ωy', 'ωz'
 
+    Built-in controls (they also run in the compiled loop, unlike the callables above)::
+
+        parametric_feedback [None]: a dict, or a list of dicts, of parametric feedback on the tweezer
+            intensity (van der Laan et al., Phys. Rev. Lett. 127, 123605 (2021)): with the measured
+            angle s = ê·(R b̂), the lab component ê of a body axis b̂, the intensity is multiplied by
+            1 + η, η = clip(-gain·s·ṡ, ±max_modulation). Keys: gain [s], body_axis, lab_axis,
+            max_modulation [0.5]
+        torque_drive [None]: dict(amplitude=(τx, τy, τz) [N·m], ω [rad/s], phase [rad], offset [N·m]):
+            a lab-frame torque offset + amplitude·cos(ω t + phase)
+        angular_damping [None]: (Γx, Γy, Γz) [1/s]: a lab-frame cold-damping torque -Γj·L_lab,j
+
+    backend ['auto']: 'numba' compiles the loop for a trap of at most one `Tweezer` plus `Feedback`
+    elements, with the built-in controls but no callables; anything else runs the NumPy loop.
+
     Traces (self.traces): 'x', 'y', 'z' [m] and 'α', 'β', 'γ' [rad], the rotation vector of the
     orientation relative to the initial one about the lab axes x, y, z (the librational coordinates
     of `MultiTrap`; meaningful for librations, not for a free rotor, whose angle grows without
@@ -131,6 +145,36 @@ class RigidBodySimulation(StochasticSimulation):
         self.external_torque = kwargs.get('external_torque')
         self.external_force = kwargs.get('external_force')
         self.record_angular_velocity = bool(kwargs.get('record_angular_velocity', False))
+        parametric = kwargs.get('parametric_feedback')
+        if parametric is None:
+            parametric = []
+        elif isinstance(parametric, dict):
+            parametric = [parametric]
+        self.parametric_feedback = np.zeros((len(parametric), 8))
+        for index, entry in enumerate(parametric):
+            unknown = set(entry) - {'gain', 'body_axis', 'lab_axis', 'max_modulation'}
+            if unknown:
+                raise ValueError(f'unknown parametric_feedback keys {sorted(unknown)}')
+            b = np.asarray(entry.get('body_axis', (0, 0, 1)), dtype=float)
+            e = np.asarray(entry.get('lab_axis', (1, 0, 0)), dtype=float)
+            self.parametric_feedback[index] = [
+                float(entry['gain']), *(b / np.linalg.norm(b)), *(e / np.linalg.norm(e)),
+                float(entry.get('max_modulation', 0.5)),
+            ]
+        drive = kwargs.get('torque_drive')
+        self.torque_drive = None
+        if drive is not None:
+            unknown = set(drive) - {'amplitude', 'ω', 'phase', 'offset'}
+            if unknown:
+                raise ValueError(f'unknown torque_drive keys {sorted(unknown)}')
+            self.torque_drive = {
+                'amplitude': np.asarray(drive.get('amplitude', np.zeros(3)), dtype=float),
+                'ω': float(drive.get('ω', 0.0)),
+                'phase': float(drive.get('phase', 0.0)),
+                'offset': np.asarray(drive.get('offset', np.zeros(3)), dtype=float),
+            }
+        angular_damping = kwargs.get('angular_damping')
+        self.angular_damping = None if angular_damping is None else np.asarray(angular_damping, dtype=float).reshape(3)
 
         # the elements by role
         self.tweezers = [element for element in self.trap.fields if isinstance(element, Tweezer)]
@@ -209,8 +253,16 @@ class RigidBodySimulation(StochasticSimulation):
         F = np.zeros(3)
         τ_b = np.zeros(3)
         factor = 1.0
+        if len(self.parametric_feedback):
+            ω_lab = R @ (self.inertia_inverse @ X[10:13])
+            for gain, bx, by, bz, ex, ey, ez, η_max in self.parametric_feedback:
+                n = R @ np.array([bx, by, bz])
+                e = np.array([ex, ey, ez])
+                s = e @ n
+                ṡ = e @ _cross(ω_lab, n)
+                factor = factor + min(max(-gain * s * ṡ, -η_max), η_max)
         if self.power_modulation is not None:
-            factor = 1.0 + float(self.power_modulation(t, X))
+            factor = factor + float(self.power_modulation(t, X))
         for tweezer, α_body, e in self._optics:
             x, y, z = r
             amplitude2 = factor * tweezer.E_field_amplitude(x, y, z)**2
@@ -235,6 +287,14 @@ class RigidBodySimulation(StochasticSimulation):
                 τ = np.asarray(element.torque(r, t, self.particle, orientation=orientation), dtype=float)
                 if np.any(τ):
                     τ_b = τ_b + R.T @ τ
+        τ_lab = np.zeros(3)
+        if self.torque_drive is not None:
+            d = self.torque_drive
+            τ_lab = τ_lab + d['offset'] + d['amplitude'] * np.cos(d['ω'] * t + d['phase'])
+        if self.angular_damping is not None:
+            τ_lab = τ_lab - self.angular_damping * (R @ X[10:13])
+        if self.torque_drive is not None or self.angular_damping is not None:
+            τ_b = τ_b + R.T @ τ_lab
         if self.external_force is not None:
             F = F + np.asarray(self.external_force(t, X), dtype=float)
         if self.external_torque is not None:
@@ -256,6 +316,33 @@ class RigidBodySimulation(StochasticSimulation):
         dX[6:10] = _quaternion_rate(q, ω)
         dX[10:13] = τ_b - _cross(ω, L_b) - self.Γ_rot @ L_b
         return dX
+
+    def compiled_integrate(self, integrator, G, S, X0, time_array):
+        """The numba loop (levisim.simulation.backends.numba_rigid_body), or None when this configuration needs NumPy"""
+        reason = self._compiled_kernel_unsupported_reason(integrator)
+        if reason:
+            from levisim.core.logger import logger as _logger
+            _logger.debug('RigidBodySimulation runs the NumPy loop: {}', reason)
+            return None
+        from levisim.simulation.backends.numba_rigid_body import integrate_rigid_body
+        return integrate_rigid_body(self, integrator, G, S, X0, time_array)
+
+    def _compiled_kernel_unsupported_reason(self, integrator):
+        if integrator.name not in ('vector_4', 'vector_2') or type(integrator).__module__ != 'levisim.simulation.integrators':
+            return f'no kernel for the integrator {integrator!r}'
+        if self.power_modulation is not None or self.external_torque is not None or self.external_force is not None:
+            return 'callables (power_modulation, external_torque, external_force)'
+        if self.other_elements:
+            return f'force elements {self.other_elements}'
+        if len(self.tweezers) > 1:
+            return 'more than one tweezer'
+        if type(self).drift is not RigidBodySimulation.drift or type(self).forces_and_torques is not RigidBodySimulation.forces_and_torques:
+            return 'a subclass overrides the physics'
+        if any(type(tweezer) is not Tweezer for tweezer in self.tweezers):
+            return 'a Tweezer subclass'
+        if self.rk_loop_debug:
+            return 'rk_loop_debug'
+        return None
 
     def noise_matrix(self):
         values_p, vectors_p = _noise_factor(self.momentum_noise_psd)
