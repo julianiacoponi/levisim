@@ -16,15 +16,21 @@ Conventions ::
 Torques (time-averaged over the optical cycle; complex field amplitudes E with
 E(t) = Re(E e^{-iωt}), the convention in which levisim's tweezer force is -∇(-¼ Re α‖E‖²)) ::
 
-    optical          τ = ½ Re(p* × E),   p = α_eff,lab E,   α_eff,lab = R α_eff,body Rᵀ
+    optical          τ = ½ Re(p* × E) - k³/(12π ε0) Im(p* × p),   p = α_eff,lab E,   α_eff,lab = R α_eff,body Rᵀ
     static electric  τ = p0 × E + (α_static,lab E) × E          (p0 = R p0,body, permanent dipole)
     magnetic         τ = μ × B + (V/μ0) (χ_lab B) × B            (μ = R μ_body; small ‖χ‖)
 
-The optical torque contains the spin torque ½ Im(α) Im(E* × E) of circular and elliptical light,
-which drives continuous rotation (Arita et al., Nat. Commun. 4, 2374 (2013); Reimann et al., Phys.
-Rev. Lett. 121, 033602 (2018)), and the alignment torque of the real anisotropic polarisability,
-which confines the librations of a linearly polarised tweezer (Hoang et al., Phys. Rev. Lett. 117,
-123604 (2016)).
+The first optical term is the torque of the incident field on the induced dipole (it removes the
+light's angular momentum at the extinction rate); the second is the recoil of the angular momentum
+that the dipole radiates (Chaumet and Rahmani, Opt. Express 17, 2224 (2009), Eq. (5)). Together they
+give the alignment torque of the real anisotropic polarisability, which confines the librations of a
+linearly polarised tweezer (Hoang et al., Phys. Rev. Lett. 117, 123604 (2016)), and the spin torque
+of circular and elliptical light, which drives continuous rotation (Arita et al., Nat. Commun. 4,
+2374 (2013); Reimann et al., Phys. Rev. Lett. 121, 033602 (2018)). For an isotropic sphere the spin
+torque is the absorbed power over ω, ½ (Im α_eff - k³‖α_eff‖²/6πε0) ‖E‖²·Im(ê* × ê): a lossless sphere
+is not spun up. A lossless anisotropic particle is, through the anisotropy of its scattering: in
+circular light, rotating in the plane of the field, τ = k³ E0² (α_1 - α_2)²/(24π ε0) (E0 the field
+amplitude, α_1, α_2 its in-plane polarisabilities), whatever its angle.
 
 Recoil torque noise. The induced dipole interferes with the vacuum field; the torque that is linear
 in the vacuum field δE is τ_i = M_il δE_l with ::
@@ -157,15 +163,23 @@ def rotational_energy(L_body, inertia_body):
 # --------------------------------------------------------------------------------------------------
 # torques
 # --------------------------------------------------------------------------------------------------
-def optical_torque(α_lab, E):
+def optical_torque(α_lab, E, k=None):
     """
-    Time-averaged torque ½ Re(p* × E) of a light field with complex amplitude E (3,) on a dipole
-    p = α_lab E (α_lab the lab-frame effective polarisability, complex 3×3)
+    Time-averaged torque of a light field with complex amplitude E (3,) on a dipole p = α_lab E
+    (α_lab the lab-frame effective polarisability, complex 3×3) ::
+
+        τ = ½ Re(p* × E) - k³/(12π ε0) Im(p* × p)
+
+    The second term, the recoil of the angular momentum the dipole radiates, needs the wavenumber k
+    [1/m]; with k=None only the first is returned (the torque of the incident field alone).
     [N·m]
     """
     E = np.asarray(E, dtype=complex)
     p = np.asarray(α_lab) @ E
-    return 0.5 * np.real(np.cross(np.conj(p), E))
+    τ = 0.5 * np.real(np.cross(np.conj(p), E))
+    if k is not None:
+        τ = τ - k**3 / (12 * π * ε0) * np.imag(np.cross(np.conj(p), p))
+    return τ
 
 
 def dipole_moment_torque(p, E):

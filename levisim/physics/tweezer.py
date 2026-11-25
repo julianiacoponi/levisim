@@ -401,23 +401,25 @@ class Tweezer(ForceElement):
 
     def torque(self, r, t, particle, orientation=None):
         """
-        Time-averaged optical torque ½ Re(p* × E) on the particle at r, p = α_eff,lab E
-        (`levisim.physics.rotation.optical_torque`); `orientation` (a unit quaternion) defaults to
-        the particle's own. It contains the alignment torque of an anisotropic polarisability and
-        the spin torque ½ Im(α_eff)·‖E‖²·Im(ê* × ê) of circularly or elliptically polarised light,
-        which acts on a sphere too. t is not used.
+        Time-averaged optical torque ½ Re(p* × E) - k³/(12πε0)·Im(p* × p) on the particle at r,
+        p = α_eff,lab E (`levisim.physics.rotation.optical_torque`, with the recoil of the radiated
+        angular momentum); `orientation` (a unit quaternion) defaults to the particle's own. It
+        contains the alignment torque of an anisotropic polarisability and the spin torque of
+        circularly or elliptically polarised light: on a sphere the absorbed power over ω, on a
+        lossless anisotropic particle k³E0²(α_1 - α_2)²/(24πε0) in circular light. t is not used.
         [N·m]
         """
         from levisim.physics.rotation import optical_torque
         α = self.lab_effective_polarisability(particle, orientation)
-        return optical_torque(α, self.field_vector(r))
+        return optical_torque(α, self.field_vector(r), self.k)
 
     def torque_stiffness(self, particle, orientation=None, r0=None):
         """
         Torque stiffness K_ij = -∂τ_i/∂θ_j of `torque` for small rotations θ about the lab axes at
         `orientation` (default the particle's own) and position r0 (default the focus) ::
 
-            K_ij = -½ Re((∂_j α E)* × E)_i,   ∂_j α = G_j α - α G_j
+            K_ij = -½ Re((∂_j α E)* × E)_i + k³/(12πε0)·Im(∂_j p* × p + p* × ∂_j p)_i,
+            ∂_j p = ∂_j α E,   ∂_j α = G_j α - α G_j
 
         For linear polarisation along y and a particle whose principal axes lie along the lab axes
         it is diag(½E0²(α_y - α_z), 0, ½E0²(α_y - α_x)) with Re α_eff: rotations about x and z are
@@ -431,8 +433,13 @@ class Tweezer(ForceElement):
         α = self.lab_effective_polarisability(particle, orientation)
         dα, _ = rotated_tensor_derivatives(α)
         K = np.zeros((3, 3))
+        p = α @ E
+        c = self.k**3 / (12 * π * ε0)
         for j in range(3):
-            K[:, j] = -0.5 * np.real(np.cross(np.conj(dα[j] @ E), E))
+            dp = dα[j] @ E
+            K[:, j] = -0.5 * np.real(np.cross(np.conj(dp), E)) + c * np.imag(
+                np.cross(np.conj(dp), p) + np.cross(np.conj(p), dp)
+            )
         return K
 
     def recoil_torque_noise(self, particle, orientation=None, r0=None):

@@ -35,21 +35,24 @@ trap.torque_stiffness_tensor, trap.Γrot_j, trap.libration_recoil_heating_rates
 
 | Element | Torque | Stiffness $K_{ij} = -\partial\tau_i/\partial\theta_j$ |
 |---|---|---|
-| `Tweezer` | $\tfrac12\mathrm{Re}(p^*\times E)$, $p = \alpha_\text{eff,lab}E$ | $-\tfrac12\mathrm{Re}\big((\partial_j\alpha\,E)^*\times E\big)$, $\partial_j\alpha = G_j\alpha - \alpha G_j$ |
+| `Tweezer` | $\tfrac12\mathrm{Re}(p^*\times E) - \frac{k^3}{12\pi\varepsilon_0}\mathrm{Im}(p^*\times p)$, $p = \alpha_\text{eff,lab}E$ | the derivative of the torque for $\alpha \to \alpha + \theta_j\partial_j\alpha$, $\partial_j\alpha = G_j\alpha - \alpha G_j$ |
 | `UniformElectricField` | $p_0\times E + (\alpha_\text{static}E)\times E$ | $-(G_jp_0)\times E - (\partial_j\alpha\,E)\times E$ |
 | magnetic (`rotation.magnetic_torque`) | $\mu\times B + \tfrac{V}{\mu_0}(\chi B)\times B$ | (in the field elements) |
 
-$G_j$ generates rotations about lab axis $j$ ($G_jv = \hat e_j\times v$). The optical torque contains
-the alignment torque of the anisotropic real polarisability and the **spin torque**
-$\tfrac12\mathrm{Im}(\alpha_\text{eff})|E|^2\,\mathrm{Im}(\hat e^*\times\hat e)$ of circular and
-elliptical light, which also acts on a sphere: it is the scattered power over $\omega$. A tweezer
-gets any polarisation through a Jones vector, `Tweezer(polarisation=Tweezer.elliptical_polarisation(ψ, ζ))`,
-$\hat e = \cos\psi\,\hat e_1 + i\sin\psi\,\hat e_2$ (ψ = π/4 circular); the default (linear along $y$)
-keeps every existing number.
+$G_j$ generates rotations about lab axis $j$ ($G_jv = \hat e_j\times v$). The first optical term is the
+torque of the incident field on the induced dipole, the second the recoil of the angular momentum the
+dipole radiates (Chaumet and Rahmani, Opt. Express **17**, 2224 (2009)). Together they give the alignment
+torque of the anisotropic real polarisability and the **spin torque** of circular and elliptical light.
+On a sphere the spin torque is the absorbed power over $\omega$: a lossless sphere is not spun up.
+A lossless anisotropic particle is, through the anisotropy of its scattering: rotating in the plane of
+circularly polarised light, it feels $k^3E_0^2(\alpha_1 - \alpha_2)^2/(24\pi\varepsilon_0)$ at every angle
+(tested). A tweezer gets any polarisation through a Jones vector,
+`Tweezer(polarisation=Tweezer.elliptical_polarisation(ψ, ζ))`, $\hat e = \cos\psi\,\hat e_1 + i\sin\psi\,\hat e_2$
+(ψ = π/4 circular); the default (linear along $y$) keeps every existing number.
 
 For linear polarisation along $y$ and a particle whose principal axes lie along the lab axes, the
 librational stiffness is $\tfrac12E_0^2(\alpha_y - \alpha_z)$ about $x$ and $\tfrac12E_0^2(\alpha_y - \alpha_x)$
-about $z$ (Re $\alpha_\text{eff}$), and the frequency is $\Omega_j = \sqrt{K_{jj}/I_{jj}}$.
+about $z$ (Re $\alpha_\text{eff}$, up to the recoil term, a relative 10⁻⁴), and the frequency is $\Omega_j = \sqrt{K_{jj}/I_{jj}}$.
 
 ### Recoil torque noise
 

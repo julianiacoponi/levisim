@@ -25,7 +25,7 @@ error of the deterministic part is that of the integrator (fourth order for 'vec
 
 import numpy as np
 
-from levisim.core.constants import kB
+from levisim.core.constants import kB, ε0, π
 from levisim.core.logger import logger
 from levisim.core.units import μs
 from levisim.physics.fields.elements import Feedback
@@ -278,8 +278,10 @@ class RigidBodySimulation(StochasticSimulation):
                 0.5 * (4 * y / wy**2) * U,
                 0.5 * (4 * z / wz**2) * U * (1 - 2 * ellipse),
             ])
-            # τ_b = Rᵀ·½Re(p* × E) = ½‖E‖²·Re((α_body u)* × u)
-            τ_b = τ_b + 0.5 * amplitude2 * np.real(_cross(np.conj(v), u))
+            # τ_b = Rᵀ·[½Re(p* × E) - c Im(p* × p)] = ‖E‖²·[½Re(v* × u) - c Im(v* × v)], v = α_body u
+            τ_b = τ_b + amplitude2 * (
+                0.5 * np.real(_cross(np.conj(v), u)) - tweezer.k**3 / (12 * π * ε0) * np.imag(_cross(np.conj(v), v))
+            )
         if self.other_elements:
             orientation = q / np.sqrt(q @ q)
             for element in self.other_elements:

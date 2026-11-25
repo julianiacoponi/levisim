@@ -97,9 +97,10 @@ def test_aligned_particle_has_no_torque_and_the_analytic_stiffness():
     E0 = tweezer.E0
     K = tweezer.torque_stiffness(particle)
     expected = 0.5 * E0**2 * (α_par - α_perp)
-    assert np.allclose(np.diag(K), [expected, 0, expected], rtol=1e-12)
+    # the recoil of the radiated angular momentum changes it at O(k³α) ~ 1e-4
+    assert np.allclose(np.diag(K), [expected, 0, expected], rtol=1e-3)
     trap = Trap(tweezer=tweezer, particle=particle)
-    assert trap.Ωθ['α'] == pytest.approx(np.sqrt(expected / trap.Ij['α']), rel=1e-12)
+    assert trap.Ωθ['α'] == pytest.approx(np.sqrt(K[0, 0] / trap.Ij['α']), rel=1e-12)
     assert trap.Ωθ['β'] == 0.0
 
 
@@ -120,16 +121,35 @@ def test_torque_stiffness_is_the_derivative_of_the_torque(ψ):
     assert np.allclose(K, K_fd, rtol=1e-6, atol=1e-8 * np.max(np.abs(K)))
 
 
-def test_spin_torque_of_circular_and_elliptical_light_on_a_sphere():
-    bead = Bead()
+def test_spin_torque_on_a_sphere_is_the_absorbed_power_over_ω():
+    from levisim.physics import Material, Sphere
+    lossless = Bead()
+    absorbing = Sphere(r=60*nm, material=Material('lossy glass', 2200.0, permittivity=2.1 + 0.02j))
     for ψ in (π/4, 0.2, -0.3):
         tweezer = Tweezer(polarisation=Tweezer.elliptical_polarisation(ψ))
-        τ = tweezer.torque(np.zeros(3), 0.0, bead)
-        α_eff = bead.α / (1 - 1j * tweezer.k**3 / (6 * π * ε0) * bead.α)
-        assert np.allclose(τ, [0, 0, 0.5 * np.imag(α_eff) * tweezer.E0**2 * np.sin(2 * ψ)], rtol=1e-12, atol=0)
-        # the spin torque is the scattered power over ω: Im α_eff = k³|α_eff|²/(6πε0)
-        P_scat = (tweezer.k**4 * 3e8 / (12 * π * ε0)) * abs(α_eff)**2 * tweezer.E0**2
-        assert τ[2] == pytest.approx(P_scat / tweezer.ω * np.sin(2 * ψ), rel=2e-3)
+        k, E0 = tweezer.k, tweezer.E0
+        τ0 = tweezer.torque(np.zeros(3), 0.0, lossless)
+        α_eff = lossless.α / (1 - 1j * k**3 / (6 * π * ε0) * lossless.α)
+        # the extinction torque alone would be ½ Im α_eff E0² sin 2ψ; the radiated angular momentum cancels it
+        assert np.max(np.abs(τ0)) < 1e-10 * 0.5 * np.imag(α_eff) * E0**2
+        τ = tweezer.torque(np.zeros(3), 0.0, absorbing)
+        α = absorbing.α
+        α_eff = α / (1 - 1j * k**3 / (6 * π * ε0) * α)
+        absorbed = 0.5 * (np.imag(α_eff) - k**3 * abs(α_eff)**2 / (6 * π * ε0)) * E0**2  # P_abs/ω
+        assert np.allclose(τ, [0, 0, absorbed * np.sin(2 * ψ)], rtol=1e-10, atol=0)
+
+
+def test_spin_torque_on_a_lossless_anisotropic_particle_in_circular_light():
+    tweezer = Tweezer(polarisation=Tweezer.elliptical_polarisation(π/4))
+    k, E0 = tweezer.k, tweezer.E0
+    for angle in (0.0, 0.4, 1.3):
+        q = quaternion_multiply(axis_angle_quaternion('z', angle), body_axis_to_quaternion((1, 0, 0)))
+        particle = Spheroid(a=70*nm, b=50*nm, orientation=q)  # symmetry axis in the focal plane
+        α = np.real(np.diag(particle.body_effective_polarisability_tensor(k)))
+        τ = tweezer.torque(np.zeros(3), 0.0, particle)
+        expected = k**3 * E0**2 * (α[2] - α[0])**2 / (24 * π * ε0)
+        assert τ[2] == pytest.approx(expected, rel=2e-3)
+        assert np.allclose(τ[:2], 0, atol=1e-6 * expected)
 
 
 def test_default_and_explicit_y_polarisation_agree():

@@ -12,6 +12,8 @@ step, so trajectories agree with the NumPy reference to round-off.
 import numpy as np
 from numba import njit
 
+from levisim.core.constants import ε0, π
+
 __all__ = [
     'integrate_rigid_body',
     'rigid_body_parameters',
@@ -22,7 +24,8 @@ _M, _TWEEZER, _E0, _ZR, _WX0, _WY0, _WZ0 = 0, 1, 2, 3, 4, 5, 6
 _FB = 7          # 3 feedback rates (lab)
 _DRIVE = 10      # flag, offset (3), amplitude (3), ω, phase
 _ANG = 19        # flag, 3 angular damping rates (lab)
-_NUM_PARAMETERS = 23
+_RECOIL_C = 23   # k³/(12π ε0) of the tweezer (recoil of the radiated angular momentum)
+_NUM_PARAMETERS = 24
 
 
 def rigid_body_parameters(sim):
@@ -38,6 +41,7 @@ def rigid_body_parameters(sim):
         P[_WX0], P[_WY0], P[_WZ0] = tweezer.wx0, tweezer.wy0, tweezer.wz0
         α_body[:] = α
         e[:] = polarisation
+        P[_RECOIL_C] = tweezer.k**3 / (12 * π * ε0)
     P[_FB:_FB + 3] = sim.Γ_feedback
     if sim.torque_drive is not None:
         d = sim.torque_drive
@@ -129,9 +133,10 @@ def _drift(t, X, P, A, e, T, Q, out):
         F[1] = 0.5 * (4 * y / wy**2) * U
         F[2] = 0.5 * (4 * z / wzz**2) * U * (1 - 2 * ellipse)
         vc0, vc1, vc2 = np.conj(v[0]), np.conj(v[1]), np.conj(v[2])
-        τ_b[0] = 0.5 * amplitude2 * (vc1*u[2] - vc2*u[1]).real
-        τ_b[1] = 0.5 * amplitude2 * (vc2*u[0] - vc0*u[2]).real
-        τ_b[2] = 0.5 * amplitude2 * (vc0*u[1] - vc1*u[0]).real
+        cr = P[_RECOIL_C]
+        τ_b[0] = amplitude2 * (0.5 * (vc1*u[2] - vc2*u[1]).real - cr * (vc1*v[2] - vc2*v[1]).imag)
+        τ_b[1] = amplitude2 * (0.5 * (vc2*u[0] - vc0*u[2]).real - cr * (vc2*v[0] - vc0*v[2]).imag)
+        τ_b[2] = amplitude2 * (0.5 * (vc0*u[1] - vc1*u[0]).real - cr * (vc0*v[1] - vc1*v[0]).imag)
 
     τ_lab = np.zeros(3)
     extra = False
