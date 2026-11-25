@@ -163,7 +163,7 @@ class MagneticFieldSource:
 
     def B_squared(self, r):
         """
-        |B|² at r
+        B·B at r
         [T²]
         """
         B = self.B(r)
@@ -405,7 +405,7 @@ class LocalFieldExpansion(_PolynomialField):
     @property
     def length_scale(self):
         """
-        |B0|/|G| or |G|/|C| (whichever is defined), the scale of the expansion's variation; 1 m if the
+        norm(B0)/norm(G) or norm(G)/norm(C) (Frobenius norms, whichever is defined), the scale of the expansion's variation; 1 m if the
         field is uniform
         [m]
         """
@@ -468,7 +468,7 @@ def real_solid_harmonic(l, m):
     """
     The regular solid harmonic r^l Y_lm(θ, φ) as a polynomial in (x, y, z), for the real,
     orthonormal spherical harmonics without the Condon-Shortley phase: m > 0 ∝ cos(mφ), m < 0 ∝
-    sin(|m|φ), e.g. r² Y_2,-2 = ½√(15/π) xy and r³ Y_3,1 = ¼√(21/2π) x(4z² - x² - y²)
+    sin(-mφ), e.g. r² Y_2,-2 = ½√(15/π) xy and r³ Y_3,1 = ¼√(21/2π) x(4z² - x² - y²)
 
     Returned as the internal polynomial type (callable on points of shape (..., 3)).
     """
@@ -749,7 +749,7 @@ def _log_sum(A, B2, R):
 
 def _block_field_Mz(u, half, M):
     """
-    H field [A/m] of a block |u_x| ≤ half_x, |u_y| ≤ half_y, |u_z| ≤ half_z magnetised uniformly along
+    H field [A/m] of a block -half ≤ u ≤ half (per axis) magnetised uniformly along
     +z with magnetisation M [A/m], from its two surface-charge sheets σ = ±M at u_z = ±half_z:
     H = Σ_corners w (-ln(Y + R), -ln(X + R), arctan(XY/(ZR)))
     """

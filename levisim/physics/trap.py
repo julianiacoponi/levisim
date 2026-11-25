@@ -84,7 +84,8 @@ class Trap:
     then add one), and ``tweezer=`` may not be given as well.
 
     The total stiffness tensor is the sum of the elements' stiffness tensors at the
-    `linearisation_point` (the origin, i.e. the tweezer focus, by default); its diagonal gives kx, ky,
+    `linearisation_point` (the origin, i.e. the tweezer focus, by default; a position, or 'equilibrium'
+    for `find_equilibrium` started from ``equilibrium_guess``); its diagonal gives kx, ky,
     kz and the frequencies Ωj = √(kj/m), and its off-diagonal part the `intra_trap_couplings`.
     Optical-only quantities (tweezer, α_eff, U_depth, photon_recoil_heating_rates, σ_scattering,
     z_eq, Utw, Ftw, ...) use the first optical element and raise a `MissingOpticalFieldError` (a
@@ -160,7 +161,7 @@ class Trap:
         # ------------------------------------------------------------------------------------------
         # Point about which the stiffness tensor (and so kj, Ωj) is evaluated: the origin (the
         # tweezer focus) by default, as levisim always has; give a position, or 'equilibrium' for
-        # the root of the static force (find_equilibrium)
+        # the root of the static force (find_equilibrium, started from equilibrium_guess if given)
         # [m]
         linearisation_point = kwargs.get('linearisation_point', None)
         if isinstance(linearisation_point, str):

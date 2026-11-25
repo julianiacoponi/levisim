@@ -2,7 +2,7 @@
 Magnetic force elements for a magnetisable (diamagnetic or weakly paramagnetic) particle in a static
 field: `MagneticTrap`, and `EddyCurrentDamping` for a conducting particle
 
-A particle of volume V and small volume susceptibility (|χ| ≪ 1) in a static field B acquires the
+A particle of volume V and small volume susceptibility (χ of magnitude ≪ 1) in a static field B acquires the
 moment m_B = V χ_eff B/μ0 and has the energy ::
 
     U = -(V / 2μ0) B·χ_eff·B
@@ -12,7 +12,7 @@ moment m_B = V χ_eff B/μ0 and has the energy ::
 particle's own demagnetising field, χ_eff = χ (𝟙 + N χ)⁻¹ in the body frame, with N = diag(N_x,
 N_y, N_z) the demagnetising factors of its shape; for an ellipsoid these equal the depolarisation
 factors of electrostatics (`levisim.physics.shapes.depolarisation_factors`; 1/3 for a sphere). For a
-diamagnet the correction is of relative size |χ|/3 ~ 10⁻⁵ - 10⁻⁴. An anisotropic material (pyrolytic
+diamagnet the correction is of relative size -χ/3 ~ 10⁻⁵ - 10⁻⁴. An anisotropic material (pyrolytic
 graphite) has a body-frame tensor χ, turned into the lab frame by the particle's (fixed) orientation.
 
 With a `Gravity` element a diamagnet (χ < 0) levitates where the magnetic force balances its weight,
@@ -20,7 +20,7 @@ which needs (for isotropic χ and the field along the vertical ŷ) ::
 
     B ∂B/∂y = μ0 ρ g / |χ_eff|      (the levitation condition, e.g. 2400 T²/m for silica)
 
-independent of the particle's size, as are the trap frequencies Ω_j² = (|χ|/2μ0ρ) ∂²|B|²/∂r_j².
+independent of the particle's size, as are the trap frequencies Ω_j² = (-χ/2μ0ρ) ∂²B²/∂r_j² (B² = B·B).
 `Trap.magnetic_trap_report` solves for the equilibrium and reports the stiffness, frequencies, the
 levitation margin and the trap depth; see the guide page "Magnetic levitation".
 
@@ -89,7 +89,7 @@ class MagneticTrap(ForceElement):
     - source: a `MagneticFieldSource` (`LocalFieldExpansion`, `MultipoleField`, `CurrentLoop`,
       `CoilPair`, `CuboidMagnet`, `FieldSum`, `CallableField`), positioned in the trap's coordinates
     - shape_correction [True]: use χ_eff = χ(𝟙 + Nχ)⁻¹ with the particle's demagnetising factors N;
-      False uses the bare material χ (as Hsu et al. and Slezak et al. do; the difference is ~|χ|/3)
+      False uses the bare material χ (as Hsu et al. and Slezak et al. do; the relative difference is about -χ/3)
     - demagnetising_factors: override N = (N_x, N_y, N_z) in the body frame (default: from the
       particle's shape, see `demagnetising_factors_of`)
 
@@ -224,7 +224,7 @@ class MagneticTrap(ForceElement):
     def susceptibility_along(self, particle, direction):
         """
         χ_eff projected on a unit field direction b̂, b̂·χ_eff·b̂ (the susceptibility that the energy
-        -(V/2μ0) χ |B|² sees for a field along b̂)
+        -(V/2μ0) χ B² sees for a field along b̂)
         [·]
         """
         b = np.asarray(direction, dtype=float)
@@ -234,7 +234,7 @@ class MagneticTrap(ForceElement):
     def required_B_gradB(self, particle, g=None, field_direction=None):
         """
         The field-gradient product B ∂B/∂h along the upward vertical that holds the particle against
-        gravity, μ0 ρ g / |χ| (χ the effective susceptibility along the field direction; for an
+        gravity, μ0 ρ g / (-χ) (χ < 0 the effective susceptibility along the field direction; for an
         isotropic particle field_direction is not needed)
         [T²/m]
         """
@@ -260,8 +260,8 @@ class EddyCurrentDamping(ForceElement):
 
     A sphere of radius R and conductivity σ moving with velocity v through a field of Jacobian J sees,
     in its own frame, the uniform field change Ḃ = J v. The induced electric field E = -½ Ḃ × r (which
-    is tangential at the surface, so no surface charge is needed) dissipates P = σ ∫|E|² dV =
-    (2π/15) σ R⁵ |Ḃ|², so the friction tensor is γ = (2π/15) σ R⁵ JᵀJ and the damping rates, in levisim's
+    is tangential at the surface, so no surface charge is needed) dissipates P = σ ∫E·E dV =
+    (2π/15) σ R⁵ Ḃ·Ḃ, so the friction tensor is γ = (2π/15) σ R⁵ JᵀJ and the damping rates, in levisim's
     F = -Γ·p form, are ::
 
         Γ = γ/m = σ R² JᵀJ / (10 ρ)
@@ -439,8 +439,8 @@ def magnetic_trap_report(trap, element=None, r_guess=None, scan_range=None):
     - 'B' [T], 'B_magnitude' [T], 'gradB' [T/m]: the field and its Jacobian there
     - 'χ_eff' [·]: the lab-frame effective susceptibility tensor; 'χ_along_B' its projection on B̂
     - 'magnetic_force' [N] and 'weight' [N] (m g, 0 without gravity) at the equilibrium
-    - 'required_B_gradB' [T²/m]: μ0 ρ g/|χ_along_B|, the levitation condition (None without gravity)
-    - 'B_gradB' [T²/m]: the actual ½ |∂|B|²/∂h| along the upward vertical at the equilibrium, signed
+    - 'required_B_gradB' [T²/m]: μ0 ρ g divided by the magnitude of χ_along_B, the levitation condition (None without gravity)
+    - 'B_gradB' [T²/m]: the actual ½ ∂(B·B)/∂h along the upward vertical at the equilibrium, signed
       positive when it lifts the particle (equal to 'required_B_gradB' when the field alone holds the
       weight)
     - 'levitation_margin' [·]: the largest upward magnetic force on the vertical line through the
