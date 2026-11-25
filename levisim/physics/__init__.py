@@ -13,6 +13,7 @@ __all__ = [
     'Cylinder',
     'Disk',
     'Dumbbell',
+    'EddyCurrentDamping',
     'Ellipsoid',
     'Feedback',
     'FocalExpansion',
@@ -23,6 +24,7 @@ __all__ = [
     'HarmonicPotential',
     'Interaction',
     'Kick',
+    'MagneticTrap',
     'Material',
     'MissingOpticalFieldError',
     'NewtonianGravity',
@@ -44,10 +46,12 @@ __all__ = [
 from levisim.physics.bead import Bead
 from levisim.physics.cavity import Cavity
 from levisim.physics.fields import (
+    EddyCurrentDamping,
     Feedback,
     ForceElement,
     Gravity,
     HarmonicPotential,
+    MagneticTrap,
     PaulTrap,
     PhotonRecoil,
     UniformElectricField,

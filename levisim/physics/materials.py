@@ -81,16 +81,26 @@ FUSED_SILICA = Material(
     # Sellmeier formula of Malitson, J. Opt. Soc. Am. 55, 1205 (1965), doi:10.1364/JOSA.55.001205,
     # valid 0.21-3.71 μm at 20 °C
     permittivity='Malitson',
+    # SI volume susceptibility of SiO2, -11.28 × 10⁻⁶: Houlton et al., Rev. Sci. Instrum. 89,
+    # 125107 (2018), doi:10.1063/1.5051667, Table 1, from Wapler et al., J. Magn. Reson. 242, 233
+    # (2014), doi:10.1016/j.jmr.2014.02.005
+    χ_m=-11.28e-6,
     references={
         'ρ': (
             'Corning HPFS 7980 product information sheet (2.201 g/cm³), '
             'https://www.corning.com/media/worldwide/csm/documents/1e624b3034474193b5b00ea6f558dd3d2.pdf'
         ),
         'εr': 'Malitson, J. Opt. Soc. Am. 55, 1205 (1965), doi:10.1364/JOSA.55.001205',
+        'χ_m': (
+            'Houlton et al., Rev. Sci. Instrum. 89, 125107 (2018), doi:10.1063/1.5051667, Table 1 '
+            '(SiO2: -11.28 × 10⁻⁶), from Wapler et al., J. Magn. Reson. 242, 233 (2014), '
+            'doi:10.1016/j.jmr.2014.02.005'
+        ),
     },
     notes=(
         'Bulk synthetic fused silica. Stöber-type nanospheres are porous and can be 10-20% less dense '
-        'with a lower index; see LEVISIM_DEFAULT_SILICA.'
+        'with a lower index; see LEVISIM_DEFAULT_SILICA. The diamagnetic susceptibility of different '
+        'silica glasses differs at the percent level (e.g. -11.03 × 10⁻⁶ is also quoted for fused silica).'
     ),
 )
 
