@@ -321,10 +321,12 @@ def test_bead_rho_and_epsilon_setters_do_not_touch_shared_materials():
 
 
 def test_bead_numbers_are_pinned():
-    """Values computed on main before the refactor (levisim 0.1.0); exact equality"""
+    """Values computed on main before the refactor (levisim 0.1.0); exact equality, except for α, which is
+    proportional to ε0: scipy < 1.15 has the CODATA 2018 value and later versions the CODATA 2022 one,
+    6.8 × 10⁻¹⁰ apart (the oldest supported scipy, 1.13, gives 5.947370762838848e-33)"""
     bead = Bead()
     assert bead.m == 1.6822237250824491e-18
-    assert bead.α == 5.947370766869056e-33
+    assert bead.α == pytest.approx(5.947370766869056e-33, rel=1e-9)
     assert Bead(permittivity_model='Malitson').εr == 2.101430006759768
 
 
