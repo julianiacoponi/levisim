@@ -486,8 +486,9 @@ interactions run the NumPy loop. Per sample (one step, `substeps=1`), on the sam
 | 64 (386) | 64 | 180–1740 μs per trajectory | 540–760 μs per trajectory |
 
 The NumPy loop is dominated by Python overhead for small systems; for 64 particles the dense
-386 × 386 linear flow dominates. `backend='auto'` uses NumPy above state dimension 128, the
-threshold measured for the linear model; for the nonlinear model at 64 particles the two backends
+386 × 386 linear flow dominates. `backend='auto'` compiles the linear model up to state dimension 384
+(re-measured on a quiet machine: numba was as fast or faster at every size up to n = 436) and the
+nonlinear model up to 128; for the nonlinear model at 64 particles the two backends
 were within the run-to-run spread of these measurements, so that choice is not benchmark-proven
 here. Traps with force elements other than one tweezer, its `PhotonRecoil`, `Gravity`,
 `HarmonicPotential` and `Feedback`, and runs with `interactions`, use the NumPy loop.

@@ -52,7 +52,7 @@ class StochasticSimulation:
             an int (or SeedSequence / Generator) uses np.random.default_rng(seed)
         backend ['auto']: 'numpy' (the reference time loop), 'numba' (compiled kernels, needs
             `pip install levisim[fast]`; ImportError without numba) or 'auto' (numba when it is
-            installed and the run has at least AUTO_NUMBA_MIN_STEPS = 2¹⁵ steps, NumPy otherwise).
+            installed and the run has at least AUTO_NUMBA_MIN_STEPS = 2¹⁴ steps, NumPy otherwise).
             Both consume the same random numbers; trajectories agree to round-off. With 'auto' a
             configuration without a compiled kernel falls back to NumPy; an explicit 'numba' raises
             UnsupportedBackendError for it instead. self.backend_used says which ran.
