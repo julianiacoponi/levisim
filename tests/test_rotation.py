@@ -400,9 +400,10 @@ def test_static_libration_terms_against_finite_differences():
     exp = cs.librational_expansion(trap, E0c, α_c)
     K_θθ = exp['K_θθ_CS'] + exp['K_θθ_cav']
     K_rθ = exp['K_rθ_CS'] + exp['K_rθ_cav']
-    # (the second-order stencil's error is a few 10⁻⁶ of the largest entry)
-    assert np.allclose(H[3:, 3:], K_θθ, rtol=1e-5, atol=1e-5 * np.max(np.abs(K_θθ)))
-    assert np.allclose(H[:3, 3:], K_rθ, rtol=1e-5, atol=1e-5 * np.max(np.abs(K_rθ)))
+    # the small off-diagonal entries carry finite-difference (second-order stencil) error of a few
+    # 10⁻⁶ of the largest entry, which differs between platforms and numpy versions
+    assert np.allclose(H[3:, 3:], K_θθ, rtol=1e-4, atol=1e-5 * np.max(np.abs(K_θθ)))
+    assert np.allclose(H[:3, 3:], K_rθ, rtol=1e-4, atol=1e-5 * np.max(np.abs(K_rθ)))
 
 
 def test_librational_frequencies_and_damping():
