@@ -35,6 +35,13 @@ papers/krisnanda2020_gravity_entanglement.ipynb          180   # [15 s]
 papers/rieser2022_optical_binding.ipynb                  180   # [6-8 s]
 papers/reisenbauer2024_nonreciprocal_binding.ipynb      900   # [380-450 s, NumPy time loop]
 papers/slezak2018_magneto_gravitational_trap.ipynb      300   # [60-75 s]
+papers/hoang2016_torsional_vibration.ipynb               180   # [10 s with numba]
+papers/reimann2018_ghz_rotation.ipynb                    180   # [3 s with numba]
+papers/ahn2020_torque_sensing.ipynb                      600   # [80 s with numba]
+papers/vanderlaan2021_libration_cooling.ipynb            600   # [90 s with numba]
+papers/pontin2023_six_dof_cooling.ipynb                  300   # [20 s with numba]
+papers/kamba2023_near_sphere_librations.ipynb            600   # [130 s with numba]
+papers/vinante2020_meissner_micromagnet.ipynb            300   # [20 s]
 
 # archive (outputs stripped)
 archive/animations/3x2_truncated_heatmap.ipynb                     180   # [6 s]

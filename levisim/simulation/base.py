@@ -66,6 +66,9 @@ class StochasticSimulation:
       configuration has no kernel, and NumPy is used)
     """
 
+    # optional callable X -> X applied after every step (see Integrator.integrate); None: no projection
+    project_state = None
+
     default_num_samples = 1*megasamples
     default_Δt = 0.1*μs
 
@@ -199,9 +202,12 @@ class StochasticSimulation:
             else:
                 self.backend_used = 'numba'
         if X is None:
+            # a subclass with a constrained state (RigidBodySimulation) projects after every step;
+            # the keyword is passed only then, so integrators written before it keep working
+            project_kwargs = {} if self.project_state is None else {'project': self.project_state}
             X = integrator.integrate(
                 self.drift, G, S, X0, time_array, self.Δt, self._noise_chunks,
-                debug=self.debug, trace_steps=self.rk_loop_debug,
+                debug=self.debug, trace_steps=self.rk_loop_debug, **project_kwargs,
             )
 
         elapsed_seconds = time.perf_counter() - start_time

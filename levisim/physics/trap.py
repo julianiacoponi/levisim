@@ -200,6 +200,10 @@ class Trap:
         # Override resonant frequencies (that ignore Tweezer properties)
         # useful to get SpectralDensityTheory curves to match Experiment or Simulation data
         self.override_Ω_dict = kwargs.get('override_Ω_dict', None)
+        # Opt-in finite-size alignment torque of an extended particle in the anisotropic trap
+        # (levisim.physics.rotation.finite_size_potential): off by default, so the point-dipole
+        # torques are unchanged
+        self.finite_size_torque = bool(kwargs.get('finite_size_torque', False))
 
         # ------------------------------------------------------------------------------------------
         # Cavity drive: the light this bead coherently scatters into a cavity (used by MultiTrap)
@@ -948,6 +952,137 @@ class Trap:
             total = total + element.noise(self.bead)
         return total
 
+    ################################################################################################
+    # ROTATION: librations about the particle's orientation (levisim.physics.rotation)
+    # ----------------------------------------------------------------------------------------------
+    @cached_property
+    def static_torque(self):
+        """
+        Total torque of the elements on the particle in its current orientation at the
+        linearisation point. The librational quantities below linearise about that orientation; a
+        torque that is not zero means that it is not an equilibrium (it is logged by `MultiTrap`)
+        [N·m]
+        """
+        total = np.zeros(3)
+        for element in self.fields:
+            total = total + np.asarray(element.torque(self.linearisation_point, 0.0, self.bead), dtype=float)
+        if self.finite_size_torque:
+            from levisim.physics.rotation import finite_size_torque
+            total = total + finite_size_torque(*self.finite_size_tensors)
+        return total
+
+    @cached_property
+    def finite_size_tensors(self):
+        """
+        The pair of tensors that the finite-size torque uses: the translational stiffness tensor
+        (m·Ωj² from `override_Ω_dict` when it gives x, y and z, else `stiffness_tensor`) and the
+        particle's lab-frame mass-weighted second moment ⟨r rᵀ⟩ = S/m
+        (`levisim.physics.rotation.second_moment_tensor`)
+        [N/m], [m²]
+        """
+        from levisim.physics.rotation import second_moment_tensor
+        if self.override_Ω_dict and all(axis in self.override_Ω_dict for axis in 'xyz'):
+            k = self.bead.m * np.diag([float(self.override_Ω_dict[axis])**2 for axis in 'xyz'])
+        else:
+            k = np.asarray(self.stiffness_tensor, dtype=float)
+        S_body = second_moment_tensor(self.bead.inertia_tensor) / self.bead.m
+        return k, np.asarray(self.bead.lab_tensor(S_body), dtype=float)
+
+    @cached_property
+    def torque_stiffness_tensor(self):
+        """
+        Total torque stiffness K_ij = -∂τ_i/∂θ_j of the elements for small rotations θ = (θα, θβ, θγ)
+        about the lab axes x, y, z, at the particle's orientation and the linearisation point
+        [N·m/rad]
+        """
+        total = np.zeros((3, 3))
+        for element in self.fields:
+            total = total + element.torque_stiffness(self.bead, None, self.linearisation_point)
+        if self.finite_size_torque:
+            from levisim.physics.rotation import finite_size_torque_stiffness
+            total = total + finite_size_torque_stiffness(*self.finite_size_tensors)
+        return total
+
+    @cached_property
+    def torque_noise_psd(self):
+        """
+        Sum of the elements' torque noises (the tweezer's recoil torque noise), two-sided, lab frame
+        [N²·m²/Hz]
+        """
+        total = np.zeros((3, 3))
+        for element in self.fields:
+            total = total + element.torque_noise(self.bead, None, self.linearisation_point)
+        return total
+
+    @cached_property
+    def Ij(self):
+        """
+        Dict of the moments of inertia about the lab axes, {'α': I_xx, 'β': I_yy, 'γ': I_zz} of the
+        lab-frame inertia tensor in the particle's orientation
+        [kg·m²]
+        """
+        diagonal = np.diag(np.asarray(self.bead.lab_inertia_tensor, dtype=float))
+        return {axis: float(diagonal[i]) for i, axis in enumerate(('α', 'β', 'γ'))}
+
+    @cached_property
+    def Ωθ(self):
+        """
+        Dict of the librational frequencies about the lab axes, {'α': Ωα, 'β': Ωβ, 'γ': Ωγ} with
+        Ωj = √(K_jj/I_jj) from `torque_stiffness_tensor` and `Ij` (zero where K_jj ≤ 0, i.e. a free
+        or unstable rotation). `override_Ω_dict` entries 'α', 'β', 'γ' replace them.
+        [2π·Hz]
+        """
+        K = self.torque_stiffness_tensor
+        frequencies = {}
+        for i, axis in enumerate(('α', 'β', 'γ')):
+            if self.override_Ω_dict and axis in self.override_Ω_dict:
+                frequencies[axis] = float(self.override_Ω_dict[axis])
+                continue
+            frequencies[axis] = float(np.sqrt(K[i, i] / self.Ij[axis])) if K[i, i] > 0 else 0.0
+        return frequencies
+
+    @cached_property
+    def Γrot_tensor(self):
+        """
+        Rotational gas damping-rate tensor in the lab frame, R Γ_rot Rᵀ (Martinetz et al., Phys. Rev. E
+        97, 052112 (2018), αc = γs = 1), so that dJ/dt = -Γ J for the angular momentum J
+        [2π·Hz]
+        """
+        return np.asarray(self.bead.lab_rotational_damping_tensor(self.gas), dtype=float)
+
+    @cached_property
+    def Γrot_j(self):
+        """
+        Dict of the rotational gas damping rates about the lab axes, the diagonal of `Γrot_tensor`
+        [2π·Hz]
+        """
+        diagonal = np.diag(self.Γrot_tensor)
+        return {axis: float(diagonal[i]) for i, axis in enumerate(('α', 'β', 'γ'))}
+
+    @cached_property
+    def θ_zpf(self):
+        """
+        Dict of the librational zero-point fluctuations √(ħ/(2 I_j Ωj)) (inf for a free rotation)
+        [rad]
+        """
+        return {
+            axis: (np.sqrt(ħ / (2 * self.Ij[axis] * Ω)) if Ω > 0 else np.inf)
+            for axis, Ω in self.Ωθ.items()
+        }
+
+    @cached_property
+    def libration_recoil_heating_rates(self):
+        """
+        Recoil heating rates of the librations, {'α': Γ_rec,α, ...} = S_τ,jj/(2 I_j ħ Ωj) from the
+        diagonal of `torque_noise_psd` (zero for a free rotation)
+        [2π·Hz, phonons per second]
+        """
+        S = np.diag(self.torque_noise_psd)
+        return {
+            axis: (S[i] / (2 * self.Ij[axis] * ħ * self.Ωθ[axis]) if self.Ωθ[axis] > 0 else 0.0)
+            for i, axis in enumerate(('α', 'β', 'γ'))
+        }
+
     @cached_property
     def kx(self):
         """
@@ -1322,7 +1457,7 @@ class Trap:
         These are used by `MultiTrap(photon_recoil=True)` (the default with physical parameters); the `photon_recoil` flag of this class
         is separate and switches on the recoil force in `Simulation`.
         """
-        if self.bead_has_scalar_polarisability:
+        if self.bead_has_scalar_polarisability and self.tweezer.has_default_polarisation:
             prefactor = π / (15 * ħ * ε0) * (np.real(self.α_eff) * self.tweezer.E0 / (2*π))**2 * self.tweezer.k**5
             coefficients = {'x': 2, 'y': 1, 'z': 7}
         else:
