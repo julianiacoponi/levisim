@@ -17,6 +17,17 @@ from levisim.core.units import (
 from levisim.physics.fields.base import ForceElement, as_position
 
 
+def _has_scalar_polarisability(particle):
+    """
+    Whether the particle's `α` is one scalar for every polarisation (an isotropic sphere, or any
+    object with a scalar `α` that does not say otherwise), so the original scalar arithmetic applies
+    """
+    flag = getattr(particle, 'has_scalar_polarisability', None)
+    if flag is None:
+        return np.ndim(particle.α) == 0
+    return bool(flag)
+
+
 class Tweezer(ForceElement):
     """
     Defines an optical tweezer: a focussed, elliptical Gaussian beam
@@ -24,6 +35,10 @@ class Tweezer(ForceElement):
     A Tweezer is the optical `ForceElement` of a `Trap`: `force` is the time-averaged gradient force
     (the same arithmetic as `Trap.Ftw`), `potential` the dipole energy ``-(Re α_eff/2)|E|²``, `stiffness`
     the Hessian (closed form at the focus) and `noise` the photon-recoil force noise.
+
+    The light is polarised along the lab y axis (`polarisation`). For a non-spherical or
+    birefringent particle in a fixed orientation, α_eff is the projection ê·α_eff·ê of its lab-frame
+    tensor on that polarisation (`effective_polarisability`), which sets the translational trap.
     """
 
     is_optical = True
@@ -297,13 +312,49 @@ class Tweezer(ForceElement):
     ################################################################################################
     # FORCE ELEMENT INTERFACE (see levisim.physics.fields)
     # ----------------------------------------------------------------------------------------------
+    @property
+    def polarisation(self):
+        """
+        Unit polarisation vector of the tweezer light at the focus, in the lab frame: levisim's
+        tweezers are polarised along y (θ rotates the cavity axis, not the polarisation)
+        [·]
+        """
+        return np.array([0.0, 1.0, 0.0])
+
     def effective_polarisability(self, particle):
         """
         Effective polarisability of the particle at this tweezer's wavenumber, including the
-        radiation reaction: α_eff = α / (1 - i k³α/(6πε0)) (`Trap.α_eff`)
+        radiation reaction: α_eff = α / (1 - i k³α/(6πε0)) (`Trap.α_eff`) for an isotropic sphere.
+        For any other particle (a non-spherical shape, a birefringent material or a tabulated
+        particle) it is ê·α_eff·ê, the lab-frame tensor α_eff = α_lab (𝟙 - i k³α_lab/(6πε0))⁻¹ of the
+        particle's current orientation projected on the polarisation ê = ŷ
+        (`Particle.effective_polarisability_along`).
         [complex Fm²]
         """
-        return particle.α / (1 - 1j * (self.k**3 / (6*π*ε0)) * particle.α)
+        if _has_scalar_polarisability(particle):
+            return particle.α / (1 - 1j * (self.k**3 / (6*π*ε0)) * particle.α)
+        return particle.effective_polarisability_along(self.polarisation, self.k)
+
+    def recoil_coefficients(self, particle):
+        """
+        (‖Re α_eff ê‖, (c_x, c_y, c_z)): the polarisability and direction weights of the
+        photon-recoil force noise, S_j = π ħ/(15 ε0)·(‖Re α_eff ê‖·E0/2π)²·k⁵·c_j (see `noise`)
+
+        The induced dipole p ∝ α_eff ê radiates with the pattern 1 - (p̂·n)², whose mean of n_j² is
+        (2 - p̂_j²)/5; the absorbed tweezer photons add 1 along the beam (z). So ::
+
+            c_j = 2 - p̂_j² + 5 δ_jz,   p̂_j² = (Re α_eff ê)_j²/‖Re α_eff ê‖²
+
+        which is (2, 1, 7) for a dipole along the polarisation y (an isotropic particle: then the
+        first entry is Re α_eff exactly, as in the original code).
+        [Fm², ·]
+        """
+        if _has_scalar_polarisability(particle):
+            return np.real(self.effective_polarisability(particle)), np.array([2.0, 1.0, 7.0])
+        p = np.real(particle.effective_polarisability_tensor(self.k) @ self.polarisation)
+        magnitude = float(np.linalg.norm(p))
+        p_hat2 = (p / magnitude)**2 if magnitude > 0 else np.array([0.0, 1.0, 0.0])
+        return magnitude, 2 - p_hat2 + np.array([0.0, 0.0, 5.0])
 
     @property
     def finite_difference_step(self):
@@ -369,11 +420,17 @@ class Tweezer(ForceElement):
 
         It is the force noise that heats a mode of frequency Ωj at the rate S_j/(2 m ħ Ωj) phonons
         per second, `Trap.photon_recoil_heating_rates` (Piotrowski et al., Nat. Phys. 19, 1009
-        (2023), Eq. (4)). Not used by FreeSpaceSimulation, which models no recoil heating.
+        (2023), Eq. (4)). Not used by FreeSpaceSimulation, which models no recoil heating. For an
+        anisotropic particle the induced dipole need not lie along the polarisation, and Re α_eff and
+        c_j become ‖Re α_eff ê‖ and the weights of `recoil_coefficients`.
         """
-        α = np.real(self.effective_polarisability(particle))
+        if _has_scalar_polarisability(particle):
+            α = np.real(self.effective_polarisability(particle))
+            prefactor = π * ħ / (15 * ε0) * (α * self.E0 / (2*π))**2 * self.k**5
+            return np.diag([2 * prefactor, prefactor, 7 * prefactor])
+        α, coefficients = self.recoil_coefficients(particle)
         prefactor = π * ħ / (15 * ε0) * (α * self.E0 / (2*π))**2 * self.k**5
-        return np.diag([2 * prefactor, prefactor, 7 * prefactor])
+        return np.diag(coefficients * prefactor)
 
     def __repr__(self):
         return (f'Tweezer(Power={self.Power / mW:.6g} mW, λ={self.λ / nm:.6g} nm, '

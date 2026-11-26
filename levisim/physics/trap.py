@@ -23,6 +23,7 @@ from levisim.physics.fields.base import ForceElement, as_position
 from levisim.physics.fields.elements import Feedback, PhotonRecoil
 from levisim.physics.gas import Gas
 from levisim.physics.kick import Kick
+from levisim.physics.particle import Particle, Sphere
 from levisim.physics.tweezer import Tweezer
 
 
@@ -529,12 +530,71 @@ class Trap:
     ################################################################################################
     # DERIVED PROPERTIES
     # ----------------------------------------------------------------------------------------------
+    @property
+    def _uses_sphere_gas_damping(self):
+        """
+        Whether the gas damping is the original scalar formula (a Sphere/Bead, or any particle-like
+        object that is not a levisim `Particle`), rather than the particle's damping tensor
+        """
+        return isinstance(self.bead, Sphere) or not isinstance(self.bead, Particle)
+
+    @cached_property
+    def Γth_tensor(self):
+        """
+        Thermal gas damping-rate tensor of the centre-of-mass motion in the lab frame, for full
+        diffuse accommodation with the surface at the gas temperature (αc = γs = 1, as `Γth`): Γth·𝟙
+        for a sphere, R Γ_cm Rᵀ of the particle's current orientation otherwise
+        (`Particle.lab_translational_damping_tensor`)
+        [2π·Hz]
+        """
+        if self._uses_sphere_gas_damping:
+            return self.Γth * np.eye(3)
+        return np.asarray(self.bead.lab_translational_damping_tensor(self.gas), dtype=float)
+
+    @cached_property
+    def Γth_j(self):
+        """
+        Dict of the thermal gas damping rates of the (x, y, z) motion: Γth on every axis for a
+        sphere, the diagonal of `Γth_tensor` otherwise. The off-diagonal elements of a tilted
+        non-spherical particle's tensor (gas friction coupling the axes) are left out of the per-axis
+        damping used by `MultiTrap` and `FreeSpaceSimulation`.
+        [2π·Hz]
+        """
+        if self._uses_sphere_gas_damping:
+            return {'x': self.Γth, 'y': self.Γth, 'z': self.Γth}
+        diagonal = np.diag(self.Γth_tensor)
+        return {axis: float(diagonal[i]) for i, axis in enumerate('xyz')}
+
+    @cached_property
+    def fth_j(self):
+        """
+        Dict of the thermal force noises of the (x, y, z) motion, √(2 m kB T Γth,j) (all equal to
+        fth for a sphere)
+        [N/√Hz]
+        """
+        return {axis: np.sqrt(2 * self.bead.m * kB * self.gas.T * Γ) for axis, Γ in self.Γth_j.items()}
+
+    @cached_property
+    def Sth_j(self):
+        """
+        Dict of the thermal force spectral densities of the (x, y, z) motion, fth_j² (all equal to
+        Sth for a sphere)
+        [N²/Hz]
+        """
+        return {axis: f**2 for axis, f in self.fth_j.items()}
+
     @cached_property
     def Γth(self):
         """
-        Thermal gas mechanical damping rate
+        Thermal gas mechanical damping rate (for a non-spherical particle: the mean of the diagonal of
+        `Γth_tensor`, i.e. its trace/3; the per-axis rates are `Γth_j`)
         [2π·Hz]
         """
+        if not self._uses_sphere_gas_damping:
+            tensor = self.Γth_tensor
+            if np.all(tensor == tensor[0, 0] * np.eye(3)):
+                return float(tensor[0, 0])
+            return float(np.trace(tensor) / 3)
         # NOTE: many publications in our field use varying different expressions...
         # my choice is derived from: http://dx.doi.org/10.1016/j.physleta.2010.06.041
         # 2010-06-19 -- Cavalleri et al. -- Gas damping force noise on a macroscopic test body in an infinite gas reservoir
@@ -694,7 +754,7 @@ class Trap:
         Total mechanical damping rate of (x, y, z)-motion oscillations
         [2π·Hz]
         """
-        return self.Γth + self.Γ_fbx
+        return self.Γth_j['x'] + self.Γ_fbx
 
     @cached_property
     def Γy(self):
@@ -702,7 +762,7 @@ class Trap:
         Total mechanical damping rate of y-motion oscillations
         [2π·Hz]
         """
-        return self.Γth + self.Γ_fby
+        return self.Γth_j['y'] + self.Γ_fby
 
     @cached_property
     def Γz(self):
@@ -710,7 +770,7 @@ class Trap:
         Total mechanical damping rate of z-motion oscillations
         [2π·Hz]
         """
-        return self.Γth + self.Γ_fbz
+        return self.Γth_j['z'] + self.Γ_fbz
 
     @cached_property
     def Γj(self):
@@ -1173,10 +1233,22 @@ class Trap:
         zR = self.tweezer.zR
         return max(np.array([self.Ftwz(0, 0, z) for z in np.linspace(-zR, zR, 1000)]))
 
+    @property
+    def bead_has_scalar_polarisability(self):
+        """
+        Whether the particle's polarisability is one scalar (an isotropic sphere); otherwise α_eff
+        is the projection on the tweezer polarisation of its lab-frame tensor
+        [bool]
+        """
+        from levisim.physics.tweezer import _has_scalar_polarisability
+        return _has_scalar_polarisability(self.bead)
+
     @cached_property
     def α_eff(self):
         """
-        Effective polarisability of the bead that accounts for the radiation reaction force
+        Effective polarisability of the bead that accounts for the radiation reaction force; for a
+        non-spherical or birefringent particle, ê·α_eff·ê on the tweezer polarisation ê = ŷ in the
+        particle's current orientation (`Tweezer.effective_polarisability`)
         [complex Fm²]
         """
         return self.tweezer.effective_polarisability(self.bead)
@@ -1203,8 +1275,15 @@ class Trap:
         These are used by `MultiTrap(photon_recoil=True)` (the default with physical parameters); the `photon_recoil` flag of this class
         is separate and switches on the recoil force in `Simulation`.
         """
-        prefactor = π / (15 * ħ * ε0) * (np.real(self.α_eff) * self.tweezer.E0 / (2*π))**2 * self.tweezer.k**5
-        coefficients = {'x': 2, 'y': 1, 'z': 7}
+        if self.bead_has_scalar_polarisability:
+            prefactor = π / (15 * ħ * ε0) * (np.real(self.α_eff) * self.tweezer.E0 / (2*π))**2 * self.tweezer.k**5
+            coefficients = {'x': 2, 'y': 1, 'z': 7}
+        else:
+            # anisotropic particle: the induced dipole need not lie along the polarisation (see
+            # Tweezer.recoil_coefficients)
+            α, c = self.tweezer.recoil_coefficients(self.bead)
+            prefactor = π / (15 * ħ * ε0) * (α * self.tweezer.E0 / (2*π))**2 * self.tweezer.k**5
+            coefficients = dict(zip('xyz', c))
         return {
             axis: prefactor * coefficient * ħ / (2 * self.bead.m * self.Ωj[axis])
             for axis, coefficient in coefficients.items()

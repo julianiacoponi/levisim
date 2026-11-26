@@ -4,13 +4,13 @@ One mechanical degree of freedom (Dimension) of a multi-particle cavity trap
 
 import numpy as np
 
-from levisim.core.constants import π, ħ, kB
+from levisim.core.constants import kB, ħ, π
 from levisim.core.units import (
+    Hz,
     degrees,
-    Hz, kHz,
+    kHz,
 )
 from levisim.physics.coherent_scattering import hessian_to_coupling_rate
-
 
 __all__ = [
     'Dimension',
@@ -116,7 +116,8 @@ class Dimension:
             self.Ω = self.mechanical_frequency(self.axis)
 
         if self.Γ is None:
-            self.Γ = self.trap.Γth
+            # the gas damping of this axis (Trap.Γth for a sphere)
+            self.Γ = self.trap.Γth_j[self.axis]
 
         # Light-mech coupling goes H/ħ = -X·L
         # X = b† + b
@@ -157,11 +158,10 @@ class Dimension:
                 self.gxz = 0
                 self.gyz = 0
 
-            if self.gxz is None and self.gyz is None:
-                if self.multitrap.Cartesian_axes_per_trap == 3:
-                    self.gxy = self.mech_mech_coupling('xy')
-                    self.gxz = self.mech_mech_coupling('xz')
-                    self.gyz = self.mech_mech_coupling('yz')
+            if self.gxz is None and self.gyz is None and self.multitrap.Cartesian_axes_per_trap == 3:
+                self.gxy = self.mech_mech_coupling('xy')
+                self.gxz = self.mech_mech_coupling('xz')
+                self.gyz = self.mech_mech_coupling('yz')
 
         # NOTE: the signs of the couplings are not fixed. For red detuning (Δ < 0), 0 ≤ θ ≤ π/2 and
         # beads with 0 ≤ Φ ≤ π/2 they are gx, gy, gxy, gxz, gyz ≤ 0 and gz ≥ 0 (this used to be
