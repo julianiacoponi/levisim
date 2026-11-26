@@ -2,22 +2,32 @@
 The optical tweezer (Tweezer): a focussed, elliptical Gaussian beam
 """
 
-import numpy as np
 from functools import cached_property
 
-from levisim.core.constants import π, c, ε0
+import numpy as np
+
+from levisim.core.constants import c, ħ, ε0, π
 from levisim.core.units import (
-    degrees,
-    μm, nm,
     THz,
+    degrees,
     mW,
+    nm,
+    μm,
 )
+from levisim.physics.fields.base import ForceElement, as_position
 
 
-class Tweezer:
+class Tweezer(ForceElement):
     """
     Defines an optical tweezer: a focussed, elliptical Gaussian beam
+
+    A Tweezer is the optical `ForceElement` of a `Trap`: `force` is the time-averaged gradient force
+    (the same arithmetic as `Trap.Ftw`), `potential` the dipole energy ``-(Re α_eff/2)|E|²``, `stiffness`
+    the Hessian (closed form at the focus) and `noise` the photon-recoil force noise.
     """
+
+    is_optical = True
+    is_conservative = True
     def __init__(
         self,
         **kwargs,
@@ -283,3 +293,88 @@ class Tweezer:
         # Instead, we consider that the cos²(θ) oscillation averages to ½ (when finding the potential Utw ~ |E|² in the Trap class).
         # So, we *artificially* include this ½ in the forces calculated in the Trap class.
         return  self.E_field_amplitude(x, y, z) * np.cos(self.E_field_phase(z, t))
+
+    ################################################################################################
+    # FORCE ELEMENT INTERFACE (see levisim.physics.fields)
+    # ----------------------------------------------------------------------------------------------
+    def effective_polarisability(self, particle):
+        """
+        Effective polarisability of the particle at this tweezer's wavenumber, including the
+        radiation reaction: α_eff = α / (1 - i k³α/(6πε0)) (`Trap.α_eff`)
+        [complex Fm²]
+        """
+        return particle.α / (1 - 1j * (self.k**3 / (6*π*ε0)) * particle.α)
+
+    @property
+    def finite_difference_step(self):
+        """
+        1e-4 of the waist w0 (as `Trap.Ωj_at_z_eq`)
+        [m]
+        """
+        return 1e-4 * self.w0
+
+    def potential(self, r, particle):
+        """
+        Dipole energy of the particle in the (time-averaged) tweezer field, ``-(Re α_eff / 2) |E(r)|²``
+        (`Trap.Utw`)
+        [J]
+        """
+        x, y, z = r
+        return -(np.real(self.effective_polarisability(particle)) / 2) * self.E_field_amplitude(x, y, z)**2
+
+    def force(self, r, t, particle):
+        """
+        Gradient force of the tweezer, (Ftw,x, Ftw,y, Ftw,z), with exactly the arithmetic of `Trap.Ftw`
+        (including the ½ of the time average of the light's cos²); t is not used
+        [N]
+        """
+        x, y, z = r
+        U = self.potential(r, particle)
+        wx = self.wx(z)
+        wy = self.wy(z)
+        wz = self.wz(z)
+        ellipse = self.ellipse(x, y, z)
+        return np.array([
+            0.5 * (4 * x / wx**2) * U,
+            0.5 * (4 * y / wy**2) * U,
+            0.5 * (4 * z / wz**2) * U * (1 - 2 * ellipse),
+        ])
+
+    def stiffness(self, r0=None, particle=None):
+        """
+        Stiffness tensor K_ij = -∂Ftw,i/∂r_j at r0
+        [N/m]
+
+        At the focus (r0 = None or the origin) in closed form, K = Re(α_eff) E0² diag(1/wx0², 1/wy0²,
+        1/wz0²) (`Trap.kx`, `ky`, `kz`); elsewhere from central differences of `force` with step
+        1e-4·w0.
+        """
+        if r0 is None or not np.any(as_position(r0)):
+            α = np.real(self.effective_polarisability(particle))
+            return np.diag([
+                α * self.E0**2 / self.wx0**2,
+                α * self.E0**2 / self.wy0**2,
+                α * self.E0**2 / self.wz0**2,
+            ])
+        return super().stiffness(r0, particle)
+
+    def noise(self, particle):
+        """
+        Photon-recoil force noise of the tweezer light scattered by the particle, two-sided, diagonal
+        [N²/Hz]
+
+        ::
+
+            S_j = π ħ/(15 ε0) · (Re α_eff · E0/2π)² · k⁵ · c_j,   (c_x, c_y, c_z) = (2, 1, 7)
+
+        It is the force noise that heats a mode of frequency Ωj at the rate S_j/(2 m ħ Ωj) phonons
+        per second, `Trap.photon_recoil_heating_rates` (Piotrowski et al., Nat. Phys. 19, 1009
+        (2023), Eq. (4)). Not used by FreeSpaceSimulation, which models no recoil heating.
+        """
+        α = np.real(self.effective_polarisability(particle))
+        prefactor = π * ħ / (15 * ε0) * (α * self.E0 / (2*π))**2 * self.k**5
+        return np.diag([2 * prefactor, prefactor, 7 * prefactor])
+
+    def __repr__(self):
+        return (f'Tweezer(Power={self.Power / mW:.6g} mW, λ={self.λ / nm:.6g} nm, '
+                f'wx0={self.wx0 / μm:.6g} μm, wy0={self.wy0 / μm:.6g} μm)')
