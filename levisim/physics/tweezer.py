@@ -313,8 +313,8 @@ class Tweezer(ForceElement):
         """
         # NOTE: 1064nm tweezer light oscillates at about 282 THz >> kHz oscillations of the bead.
         # This means we do not do the above (which would be proper).
-        # Instead, we consider that the cos²(θ) oscillation averages to ½ (when finding the potential Utw ~ |E|² in the Trap class).
-        # So, we *artificially* include this ½ in the forces calculated in the Trap class.
+        # Instead, the cos²(θ) oscillation is averaged to ½ in the potential Trap.Utw = -(Re α/4)|E|²
+        # (and Tweezer.potential), whose gradient is the force.
         return  self.E_field_amplitude(x, y, z) * np.cos(self.E_field_phase(z, t))
 
     ################################################################################################
@@ -514,17 +514,18 @@ class Tweezer(ForceElement):
 
     def potential(self, r, particle):
         """
-        Dipole energy of the particle in the (time-averaged) tweezer field, ``-(Re α_eff / 2) |E(r)|²``
-        (`Trap.Utw`)
+        Cycle-averaged dipole energy of the particle in the tweezer field, ``-(Re α_eff / 4) |E(r)|²``,
+        the potential whose gradient is `force` (`Trap.Utw`; levisim <= 0.1 returned the peak energy
+        ``-(Re α_eff / 2) |E(r)|²``, twice this)
         [J]
         """
         x, y, z = r
-        return -(np.real(self.effective_polarisability(particle)) / 2) * self.E_field_amplitude(x, y, z)**2
+        return -(np.real(self.effective_polarisability(particle)) / 4) * self.E_field_amplitude(x, y, z)**2
 
     def force(self, r, t, particle):
         """
-        Gradient force of the tweezer, (Ftw,x, Ftw,y, Ftw,z), with exactly the arithmetic of `Trap.Ftw`
-        (including the ½ of the time average of the light's cos²); t is not used
+        Gradient force of the tweezer, (Ftw,x, Ftw,y, Ftw,z) = -∇`potential`, with exactly the
+        arithmetic of `Trap.Ftw`; t is not used
         [N]
         """
         x, y, z = r
@@ -534,9 +535,9 @@ class Tweezer(ForceElement):
         wz = self.wz(z)
         ellipse = self.ellipse(x, y, z)
         return np.array([
-            0.5 * (4 * x / wx**2) * U,
-            0.5 * (4 * y / wy**2) * U,
-            0.5 * (4 * z / wz**2) * U * (1 - 2 * ellipse),
+            (4 * x / wx**2) * U,
+            (4 * y / wy**2) * U,
+            (4 * z / wz**2) * U * (1 - 2 * ellipse),
         ])
 
     def stiffness(self, r0=None, particle=None):

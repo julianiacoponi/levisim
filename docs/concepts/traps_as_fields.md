@@ -116,6 +116,14 @@ elements. A particle held by a non-optical trap scatters no light into a cavity 
 `cavity_drive_tweezer` is given. The mechanical quantities, $\Omega_j$, $\Gamma_j$, $A$, $T_\mathrm{eff}$,
 the zero-point fluctuations and the theory spectra, work for every trap.
 
+`Utw` (and `Tweezer.potential`) is the cycle-averaged dipole energy
+$-\tfrac14\mathrm{Re}(\alpha_\mathrm{eff})\lvert E\rvert^2$, whose gradient is the force `Ftw` and
+whose curvature at the focus is `kx`, `ky`, `kz`; `U_depth` $= \tfrac14\mathrm{Re}(\alpha_\mathrm{eff})E_0^2$
+and so `v_escape`, `p_escape` follow from it. Up to levisim 0.1 these used the peak energy
+$-\tfrac12\mathrm{Re}(\alpha_\mathrm{eff})\lvert E\rvert^2$, twice the potential of the force
+(`U_depth` was 2×, `v_escape` and `p_escape` √2× too large); the forces, frequencies and spectra are
+unchanged, bit for bit.
+
 ## In the simulation
 
 {class}`~levisim.simulation.free_space.FreeSpaceSimulation` adds the forces in a fixed order, set by
