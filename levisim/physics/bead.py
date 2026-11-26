@@ -1,42 +1,46 @@
 """
-The levitated nanoparticle (Bead) and the refractive index of fused silica
+The levitated nanoparticle (Bead): a `Sphere` with the original keyword arguments
+
+`Bead` is kept for backward compatibility; it is a `levisim.physics.particle.Sphere` whose material
+is built from the original keywords `ρ`, `εr` and `permittivity_model`. Every number it gives is the
+same as before the `Material`/`Particle` refactor. The refractive index of fused silica now lives in
+`levisim.physics.material` and is re-exported here.
 """
 
-import numpy as np
-from functools import cached_property
-
-from levisim.core.constants import π, ε0, g
+from levisim.core.constants import π
 from levisim.core.units import (
-    μm, nm,
-    fg,
     aN,
+    fg,
+    nm,
 )
+from levisim.physics.material import Material, SiO2_refractive_index_Malitson
+from levisim.physics.particle import Sphere
+
+__all__ = ['Bead', 'SiO2_refractive_index_Malitson']
 
 
-def SiO2_refractive_index_Malitson(λ):
-    """
-    Refractive index of fused silica (SiO2) at vacuum wavelength λ, from the Sellmeier formula of
-    I. H. Malitson, J. Opt. Soc. Am. 55, 1205 (1965), valid for 0.21-3.71 μm (20 °C)::
-
-        n² - 1 = Σi Bi λ² / (λ² - Ci²), λ in μm,
-        B = (0.6961663, 0.4079426, 0.8974794), C = (0.0684043, 0.1162414, 9.896161) μm
-        e.g. n(1064 nm) = 1.44963
-
-    [·]
-    """
-    λ_μm = np.asarray(λ, dtype=float) / μm
-    if np.any((λ_μm < 0.21) | (λ_μm > 3.71)):
-        raise ValueError(f'Malitson formula is valid for 0.21-3.71 μm, got λ = {λ_μm} μm')
-    B = (0.6961663, 0.4079426, 0.8974794)
-    C = (0.0684043, 0.1162414, 9.896161)
-    λ2 = λ_μm**2
-    n2 = 1 + sum(Bi * λ2 / (λ2 - Ci**2) for Bi, Ci in zip(B, C))
-    return float(np.sqrt(n2)) if np.ndim(n2) == 0 else np.sqrt(n2)
-
-
-class Bead:
+class Bead(Sphere):
     """
     Defines a spherical nanoparticle bead
+
+    ::
+
+        Bead(r=60.1 nm, ρ=1850.0, εr=1.98, permittivity_model=None, λ=1064 nm, Φ=π/2, charge=0)
+
+    - r: radius [m] (Tania uses 60.1 nm; Markus said the batch they use was 'nominal 142nm diameter')
+    - ρ: density [kg/m³]
+    - εr: relative permittivity [·]
+    - permittivity_model: None (use εr), or 'Malitson' for εr = n(λ)² from the Malitson (1965)
+      Sellmeier formula for fused silica at the wavelength λ (pass the Tweezer's λ)
+    - λ: vacuum wavelength for the permittivity model [m]
+    - Φ: trapping position phase along the cavity axis [·] (default π/2, a node)
+    - charge: net charge in units of e [·] (new, default 0)
+    - material: a `Material` instead of ρ/εr/permittivity_model (new)
+
+    With none of ρ, εr, permittivity_model or material given (or with exactly ρ = 1850.0 and
+    εr = 1.98) the material is the library's `LEVISIM_DEFAULT_SILICA`; otherwise an ad-hoc
+    `Material` is built from the keywords. See that material for the sources of the defaults and the
+    open question about their mutual consistency.
     """
     def __init__(
         self,
@@ -45,80 +49,51 @@ class Bead:
         """
         Initialises a Bead instance
         """
-        ############################################################################################
-        # DEFINED PROPERTIES
-        # ------------------------------------------------------------------------------------------
-        # Bead radius
-        # [m]
-        # Markus said the batch they use was 'nominal 142nm diameter'
-        # Tania uses r=60.1nm
-        self.r = float(kwargs.get('r', 60.1*nm))
+        from levisim.physics.materials import LEVISIM_DEFAULT_SILICA
 
-        # ------------------------------------------------------------------------------------------
-        # Bead density
-        # [kg/m³]
-        # https://en.wikipedia.org/wiki/Silicon_dioxide
-        # quotes ρ_SiO2_amorphous = 2.196 g/cm³ = 2196.0 kg/m³
-        # https://www.microparticles-shop.de/Monodisperse-Particles-for-Research-Purposes/Silica-particles-SiO2-R-in-the-size-range-150-nm-25-m:::1_6.html
-        # the spec-sheet for the particles used in the experiments online
-        # quotes ρ_SiO2_R = 1.85 g/cm³ = 1850.0 kg/m³
-        self.ρ = float(kwargs.get('ρ', 1850.0))
+        material = kwargs.get('material', None)
+        permittivity_model = kwargs.get('permittivity_model', None)
+        λ = float(kwargs.get('λ', 1064*nm))
 
-        # ------------------------------------------------------------------------------------------
-        # Bead relative permittivity
-        # [·]
-        # n = √(εr*μr); μr = 1
-        # εr = n²
-        # for SiO2 @ λ = 1064nm
-        # https://refractiveindex.info/?shelf=main&book=SiO2&page=Malitson
-        # n = 1.4496
-        # https://refractiveindex.info/?shelf=main&book=SiO2&page=Arosa
-        # n = 1.4497
-        # εr = n² = 2.1016...
-        # NOTE: the refractive index depends on wavelength. Opt in with permittivity_model='Malitson',
-        # which sets εr = n(λ)² from the Malitson (1965) Sellmeier formula for fused silica at the
-        # wavelength `λ` (default 1064 nm; pass the Tweezer's λ). The default stays εr = 1.98.
-        # NOTE (owner): Tania uses εr = 1.98, i.e. n = 1.4071, below bulk fused silica (n = 1.4496 at
-        # 1064 nm). A plausible reason is that the beads are not bulk silica: the manufacturer's density
-        # (1.85 g/cm³, used for ρ above) is 84% of bulk (2.196 g/cm³). But as a Lorentz-Lorenz void
-        # mixture, (εr-1)/(εr+2) ∝ density, εr = 1.98 corresponds to 92% of bulk density (2.01 g/cm³),
-        # while ρ = 1.85 g/cm³ would give εr = 1.877 (n = 1.370) - so the two defaults are not
-        # mutually consistent under that model. Where does 1.98 come from (a measurement, a supplier
-        # value, a fit)?
-        self.permittivity_model = kwargs.get('permittivity_model', None)
-        self.λ = float(kwargs.get('λ', 1064*nm))
-        if self.permittivity_model is None:
-            self.εr = float(kwargs.get('εr', 1.98))
-        elif str(self.permittivity_model).lower() == 'malitson':
-            if 'εr' in kwargs:
-                raise ValueError("Pass either εr or permittivity_model='Malitson', not both")
-            self.εr = SiO2_refractive_index_Malitson(self.λ)**2
+        if material is not None:
+            clashes = [key for key in ('ρ', 'εr', 'permittivity_model') if kwargs.get(key) is not None]
+            if clashes:
+                raise ValueError(f'Pass either material or {clashes}, not both')
         else:
-            raise ValueError(f"Unknown permittivity_model={self.permittivity_model!r}; use None or 'Malitson'")
+            ρ = float(kwargs.get('ρ', 1850.0))
+            if permittivity_model is None:
+                εr = float(kwargs.get('εr', 1.98))
+                if ρ == LEVISIM_DEFAULT_SILICA.ρ and εr == LEVISIM_DEFAULT_SILICA.εr():
+                    material = LEVISIM_DEFAULT_SILICA
+                else:
+                    material = Material(name=f'ad hoc (ρ={ρ!r}, εr={εr!r})', ρ=ρ, permittivity=εr)
+            elif str(permittivity_model).lower() == 'malitson':
+                if 'εr' in kwargs:
+                    raise ValueError("Pass either εr or permittivity_model='Malitson', not both")
+                material = Material(
+                    name=f'ad hoc (ρ={ρ!r}, Malitson fused-silica εr(λ))', ρ=ρ, permittivity='Malitson',
+                    references={'εr': 'Malitson, J. Opt. Soc. Am. 55, 1205 (1965), doi:10.1364/JOSA.55.001205'},
+                )
+            else:
+                raise ValueError(f"Unknown permittivity_model={permittivity_model!r}; use None or 'Malitson'")
 
-        ############################################################################################
-        # MULTI-TRAP PROPERTIES
-        # ------------------------------------------------------------------------------------------
-        # Trapping position phase away from the antinode of a the cavity standing
-        # Φ = k·x0
-        # [·]
-        antinode, halfnode, node  = 0, π/4, π/2
-        self.Φ = float(kwargs.get('Φ', node))
+        node = π/2
+        super().__init__(
+            r=float(kwargs.get('r', 60.1*nm)),
+            material=material,
+            charge=kwargs.get('charge', 0),
+            λ=λ,
+            Φ=float(kwargs.get('Φ', node)),
+        )
+        self.permittivity_model = permittivity_model
 
     ################################################################################################
     # INFORMATION PRINTING FUNCTIONS
     # ----------------------------------------------------------------------------------------------
     @property
-    def info(self):
-        """
-        Prints information on the Bead instance
-        """
-        print(self.info_str)
-
-    @property
     def info_str(self):
         """
-        String describing the Gas instance
+        String describing the Bead instance
         """
         return (
             f'Bead(id={id(self)}'
@@ -137,57 +112,3 @@ class Bead:
             f'\n    trapping position phase, Φ/2π = x0/λtw = {self.Φ /(2*π):.3f}'
             f'\n)'
         )
-
-    ################################################################################################
-    # DERIVED PROPERTIES
-    # ----------------------------------------------------------------------------------------------
-    @cached_property
-    def n(self):
-        """
-        Refractive index of the (non-magnetic, μr=1) bead
-        [·]
-        """
-        return np.sqrt(self.εr)
-
-    @cached_property
-    def V(self):
-        """
-        Volume of the bead
-        [m³]
-        """
-        return (4/3)*π * self.r**3
-
-    @cached_property
-    def A(self):
-        """
-        Surface area of the bead
-        [m²]
-        """
-        return 4*π * self.r**2
-
-    @cached_property
-    def m(self):
-        """
-        Mass of the bead
-        [kg]
-        """
-        return self.ρ * self.V
-
-    @cached_property
-    def weight(self):
-        """
-        Bead weight under Earth's gravity
-        [N]
-        """
-        return self.m * g
-
-    @cached_property
-    def α(self):
-        """
-        Static polarisability of the bead
-        [Capacitance × Area] = [Fm²]
-
-        [F] = [Farad] = Capacitance = Charge / Electric Potential = [C/V]
-        NOTE: https://en.wikipedia.org/wiki/Clausius–Mossotti_relation#Lorentz–Lorenz_equation
-        """
-        return 3 * self.V * ε0 * (self.εr - 1) / (self.εr + 2)
