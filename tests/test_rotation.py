@@ -99,9 +99,13 @@ def test_aligned_particle_has_no_torque_and_the_analytic_stiffness():
     expected = 0.5 * E0**2 * (α_par - α_perp)
     # the recoil of the radiated angular momentum changes it at O(k³α) ~ 1e-4
     assert np.allclose(np.diag(K), [expected, 0, expected], rtol=1e-3)
-    trap = Trap(tweezer=tweezer, particle=particle)
+    # the point-dipole torques alone (the finite-size torque is on by default for a spheroid)
+    trap = Trap(tweezer=tweezer, particle=particle, finite_size_torque=False)
     assert trap.Ωθ['α'] == pytest.approx(np.sqrt(K[0, 0] / trap.Ij['α']), rel=1e-12)
     assert trap.Ωθ['β'] == 0.0
+    # the finite-size torque (on by default) splits the two librations α and γ
+    extended = Trap(tweezer=tweezer, particle=particle)
+    assert extended.Ωθ['α'] < trap.Ωθ['α'] < extended.Ωθ['γ']
 
 
 @pytest.mark.parametrize('ψ', [0.0, 0.3, π/4])
@@ -551,9 +555,11 @@ def test_finite_size_torque_against_finite_differences_and_kamba_eq3():
 def test_finite_size_torque_in_trap_and_rigid_body():
     from levisim.simulation.backends import numba_available
     particle = Spheroid(a=70*nm, b=50*nm, orientation=body_axis_to_quaternion((0, 1, 0)))
-    plain = Trap(tweezer=Tweezer(), particle=particle, gas=Gas(P=1 * mbar))
-    extended = Trap(tweezer=Tweezer(), particle=particle, gas=Gas(P=1 * mbar), finite_size_torque=True)
-    # default off: point-dipole numbers unchanged; on: α and γ split (the beam axis is softer)
+    plain = Trap(tweezer=Tweezer(), particle=particle, gas=Gas(P=1 * mbar), finite_size_torque=False)
+    extended = Trap(tweezer=Tweezer(), particle=particle, gas=Gas(P=1 * mbar))
+    # on by default for a non-spherical particle: α and γ split (the beam axis is softer); off: the
+    # point-dipole torques alone leave them degenerate
+    assert extended.finite_size_torque and not plain.finite_size_torque
     assert plain.Ωθ['α'] == pytest.approx(plain.Ωθ['γ'], rel=1e-12)
     assert extended.Ωθ['α'] < plain.Ωθ['α'] < extended.Ωθ['γ']
     common = {'trap': extended, 'num_samples': 3000, 'Δt': 2e-9, 'seed': 4, 'recoil': True, 'ω0': (1e5, 2e4, -1e5)}

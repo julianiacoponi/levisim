@@ -245,9 +245,9 @@ def test_hybrid_trap_adds_stiffnesses_and_folds_them_into_a():
 def test_multitrap_uses_the_hybrid_secular_frequencies_and_they_match_the_simulation():
     """
     A weak tweezer plus a Paul trap (q = -0.2 on its axis x, 0.1 radially) in MultiTrap: its Ωj are
-    √((k_tw + k_ps)/m); the simulated (noise-free) motion of the same Trap oscillates at the exact
-    (Floquet, `Trap.paul_trap_report`) frequencies to 1e-3, and at MultiTrap's lowest-order ones to
-    within their pseudopotential error (0.9% on x here, 0.2-0.3% on y, z)
+    the exact (Floquet, `Trap.paul_trap_report`) frequencies of the hybrid trap, which the simulated
+    (noise-free) motion of the same Trap follows to 1e-3; with paul_exact_frequencies=False they are
+    √((k_tw + k_ps)/m), off by their pseudopotential error (0.9% on x here, 0.2-0.3% on y, z)
     """
     from levisim.multiphysics.multitrap import MultiTrap
     bead = Bead(charge=2000)
@@ -255,24 +255,27 @@ def test_multitrap_uses_the_hybrid_secular_frequencies_and_they_match_the_simula
     f_rf = 300e3
     V = 0.1 * bead.m * (1*mm)**2 * (f_rf*Hz)**2 / (2 * bead.q)
     paul = PaulTrap.ring(V, f_rf*Hz, r0=1*mm, axis='x')
-    mt = MultiTrap(
-        tweezers=[tweezer], beads=[bead], trap_kwargs=[{'extra_fields': [paul], 'Γ_fbx': 0.0, 'Γ_fby': 0.0}],
-        Cartesian_axes_per_trap=3, static_cavity_shifts=False, gas_kwargs={'P': 1e-9*mbar},
-    )
+    common = {
+        'tweezers': [tweezer], 'beads': [bead], 'trap_kwargs': [{'extra_fields': [paul], 'Γ_fbx': 0.0, 'Γ_fby': 0.0}],
+        'Cartesian_axes_per_trap': 3, 'static_cavity_shifts': False, 'gas_kwargs': {'P': 1e-9*mbar},
+    }
+    mt = MultiTrap(**common)
+    lowest = MultiTrap(paul_exact_frequencies=False, **common)
     trap = mt.traps[0]
     K_tw = Trap(tweezer=tweezer, bead=bead).stiffness_tensor
     K_ps = paul.secular_stiffness_diagonal(bead)
+    exact = trap.paul_trap_report()['Ω_exact']
     for j, axis in enumerate('xyz'):
-        assert mt.dimensions[f'{axis}1'].Ω == pytest.approx(np.sqrt((K_tw[j, j] + K_ps[j]) / bead.m), rel=1e-12)
+        assert lowest.dimensions[f'{axis}1'].Ω == pytest.approx(np.sqrt((K_tw[j, j] + K_ps[j]) / bead.m), rel=1e-12)
+        assert mt.dimensions[f'{axis}1'].Ω == pytest.approx(exact[j], rel=1e-12)
     Δt = 1 / (40 * f_rf)
     sim = FreeSpaceSimulation(trap=trap, num_samples=60_000, Δt=Δt, seed=11, zero_mean=False,
                               X0=np.array([5*nm, 5*nm, 5*nm, 0, 0, 0]))
-    exact = trap.paul_trap_report()['Ω_exact']
     for j, axis in enumerate('xyz'):
         f_sim = peak_frequency(sim.traces[axis].values, Δt, 2e3, 60e3)
-        Ω_mt = mt.dimensions[f'{axis}1'].Ω
-        assert f_sim == pytest.approx(Ω_mt / Hz, rel=1.2e-2)
-        assert f_sim == pytest.approx(exact[j] / Hz, rel=1e-3)
+        assert f_sim == pytest.approx(mt.dimensions[f'{axis}1'].Ω / Hz, rel=1e-3)
+        assert f_sim == pytest.approx(lowest.dimensions[f'{axis}1'].Ω / Hz, rel=1.2e-2)
+    assert abs(peak_frequency(sim.x.values, Δt, 2e3, 60e3) / (lowest.dimensions['x1'].Ω / Hz) - 1) > 5e-3
 
 
 # --------------------------------------------------------------------------------------------------

@@ -61,6 +61,17 @@ for _name in ('append', 'extend', 'insert', 'remove', 'pop', 'clear', 'sort', 'r
 del _name
 
 
+def _is_spherical(particle):
+    """
+    Whether the particle is a sphere (a `Sphere`/`Bead`, or an `Ellipsoid` with equal semi-axes), for
+    the default of `Trap(finite_size_torque=...)`
+    [bool]
+    """
+    if isinstance(particle, Sphere):
+        return True
+    return bool(getattr(particle, 'is_sphere', False))
+
+
 class Trap:
     """
     Combined physics of a levitated particle in a trap made of force elements, i.e. of
@@ -96,7 +107,10 @@ class Trap:
 
     This class also allows for:
     - Arbitrary values of feedback damping in x, y, z
-    - Stochastic, directed force noise in x-y plane
+    - Stochastic, directed force noise in the x-y plane, fdir = β·fth at angle ψ (default β = √2 for the
+    tweezer shorthand, the historical value; β = 0 for a trap built with fields=[...])
+    - The finite-size alignment torque of an extended particle (`finite_size_torque`, default on for
+    a non-spherical particle and off for a sphere)
     - Kicks at specified times (step-like impulses) in the x-y plane (to be used in Simulation, or deduced from Experiment)
     - Photon recoil (turned on or off)
     - Overriding the Tweezer potential's natural frequencies
@@ -186,10 +200,12 @@ class Trap:
         # DEFINED PROPERTIES
 
         # ------------------------------------------------------------------------------------------
-        # Scale factor for directed force noise compared to the thermal force noise
+        # Scale factor for directed force noise compared to the thermal force noise, fdir = β·fth
         # [·]
-        # fdir = β.fth
-        self.β = float(kwargs.get('β', np.sqrt(2)))
+        # The tweezer shorthand keeps the historical, experiment-specific β = √2 (which doubles the
+        # x-y force noise); a trap built with fields=[...] (a Paul, magnetic or any other trap) has no
+        # directed noise unless β is given
+        self.β = float(kwargs.get('β', 0.0 if 'fields' in kwargs else np.sqrt(2)))
 
         # ------------------------------------------------------------------------------------------
         # Angle of the directed force noise in the x-y plane
@@ -200,10 +216,12 @@ class Trap:
         # Override resonant frequencies (that ignore Tweezer properties)
         # useful to get SpectralDensityTheory curves to match Experiment or Simulation data
         self.override_Ω_dict = kwargs.get('override_Ω_dict', None)
-        # Opt-in finite-size alignment torque of an extended particle in the anisotropic trap
-        # (levisim.physics.rotation.finite_size_potential): off by default, so the point-dipole
-        # torques are unchanged
-        self.finite_size_torque = bool(kwargs.get('finite_size_torque', False))
+        # Finite-size alignment torque of an extended particle in the anisotropic trap
+        # (levisim.physics.rotation.finite_size_potential): on by default for a non-spherical
+        # particle, off for a sphere (whose torque it is zero anyway); finite_size_torque=False keeps
+        # the point-dipole torques alone
+        finite_size_default = not _is_spherical(self.bead)
+        self.finite_size_torque = bool(kwargs.get('finite_size_torque', finite_size_default))
 
         # ------------------------------------------------------------------------------------------
         # Cavity drive: the light this bead coherently scatters into a cavity (used by MultiTrap)
@@ -1365,11 +1383,12 @@ class Trap:
     @cached_property
     def U_depth(self):
         """
-        Energy depth of the potential well
+        Energy depth of the tweezer potential well, ``|Utw(0, 0, 0)| = (Re α_eff / 4) E0²``, the
+        cycle-averaged dipole energy at the focus (half the value of levisim <= 0.1, which used the
+        peak energy); `v_escape` and `p_escape` follow from it
         [J]
         """
-        # due to tweezer-bead dipole interaction = -α/2 * |Etw(0)|**2
-        # tweezer potential is negative, so this is an absolute depth size
+        # the tweezer potential is negative, so this is an absolute depth size
         return np.abs(self.Utw(0, 0, 0))
 
     @cached_property
@@ -1617,38 +1636,38 @@ class Trap:
 
     def Utw(self, x, y, z):
         """
-        Energy of the tweezer-bead interaction Hamiltonian
+        Cycle-averaged energy of the tweezer-bead dipole interaction, the potential whose gradient is
+        the tweezer force `Ftw`
 
-        ``H_tw = -α/2 * |Etw|²``
+        ``Utw = -(Re α_eff / 4) |E|²``
         [J]
-        i.e. energy of tweezer-bead dipole interaction
+
+        ``|E|`` is the amplitude of the light field, ``E(t) = |E| cos(ωt + ...)``; the dipole energy
+        ``-(Re α_eff / 2) E(t)²`` oscillates at 2ω (~10¹⁵ Hz for 1064 nm light), far faster than the
+        motion, and its cycle average gives the ¼. Before levisim 1.0 this returned the peak energy
+        ``-(Re α_eff / 2) |E|²``, twice the potential of the force.
         """
-        # NOTE: 1064nm tweezer light oscillates at about 282 THz >> kHz oscillations of the bead.
-        # Since this is too quick to matter for the dynamics, the cos²(θ) oscillation is averaged to ½.
-        # This factor is thus *artificially* included for the final tweezer force functions Ftwx, Ftwy, Ftwz
-        return -(np.real(self.α_eff) / 2) * self.tweezer.E_field_amplitude(x, y, z)**2
+        return -(np.real(self.α_eff) / 4) * self.tweezer.E_field_amplitude(x, y, z)**2
 
     def Ftwx(self, x, y, z):
         """
         Gradient force due to the tweezer potential in the x-direction
 
-        Ftw,x = -dUtw/dx (derived manually)
+        Ftw,x = -dUtw/dx = (4x/wx²) Utw
         [N]
         """
         wx = self.tweezer.wx(z)
-        # NOTE: *artificially* include this ½ to account for the averaging of the very fast cos²(θ) of the light fields oscillations
-        return 0.5 * (4 * x / wx**2) * self.Utw(x, y, z)
+        return (4 * x / wx**2) * self.Utw(x, y, z)
 
     def Ftwy(self, x, y, z):
         """
         Gradient force due to the tweezer potential in the y-direction
 
-        Ftw,y = -dUtw/dy (derived manually)
+        Ftw,y = -dUtw/dy = (4y/wy²) Utw
         [N]
         """
         wy = self.tweezer.wy(z)
-        # NOTE: *artificially* include this ½ to account for the averaging of the very fast cos²(θ) of the light fields oscillations
-        return 0.5 * (4 * y / wy**2) * self.Utw(x, y, z)
+        return (4 * y / wy**2) * self.Utw(x, y, z)
 
     def Ftwz(self, x, y, z):
         """
@@ -1659,8 +1678,7 @@ class Trap:
         """
         wz = self.tweezer.wz(z)
         ellipse = self.tweezer.ellipse(x, y, z)
-        # NOTE: *artificially* include this ½ to account for the averaging of the very fast cos²(θ) of the light fields oscillations
-        return 0.5 * (4 * z / wz**2) * self.Utw(x, y, z) * (1 - 2 * ellipse)
+        return (4 * z / wz**2) * self.Utw(x, y, z) * (1 - 2 * ellipse)
 
     def Ftw(self, x, y, z):
         """
@@ -1669,15 +1687,17 @@ class Trap:
         profiles) only once - used in the Simulation loop, where it is ~3x cheaper than three calls.
         [N]
         """
+        # NOTE: these are bit-identical to the levisim <= 0.1 forces 0.5·(4x/wx²)·U with the peak
+        # energy U = 2·Utw: halving by a power of two is exact in floating point
         U = self.Utw(x, y, z)
         wx = self.tweezer.wx(z)
         wy = self.tweezer.wy(z)
         wz = self.tweezer.wz(z)
         ellipse = self.tweezer.ellipse(x, y, z)
         return (
-            0.5 * (4 * x / wx**2) * U,
-            0.5 * (4 * y / wy**2) * U,
-            0.5 * (4 * z / wz**2) * U * (1 - 2 * ellipse),
+            (4 * x / wx**2) * U,
+            (4 * y / wy**2) * U,
+            (4 * z / wz**2) * U * (1 - 2 * ellipse),
         )
 
     @cached_property

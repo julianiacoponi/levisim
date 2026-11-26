@@ -86,9 +86,12 @@ $\langle r r^\top\rangle = S/m$ the particle's mass-weighted second moment in th
 `finite_size_torque_stiffness`). It turns the longer axes towards the weaker confinement; for an
 ellipsoid with radii $p, q, r$ along the lab axes it gives
 $\Omega_{lx}^2 = (\Omega_z^2 - \Omega_y^2)(q^2 - r^2)/(q^2 + r^2)$, the trap-anisotropy term of
-Kamba et al., Nat. Commun. **14**, 7943 (2023), Eq. (3). It is opt-in, `Trap(finite_size_torque=True)`
-(then also the default of `RigidBodySimulation`), so the point-dipole torques are unchanged by default;
-`Trap` uses $m\Omega_j^2$ from `override_Ω_dict` when that gives x, y and z.
+Kamba et al., Nat. Commun. **14**, 7943 (2023), Eq. (3). It is on by default for a non-spherical
+particle (`Trap(finite_size_torque=True)`, then also the default of `RigidBodySimulation`) and off for
+a sphere, whose second moment is isotropic and feels no such torque; `finite_size_torque=False` keeps the
+point-dipole torques alone (the default of levisim ≤ 0.1). Without it, two librations of a
+particle aligned with the polarisation are degenerate. `Trap` uses $m\Omega_j^2$ from `override_Ω_dict`
+when that gives x, y and z.
 
 ### Permanent magnets above a superconductor
 
@@ -192,9 +195,9 @@ orientation is logged but the orientation is not moved.
 
 The libration $\gamma$ of a 70:50 nm spheroid aligned with the polarisation, at 10 mbar of 3 K gas
 (small, linear librations): the Welch spectrum of a `RigidBodySimulation` (4 × 10⁵ steps of 5 ns),
-the thermal Lorentzian from $\Omega_\gamma = 2\pi\times829.6$ kHz, $\Gamma_\gamma$ and the
-fluctuation-dissipation torque noise, and the `MultiTrap` spectrum of $\gamma_1$. The time-domain
-variance is 1.06 × $k_BT/K$. MultiTrap's rotating-wave damping gives a peak area 14 % lower at this
+the thermal Lorentzian from $\Omega_\gamma = 2\pi\times830.9$ kHz (with the default finite-size
+torque; 829.6 kHz without), $\Gamma_\gamma$ and the fluctuation-dissipation torque noise, and the
+`MultiTrap` spectrum of $\gamma_1$. The time-domain variance is 1.07 × $k_BT/K$. MultiTrap's rotating-wave damping gives a peak area 14 % lower at this
 large damping ($\Gamma/\Omega = 0.14$).
 ```
 
