@@ -34,25 +34,24 @@ Two independent routes give the filtered-mode covariance:
   two routes against each other.
 """
 from dataclasses import dataclass, field
+from itertools import pairwise
 
 import numpy as np
-
 from scipy.linalg import solve_continuous_lyapunov
 
 from levisim.multiphysics.covariance import quadrature_drift_matrix
 
-
 __all__ = [
     'QuadratureSystem',
-    'stack_cavity_modes',
-    'add_mechanical_mode',
     'SpectralFilter',
-    'rectangular_filter',
-    'lorentzian_filter',
-    'filter_norm',
-    'output_mode_covariance',
-    'rectangular_filter_scan',
+    'add_mechanical_mode',
     'cascade_lorentzian_filter',
+    'filter_norm',
+    'lorentzian_filter',
+    'output_mode_covariance',
+    'rectangular_filter',
+    'rectangular_filter_scan',
+    'stack_cavity_modes',
 ]
 
 
@@ -70,13 +69,17 @@ class QuadratureSystem:
     - N: (m, m) real symmetric noise correlation (identity for vacuum inputs) [·]
     - labels: one label per mode (quadrature pair) of u
     - cavities: {label: (κ, (column of Q_in, column of P_in))} for every cavity mode whose output
-      field can be detected; the input-noise columns are those of w that enter that cavity
+      field can be detected; the input-noise columns are those of w that enter that cavity (for a
+      cavity with several ports: the detected port, κ being that port's rate)
+    - ports: {label: [(κ_j, (column of Q_in, column of P_in)), ...]} for a cavity mode with several
+      Fabry-Perot ports (empty for single-port cavities)
     """
     A: np.ndarray
     B: np.ndarray
     N: np.ndarray
     labels: list
     cavities: dict = field(default_factory=dict)
+    ports: dict = field(default_factory=dict)
 
     def __post_init__(self):
         self.A = np.asarray(self.A, dtype=float)
@@ -96,6 +99,12 @@ class QuadratureSystem:
         both quadratures of each operator pair, so that B·N·Bᵀ is
         `covariance.quadrature_diffusion_matrix(mtrap)`. Each pair's noise enters only its own
         mode, so the noise columns are in the same order as the modes.
+
+        A cavity with Fabry-Perot ports (`Cavity.κ_ports`, `Cavity.κ_loss`) has one pair of noise
+        columns per port and one for the loss channel, each entering the cavity with √κ_j (and the
+        same N as the single port), so B·N·Bᵀ is unchanged; `ports[cavity_label]` lists
+        (κ_j, columns) of every port and `cavities[cavity_label]` is the detected port. The default
+        single port gives the square B of before, bit for bit.
         """
         A = quadrature_drift_matrix(mtrap.drift_matrix)
         γ = np.asarray(mtrap.γ, dtype=float)
@@ -103,10 +112,26 @@ class QuadratureSystem:
         num_modes = len(γ) // 2
         per_mode_γ = np.array([γ[2*k] for k in range(num_modes)])
         per_mode_N = np.array([factors[2*k] + factors[2*k + 1] for k in range(num_modes)])
-        B = np.diag(np.sqrt(np.repeat(per_mode_γ, 2)))
-        N = np.diag(np.repeat(per_mode_N, 2))
         labels = [cavity_label, *mtrap.labels]
-        return cls(A, B, N, labels, cavities={cavity_label: (float(mtrap.cavity.κ), (0, 1))})
+        cavity = mtrap.cavity
+        if getattr(cavity, 'has_default_ports', True):
+            B = np.diag(np.sqrt(np.repeat(per_mode_γ, 2)))
+            N = np.diag(np.repeat(per_mode_N, 2))
+            return cls(A, B, N, labels, cavities={cavity_label: (float(mtrap.cavity.κ), (0, 1))})
+        rates = [float(κ_j) for κ_j in cavity.port_rates]
+        channels = rates + ([cavity.κ_loss] if cavity.κ_loss > 0 else [])
+        num_cavity_columns = 2 * len(channels)
+        n = A.shape[0]
+        B = np.zeros((n, num_cavity_columns + n - 2))
+        N = np.zeros((num_cavity_columns + n - 2, num_cavity_columns + n - 2))
+        for j, κ_j in enumerate(channels):
+            B[0, 2*j] = B[1, 2*j + 1] = np.sqrt(κ_j)
+            N[2*j, 2*j] = N[2*j + 1, 2*j + 1] = per_mode_N[0]
+        B[2:, num_cavity_columns:] = np.diag(np.sqrt(np.repeat(per_mode_γ[1:], 2)))
+        N[num_cavity_columns:, num_cavity_columns:] = np.diag(np.repeat(per_mode_N[1:], 2))
+        ports = [(κ_j, (2*j, 2*j + 1)) for j, κ_j in enumerate(rates)]
+        detected = ports[cavity.detected_port]
+        return cls(A, B, N, labels, cavities={cavity_label: detected}, ports={cavity_label: ports})
 
     @property
     def diffusion_matrix(self):
@@ -163,30 +188,49 @@ def stack_cavity_modes(mtraps, cavity_labels, rtol=1e-9):
     systems = [QuadratureSystem.from_multitrap(mtrap, label) for mtrap, label in zip(mtraps, cavity_labels, strict=True)]
     K = len(systems)
     first = systems[0]
-    for system in systems[1:]:
+    # the noise columns of each system: those entering its cavity mode (one pair per port and loss
+    # channel), then the mechanical ones; for single-port cavities these are columns (0, 1) and 2:
+    cavity_columns = [np.flatnonzero(np.any(system.B[:2] != 0, axis=0)) for system in systems]
+    mech_columns = [np.setdiff1d(np.arange(system.B.shape[1]), columns) for system, columns in zip(systems, cavity_columns)]
+    for system, columns, mech in zip(systems, cavity_columns, mech_columns):
+        assert not np.any(system.B[2:][:, columns]), 'a cavity noise column also drives the mechanics'
+        assert not np.any(system.B[:2][:, mech]), 'a mechanical noise column also drives the cavity'
+    first_mech = mech_columns[0]
+    for system, mech in zip(systems[1:], mech_columns[1:]):
         assert system.labels[1:] == first.labels[1:], 'the MultiTraps have different mechanical modes'
-        for name, a, b in (('drift', system.A[2:, 2:], first.A[2:, 2:]), ('noise input', system.B[2:, 2:], first.B[2:, 2:]),
-                           ('noise', system.N[2:, 2:], first.N[2:, 2:])):
+        for name, a, b in (('drift', system.A[2:, 2:], first.A[2:, 2:]),
+                           ('noise input', system.B[2:][:, mech], first.B[2:][:, first_mech]),
+                           ('noise', system.N[np.ix_(mech, mech)], first.N[np.ix_(first_mech, first_mech)])):
+            assert a.shape == b.shape, f'the MultiTraps have different mechanical {name} matrices'
             scale = max(np.abs(b).max(), 1e-300)
             assert np.abs(a - b).max() <= rtol * scale, f'the MultiTraps have different mechanical {name} matrices'
     num_mech = first.A.shape[0] - 2
+    num_cavity_noise = sum(len(columns) for columns in cavity_columns)
     n = 2*K + num_mech
+    m = num_cavity_noise + len(first_mech)
     A = np.zeros((n, n))
-    B = np.zeros((n, n))
-    N = np.zeros((n, n))
+    B = np.zeros((n, m))
+    N = np.zeros((m, m))
     A[2*K:, 2*K:] = first.A[2:, 2:]
-    B[2*K:, 2*K:] = first.B[2:, 2:]
-    N[2*K:, 2*K:] = first.N[2:, 2:]
-    cavities = {}
-    for k, (system, label) in enumerate(zip(systems, cavity_labels)):
+    B[2*K:, num_cavity_noise:] = first.B[2:][:, first_mech]
+    N[num_cavity_noise:, num_cavity_noise:] = first.N[np.ix_(first_mech, first_mech)]
+    cavities, ports = {}, {}
+    offset = 0
+    for k, (system, label, columns) in enumerate(zip(systems, cavity_labels, cavity_columns)):
         c = slice(2*k, 2*k + 2)
+        w = slice(offset, offset + len(columns))
+        new_column = {int(old): offset + i for i, old in enumerate(columns)}
         A[c, c] = system.A[:2, :2]
         A[c, 2*K:] = system.A[:2, 2:]
         A[2*K:, c] = system.A[2:, :2]
-        B[c, c] = system.B[:2, :2]
-        N[c, c] = system.N[:2, :2]
-        cavities[label] = (system.cavities[label][0], (2*k, 2*k + 1))
-    return QuadratureSystem(A, B, N, [*cavity_labels, *first.labels[1:]], cavities)
+        B[c, w] = system.B[:2][:, columns]
+        N[w, w] = system.N[np.ix_(columns, columns)]
+        κ, (iQ, iP) = system.cavities[label]
+        cavities[label] = (κ, (new_column[iQ], new_column[iP]))
+        if label in system.ports:
+            ports[label] = [(κ_j, (new_column[q], new_column[p])) for κ_j, (q, p) in system.ports[label]]
+        offset += len(columns)
+    return QuadratureSystem(A, B, N, [*cavity_labels, *first.labels[1:]], cavities, ports)
 
 
 def add_mechanical_mode(system, label, Ω, couplings, heating, damping):
@@ -219,7 +263,7 @@ def add_mechanical_mode(system, label, Ω, couplings, heating, damping):
         A[P, iQ] += 2*g
     B[X, m] = B[P, m + 1] = np.sqrt(damping)
     N[m, m] = N[m + 1, m + 1] = 2*heating/damping + 1
-    return QuadratureSystem(A, B, N, [*system.labels, label], dict(system.cavities))
+    return QuadratureSystem(A, B, N, [*system.labels, label], dict(system.cavities), dict(system.ports))
 
 
 # ----------------------------------------------------------------------------------------------
@@ -288,7 +332,7 @@ def _gauss_legendre_nodes(intervals, points_per_panel, panels_per_interval):
     nodes, weights = [], []
     for lo, hi in intervals:
         edges = np.linspace(lo, hi, panels_per_interval + 1)
-        for a, b in zip(edges[:-1], edges[1:]):
+        for a, b in pairwise(edges):
             nodes.append((b - a)/2 * x + (a + b)/2)
             weights.append((b - a)/2 * w)
     return np.concatenate(nodes), np.concatenate(weights)
@@ -310,7 +354,7 @@ def _split_at(intervals, points):
     for lo, hi in intervals:
         cuts = sorted(p for p in points if lo < p < hi)
         edges = [lo, *cuts, hi]
-        out.extend(zip(edges[:-1], edges[1:]))
+        out.extend(pairwise(edges))
     return out
 
 
@@ -458,10 +502,10 @@ def rectangular_filter_scan(system, cavity, center, widths, η=1.0, modes=None, 
 
     offsets = np.unique(np.concatenate([[0.0], widths/2, -widths/2]))
     panels = []
-    for lo, hi in zip(offsets[:-1], offsets[1:]):
+    for lo, hi in pairwise(offsets):
         num = max(1, int(np.ceil((hi - lo) / max_panel_width)))
         edges = np.linspace(lo, hi, num + 1)
-        panels.extend(zip(edges[:-1], edges[1:]))
+        panels.extend(pairwise(edges))
     panels = np.array(panels)                       # offsets from the center
     x, w = np.polynomial.legendre.leggauss(points_per_panel)
     nodes = (panels[:, 1:2] - panels[:, 0:1])/2 * x[None] + panels.mean(axis=1)[:, None]
@@ -542,7 +586,7 @@ def cascade_lorentzian_filter(system, cavity, center, width, η=1.0, label='filt
     B[n, m] = np.sqrt(γ * (1 - η))
     B[n + 1, m + 1] = np.sqrt(γ * (1 - η))
     cavities = dict(system.cavities)
-    return QuadratureSystem(A, B, N, [*system.labels, label], cavities)
+    return QuadratureSystem(A, B, N, [*system.labels, label], cavities, dict(system.ports))
 
 
 def _input_rows(system, column):

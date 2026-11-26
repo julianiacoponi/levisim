@@ -1214,6 +1214,8 @@ class MultiTrapBase:
             a_out(ω)  = -√κ·a(ω)  + a_in(ω)
             a_out†(ω) = -√κ·a†(ω) + a_in†(ω)
 
+        This is the output of a single port carrying all of κ; the spectra of a cavity with several
+        ports (`Cavity.κ_ports`) are converted to the detected port by `at_detected_port`.
         ANALYTIC_CAVITY_OUTPUT has its own closed form (`analytic_output_light_noise_vectors`);
         every other method applies the relations above to `light_noise_vectors`.
         """
@@ -1313,7 +1315,8 @@ class MultiTrapBase:
         measurement with the local oscillator detuned by Ωhet records the two sidebands
         S_aout,aout(Ωhet - ω) + S_aout†,aout†(ω + Ωhet) (PRR 8, Sec. IV): a sum of two PSDs at
         shifted frequencies, which is not the PSD of any single noise vector at ω. That shift is
-        not applied anywhere in levisim; `cavity.Ωhet` is currently unused.
+        not applied to this spectrum; the time-domain record of `levisim.simulation.Heterodyne`
+        (which uses `cavity.Ωhet`) has it, see `CavitySimulation.record_spectrum`.
         [1/√Hz]
         """
         a_out_hat, a_out_dag = self.output_light_noise_vectors(method, ω)
@@ -1407,6 +1410,23 @@ class MultiTrapBase:
                 self, quantity, method, num_not_finite, values.size,
             )
 
+    def at_detected_port(self, output_spectrum):
+        """
+        An output-light spectrum of the whole-κ output a_out = −√κ·a + a_in, as seen at the cavity's
+        detected port (`Cavity.κ_ports`, `Cavity.detected_port`)
+
+        Port j's output is √η·a_out + √(1 − η)·v with η = κ_j/κ and v a vacuum independent of
+        a_out (the other ports and losses), so S → η·S + (1 − η) for the homodyne spectrum and for
+        S_aout,aout. The default single port (η = 1) returns the spectrum itself, unchanged.
+        The noise vectors (`output_light_noise_vectors`, `homodyne_noise_vector`, ...) stay those of
+        the whole-κ output.
+        [·]
+        """
+        if self.cavity.has_default_ports:
+            return output_spectrum
+        η = self.cavity.detected_port_efficiency
+        return η * output_spectrum + (1 - η)
+
     @timer(TIMER)
     @profiler(PROFILER)
     @progress_bar('self.ω_range', PROGRESS_BAR)
@@ -1425,7 +1445,7 @@ class MultiTrapBase:
         homodyne_spectrum = []
         for ii, ω in enumerate(self.ω_range):
             homodyne_spectrum.append(self.noise_vector_to_power_spectrum(self.homodyne_noise_vector(method, ω)))
-        homodyne_spectrum = np.array(homodyne_spectrum)
+        homodyne_spectrum = self.at_detected_port(np.array(homodyne_spectrum))
         self._warn_if_not_finite('homodyne spectrum', method, homodyne_spectrum)
         return homodyne_spectrum
 
@@ -1447,7 +1467,7 @@ class MultiTrapBase:
             # if method != QuantumLinearTheoryMethod.POWER_SERIES_HYBRIDISATION and self.evaluation_order != self.num_dimensions:
             #     assert heterodyne_value >= 1, f'{heterodyne_value=} < 1 - this should never happen since 1 is the shot noise limit!'
             heterodyne_spectrum.append(heterodyne_value)
-        heterodyne_spectrum = np.array(heterodyne_spectrum)
+        heterodyne_spectrum = self.at_detected_port(np.array(heterodyne_spectrum))
         self._warn_if_not_finite('heterodyne spectrum', method, heterodyne_spectrum)
         return heterodyne_spectrum
 
@@ -1479,6 +1499,8 @@ class MultiTrapBase:
             heterodyne_spectrum.append(heterodyne_value)
 
         homodyne_spectrum, heterodyne_spectrum = np.array(homodyne_spectrum), np.array(heterodyne_spectrum)
+        homodyne_spectrum = self.at_detected_port(homodyne_spectrum)
+        heterodyne_spectrum = self.at_detected_port(heterodyne_spectrum)
         self._warn_if_not_finite('homodyne spectrum', method, homodyne_spectrum)
         self._warn_if_not_finite('heterodyne spectrum', method, heterodyne_spectrum)
         return homodyne_spectrum, heterodyne_spectrum

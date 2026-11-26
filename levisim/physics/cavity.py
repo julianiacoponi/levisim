@@ -4,18 +4,28 @@ The Fabry-Perot optical cavity (Cavity)
 
 import numpy as np
 
-from levisim.core.constants import π, ħ, c, ε0
+from levisim.core.constants import c, ħ, ε0, π
 from levisim.core.units import (
+    Hz,
+    THz,
+    cm,
     degrees,
-    cm, μm,
-    Hz, kHz, THz,
+    kHz,
+    μm,
 )
-
 from levisim.physics.tweezer import Tweezer
+
 
 class Cavity:
     """
     Defines a Fabry-Perot optical cavity
+
+    Optional Fabry-Perot ports: ``κ_ports=(κ_1, κ_2, ...)`` gives the decay rate through each mirror
+    and ``κ_loss`` the rate of every other loss (scattering, absorption), so that
+    κ = κ_1 + κ_2 + ... + κ_loss (κ is then set from them, and an explicit κ must agree). Each port
+    and the loss channel has its own vacuum input. ``detected_port`` (default 0) is the port whose
+    output the spectra of `MultiTrap` describe. The default, one port carrying all of κ, is what
+    every levisim spectrum assumed before ports existed. κ_loss alone keeps one port with κ − κ_loss.
     """
     def __init__(
         self,
@@ -53,6 +63,25 @@ class Cavity:
         self.override_κ = kwargs.get('κ')
 
         # ------------------------------------------------------------------------------------------
+        # Fabry-Perot ports: κ = κ_1 + κ_2 + ... + κ_loss (see port_rates)
+        # [2π·Hz]
+        # NOTE: by default one port carries all of κ (κ_ports=None, κ_loss=0), which is what every
+        # spectrum of levisim assumed before ports existed; that default changes no number.
+        κ_ports = kwargs.get('κ_ports')
+        self.κ_ports = None if κ_ports is None else tuple(float(κ_j) for κ_j in np.atleast_1d(κ_ports))
+        self.κ_loss = float(kwargs.get('κ_loss', 0.0))
+        self.detected_port = int(kwargs.get('detected_port', 0))
+        if self.κ_ports is not None:
+            total = sum(self.κ_ports) + self.κ_loss
+            if self.override_κ and not np.isclose(float(self.override_κ), total, rtol=1e-12, atol=0):
+                raise ValueError(
+                    f'κ = {float(self.override_κ):.6g} differs from the sum of κ_ports and κ_loss ({total:.6g}):'
+                    ' give κ_ports (and κ_loss) only, or rates that add up to κ'
+                )
+            self.override_κ = total
+        self._check_ports()
+
+        # ------------------------------------------------------------------------------------------
         # Tweezer angular frequency
         # [2π·Hz]
         # NOTE: one tweezer frequency is enough here. ωtw only sets the frame and the cavity's own
@@ -68,24 +97,24 @@ class Cavity:
         # ------------------------------------------------------------------------------------------
         # Real and imaginary parts of the static part of the cavity mode photon field
         # [complex ·]
-        self.αR = complex()
-        self.αI = complex()
+        self.αR = 0j
+        self.αI = 0j
 
         # ------------------------------------------------------------------------------------------
         # Amplitude and phase quadratures of the static part of the cavity mode photon field
         # [·]
-        self.A0 = float()
-        self.P0 = float()
+        self.A0 = 0.0
+        self.P0 = 0.0
 
         # ------------------------------------------------------------------------------------------
         # Total cavity drive angular frequency of all tweeer bead traps scattering into the cavity
         # [2π·Hz]
-        self.ωd_total = float()
+        self.ωd_total = 0.0
 
         # ------------------------------------------------------------------------------------------
         # Total cavity drive energy of all tweeer bead traps scattering into the cavity
         # [J]
-        self.Ed_total = float()
+        self.Ed_total = 0.0
 
         # ------------------------------------------------------------------------------------------
         # Homodyne phase
@@ -137,11 +166,68 @@ class Cavity:
             f'\n    xR = {self.xR:.5e} m'
             f'\n    E0 = {self.E0:.5e} V/m'
             f'\n'
+            f'{self._ports_info_str()}'
             f'\n    θhom = {self.θhom / degrees:.5f} °'
             f'\n    Ωhet = {self.Ωhet / kHz:.5f} kHz'
             f'{multitrap_str}'
             f'\n)'
         )
+
+    def _ports_info_str(self):
+        """Lines of info_str for non-default ports (empty for the default single port)"""
+        if self.has_default_ports:
+            return ''
+        ports = ', '.join(f'{κ_j / kHz:.5f}' for κ_j in self.port_rates)
+        return (
+            f'\n    κ_ports/2π = ({ports}) kHz, κ_loss/2π = {self.κ_loss / kHz:.5f} kHz'
+            f'\n    detected_port = {self.detected_port} (η_port = {self.detected_port_efficiency:.5f})'
+        )
+
+    ################################################################################################
+    # FABRY-PEROT PORTS
+    # ----------------------------------------------------------------------------------------------
+    def _check_ports(self):
+        rates = self.κ_ports if self.κ_ports is not None else ()
+        if any(κ_j < 0 for κ_j in rates) or self.κ_loss < 0:
+            raise ValueError(f'port rates {rates} and κ_loss = {self.κ_loss} must not be negative')
+        if self.κ_ports is not None and len(self.κ_ports) == 0:
+            raise ValueError('κ_ports needs at least one port')
+        num_ports = len(rates) if self.κ_ports is not None else 1
+        if not 0 <= self.detected_port < num_ports:
+            raise ValueError(f'detected_port = {self.detected_port}, but the cavity has ports 0..{num_ports - 1}')
+        if self.κ_ports is None and self.κ_loss and self.κ_loss >= self.κ:
+            raise ValueError(f'κ_loss = {self.κ_loss:.6g} must be smaller than κ = {self.κ:.6g}')
+
+    @property
+    def has_default_ports(self):
+        """True for the default single port carrying all of κ (no κ_ports, no κ_loss)"""
+        return self.κ_ports is None and self.κ_loss == 0
+
+    @property
+    def port_rates(self):
+        """
+        Decay rates through the ports, (κ_1, κ_2, ...): `κ_ports`, or (κ − κ_loss,) for a single port
+        [2π·Hz]
+        """
+        if self.κ_ports is not None:
+            return self.κ_ports
+        return (self.κ - self.κ_loss,)
+
+    @property
+    def detected_port_rate(self):
+        """κ_j of the detected port [2π·Hz]"""
+        return self.port_rates[self.detected_port]
+
+    @property
+    def detected_port_efficiency(self):
+        """
+        η_port = κ_j/κ of the detected port: the output of port j is √η_port·a_out + √(1 − η_port)·v,
+        with a_out = −√κ·a + a_in the single-port output and v a vacuum independent of it
+        (the other ports and the loss channel together), so a port acts on the spectra as a
+        detection efficiency η_port
+        [·]
+        """
+        return self.detected_port_rate / self.κ
 
     ################################################################################################
     # DERIVED PROPERTIES

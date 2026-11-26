@@ -20,8 +20,9 @@ Conventions
   `MultiTrap.homodyne_quadrature` uses P_out = i(a_out − a_out†) = −P, so
   ``MultiTrap.homodyne_spectrum`` with ``cavity.θhom = θ`` equals ``quadrature_spectrum(..., φ=-θ)``.
 - Input-output: a_out = a_in − √κ a, the whole cavity linewidth κ coupled to the detected port, as
-  in `MultiTrap.output_light_noise_vectors`. Losses (a second mirror, detection) enter through the
-  detection efficiency η, `with_detection_efficiency`.
+  in `MultiTrap.output_light_noise_vectors`. A cavity with several ports (`Cavity.κ_ports`) is
+  converted to its detected port with the efficiency κ_j/κ; further losses (detection) enter
+  through the detection efficiency η, `with_detection_efficiency`.
 
 Mechanical noise
 ----------------
@@ -35,21 +36,22 @@ diffusion onto its momentum (same dn/dt), which is the model of Deplano et al., 
 4215 (2025), Eq. (3), and of the PRA's Appendix A. The cavity's diffusion is unchanged.
 """
 import numpy as np
-
 from scipy.linalg import solve_continuous_lyapunov
 
-from levisim.multiphysics.covariance import quadrature_diffusion_matrix, quadrature_drift_matrix
-
+from levisim.multiphysics.covariance import (
+    quadrature_diffusion_matrix,
+    quadrature_drift_matrix,
+)
 
 __all__ = [
     'NOISE_MODELS',
     'diffusion_matrix',
-    'steady_state_covariance_with_noise',
+    'optimal_quadrature_spectrum',
     'output_quadrature_spectra',
-    'with_detection_efficiency',
     'phase_noise_averaged',
     'quadrature_spectrum',
-    'optimal_quadrature_spectrum',
+    'steady_state_covariance_with_noise',
+    'with_detection_efficiency',
 ]
 
 
@@ -112,7 +114,14 @@ def output_quadrature_spectra(mtrap, ω, noise='levisim'):
     L = -np.sqrt(κ) * G[:, :2, :]
     L[:, :, :2] += np.eye(2)[None] / np.sqrt(κ)
     S = np.einsum('wij,jk,wlk->wil', L, D, L.conj())
-    return S[:, 0, 0].real, S[:, 1, 1].real, S[:, 0, 1].real
+    spectra = S[:, 0, 0].real, S[:, 1, 1].real, S[:, 0, 1].real
+    if not mtrap.cavity.has_default_ports:
+        # the detected port of a cavity with several ports acts as an efficiency κ_j/κ
+        # (see MultiTrapBase.at_detected_port)
+        η = mtrap.cavity.detected_port_efficiency
+        S_QQ, S_PP, S_QP = spectra
+        return η * S_QQ + (1 - η), η * S_PP + (1 - η), η * S_QP
+    return spectra
 
 
 def with_detection_efficiency(S_QQ, S_PP, S_QP, η):
