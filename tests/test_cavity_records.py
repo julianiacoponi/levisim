@@ -76,8 +76,10 @@ def test_carrier_is_off_by_default_and_adds_exactly_the_dc_term(off_node):
     for i, θ in enumerate(θs):
         dc = on.records[f'h{i}'] - off.records[f'h{i}']
         np.testing.assert_allclose(dc, A * np.cos(θ - θ_α), rtol=1e-12, atol=1e-12 * A)
-    # the amplitude quadrature carries all of it, the phase quadrature none
-    assert A > 1e5 and abs(on.records['h2'].mean()) < 1e-6 * A
+    # the amplitude quadrature carries all of it, the phase quadrature none (compared with the run
+    # without the carrier: the record mean itself scatters by ~std/√N ~ ±30 from one noise path to
+    # the next, against 1e-6·A ≈ 1.8, so it passed or failed with the seed)
+    assert A > 1e5 and abs((on.records['h2'] - off.records['h2']).mean()) < 1e-6 * A
     # a zero-mean trace removes the DC term; the records keep it
     assert abs(on.traces['h0'].values.mean()) < 1e-9 * A
     assert on.records['h0'].mean() == pytest.approx(A, rel=1e-3)
