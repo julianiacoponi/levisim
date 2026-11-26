@@ -1866,21 +1866,27 @@ class Trap:
             raise RuntimeError(f'find_equilibrium did not converge: {message}')
         return solution * scale
 
-    def magnetic_trap_report(self, element=None, r_guess=None, scan_range=None):
+    def magnetic_trap_report(self, element=None, r_guess=None, scan_range=None, trap_depth_method='saddle',
+                             saddle_grid_points=41):
         """
         Levitation condition and margin, equilibrium (with gravity and every other static element),
-        stiffness tensor, axis and normal-mode frequencies, couplings, trap depth and eddy-current
+        stiffness tensor, axis and normal-mode frequencies, couplings, trap depth (by default from a
+        saddle-point search; trap_depth_method='rays' for the ray estimate alone) and eddy-current
         damping of the trap's `MagneticTrap` (the first, or `element`), as a dict; see
         `levisim.physics.fields.magnetic.magnetic_trap_report`
         [dict]
         """
         from levisim.physics.fields.magnetic import magnetic_trap_report
-        return magnetic_trap_report(self, element=element, r_guess=r_guess, scan_range=scan_range)
+        return magnetic_trap_report(self, element=element, r_guess=r_guess, scan_range=scan_range,
+                                    trap_depth_method=trap_depth_method, saddle_grid_points=saddle_grid_points)
 
-    def magnetic_trap_report_str(self, element=None, r_guess=None, scan_range=None):
+    def magnetic_trap_report_str(self, element=None, r_guess=None, scan_range=None, trap_depth_method='saddle',
+                                 saddle_grid_points=41):
         """The `magnetic_trap_report` as a printable summary"""
         from levisim.physics.fields.magnetic import magnetic_trap_report_str
-        return magnetic_trap_report_str(self.magnetic_trap_report(element, r_guess, scan_range))
+        return magnetic_trap_report_str(self.magnetic_trap_report(element, r_guess, scan_range, trap_depth_method,
+                                                                  saddle_grid_points))
+
 
     def paul_trap_report(self, element=None):
         """
