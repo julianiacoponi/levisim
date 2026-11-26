@@ -214,7 +214,10 @@ class HybridisationMixin:
         """
         The hybridisation function Rjn,km(ω): the response of dimension jn to dimension km, via
         the cavity (on- and off-bead) and the direct mechanical coupling gjk = ``mechanical_coupling_matrix[jn, km]``
-        (on-bead only)
+        (within a bead, or between beads with interactions or toy g_direct) ::
+
+            Rjk = (iμj/Mj)·(i·ηC⁻·Re(Gjn·Gkm*) + ηC⁺·Im(Gjn·Gkm*) + gjk)
+
         [complex ·]
         """
 
@@ -259,26 +262,20 @@ class HybridisationMixin:
 
         # off-bead, inter-particle hybridisation
         else:
-            # NOTE: the power-series (and analytic) hybridisation is derived for direct mechanical
-            # couplings within one bead only; inter-bead couplings are a later generalisation
-            if gjk_matrix != 0:
-                msg = (
-                    f'mechanical_coupling_matrix couples {label_jn} to {label_km}, which belong to different'
-                    ' beads: the hybridisation functions do not yet support inter-bead mechanical'
-                    ' couplings (use the LINEAR_AMPLIFIER_MODEL method)'
-                )
-                logger.error(msg)
-                raise NotImplementedError(msg)
-            gjk = 0
+            # the direct coupling between dimensions of different beads (MultiTrap(interactions=[...])
+            # or toy_params['g_direct']) enters exactly as an on-bead one. The deranged determinant
+            # and adjugate are power series in ALL N² - N hybridisation functions, so the shipped
+            # series need no change. Kept as the integer 0 when absent, as before.
+            gjk = gjk_matrix if gjk_matrix != 0 else 0
 
             if self.compare_Rjk_calculations:
                 φnm = dim_jn.φ - dim_km.φ
 
                 # amplitude-amplitude coupling or phase-phase coupling
                 if jk in ['xy', 'yx', 'xx', 'yy'] or jk in ['zz']:
-                    Rjk_B1 = (1j * μj / Mj) * (1j * ηC_m * np.cos(φnm) + ηC_p * np.sin(φnm)) * gjn * gkm
+                    Rjk_B1 = (1j * μj / Mj) * ((1j * ηC_m * np.cos(φnm) + ηC_p * np.sin(φnm)) * gjn * gkm + gjk)
                     ηC_φ_P = self.cavity.ηφ_P(φnm, ω)
-                    Rjk_B2 = (1j * μj / Mj) * (-ηC_φ_P) * gjn * gkm
+                    Rjk_B2 = (1j * μj / Mj) * ((-ηC_φ_P) * gjn * gkm + gjk)
 
                     # NOTE: Tania's form is related to the phase form
                     # ηC_φ_T = iηC_φ_P
@@ -288,18 +285,18 @@ class HybridisationMixin:
 
                 # amplitude-phase coupling
                 elif jk in ['xz', 'yz']:
-                    Rjk_B1 = (1j * μj / Mj) * (1j * ηC_m * np.sin(φnm) - ηC_p * np.cos(φnm)) * gjn * gkm
+                    Rjk_B1 = (1j * μj / Mj) * ((1j * ηC_m * np.sin(φnm) - ηC_p * np.cos(φnm)) * gjn * gkm + gjk)
                     ηC_φ_A = self.cavity.ηφ_A(φnm, ω)
-                    Rjk_B2 = (1j * μj / Mj) * (-ηC_φ_A) * gjn * gkm
+                    Rjk_B2 = (1j * μj / Mj) * ((-ηC_φ_A) * gjn * gkm + gjk)
 
                 # phase-amplitude coupling
                 elif jk in ['zx', 'zy']:
-                    Rjk_B1 = (1j * μj / Mj) * (-1j * ηC_m * np.sin(φnm) + ηC_p * np.cos(φnm)) * gjn * gkm
+                    Rjk_B1 = (1j * μj / Mj) * ((-1j * ηC_m * np.sin(φnm) + ηC_p * np.cos(φnm)) * gjn * gkm + gjk)
                     ηC_φ_A = self.cavity.ηφ_A(φnm, ω)
-                    Rjk_B2 = (1j * μj / Mj) * (ηC_φ_A) * gjn * gkm
+                    Rjk_B2 = (1j * μj / Mj) * ((ηC_φ_A) * gjn * gkm + gjk)
 
-        # NOTE: This expression works regardless of on-bead/off-bead
-        # so long as the gjk = 0 if off-bead
+        # NOTE: This expression works regardless of on-bead/off-bead: gjk is the direct mechanical
+        # coupling of either kind
         Rjk = (1j * μj / Mj) * (1j * ηC_m * np.real(Gjn * Gkm_star) + ηC_p * np.imag(Gjn * Gkm_star) + gjk)
 
         if self.compare_Rjk_calculations:

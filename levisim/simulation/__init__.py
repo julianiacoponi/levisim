@@ -5,6 +5,8 @@ Stochastic time-domain simulations
 
 - `StochasticSimulation` (base.py): time axis, seeding, chunked noise, integrators, recording
 - `FreeSpaceSimulation` (free_space.py): a bead in a free-space tweezer trap
+- `MultiParticleFreeSpaceSimulation` (multi_particle.py): several free-space traps whose particles
+  interact (levisim.physics.interactions)
 - `CavitySimulation` (cavity.py): particles in a cavity, exact linear model, with output records
 - records.py: `Homodyne`, `Heterodyne`, `PhotonNumber`, `Position`, and the detection realism
   `PhaseNoise`, `VoltageConversion`
@@ -16,6 +18,7 @@ __all__ = [
     'FreeSpaceSimulation',
     'Heterodyne',
     'Homodyne',
+    'MultiParticleFreeSpaceSimulation',
     'PhaseNoise',
     'PhotonNumber',
     'Position',
@@ -26,6 +29,7 @@ __all__ = [
 from levisim.simulation.base import StochasticSimulation
 from levisim.simulation.cavity import CavitySimulation
 from levisim.simulation.free_space import FreeSpaceSimulation
+from levisim.simulation.multi_particle import MultiParticleFreeSpaceSimulation
 from levisim.simulation.records import (
     Heterodyne,
     Homodyne,

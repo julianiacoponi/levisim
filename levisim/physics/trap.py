@@ -90,6 +90,9 @@ class Trap:
     z_eq, Utw, Ftw, ...) use the first optical element and raise a `MissingOpticalFieldError` (a
     ValueError) for a trap without one.
 
+    `position` [m] places the trap (its origin, the tweezer focus) in the laboratory frame, default
+    (0, 0, 0); only interactions between particles (`levisim.physics.interactions`) use it.
+
     This class also allows for:
     - Arbitrary values of feedback damping in x, y, z
     - Stochastic, directed force noise in x-y plane
@@ -167,6 +170,15 @@ class Trap:
         self.linearisation_point = (
             np.zeros(3) if linearisation_point is None else as_position(linearisation_point)
         )
+
+        # ------------------------------------------------------------------------------------------
+        # Position of the trap (the origin of its coordinates x, y, z, i.e. the tweezer focus) in the
+        # laboratory frame, whose axes are parallel to the trap's. Only interactions between
+        # particles use it (levisim.physics.interactions): a particle at displacement r in this trap
+        # is at position + r in the laboratory. The phase Φ of the bead in a cavity standing wave
+        # stays `bead.Φ` (MultiTrap checks the two agree)
+        # [m]
+        self.position = as_position(kwargs.get('position', (0.0, 0.0, 0.0)))
 
         ############################################################################################
         # DEFINED PROPERTIES
@@ -411,6 +423,8 @@ class Trap:
             state['_fields'] = fields
             state.setdefault('linearisation_point', np.zeros(3))
         state['_fields'] = FieldList(state['_fields'])
+        # Trap.position (laboratory frame) is newer than some pickles
+        state.setdefault('position', np.zeros(3))
         state.pop('_element_plan_cache', None)
         self.__dict__.update(state)
 
