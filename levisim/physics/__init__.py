@@ -10,6 +10,9 @@ __all__ = [
     'FocalExpansion',
     'polarisation_matrix',
     'Tweezer',
+    'Material',
+    'Particle',
+    'Sphere',
     'Bead',
     'Gas',
     'Kick',
@@ -21,6 +24,8 @@ __all__ = [
 from levisim.physics.focussing_optics import FocussingOptics
 from levisim.physics.focal_expansion import FocalExpansion, polarisation_matrix
 from levisim.physics.tweezer import Tweezer
+from levisim.physics.material import Material
+from levisim.physics.particle import Particle, Sphere
 from levisim.physics.bead import Bead
 from levisim.physics.gas import Gas
 from levisim.physics.kick import Kick
