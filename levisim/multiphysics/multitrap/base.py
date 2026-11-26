@@ -165,23 +165,29 @@ class MultiTrapBase:
 
         self.toy_params = kwargs.get('toy_params')
 
-        # opt-in corrections of the physical model (both off by default, so that the numbers of
-        # levisim 0.1.0 are unchanged; see setup_static_cavity_shifts and Dimension.standing_wave_k):
-        #   - cavity_wavenumber: the standing wave (and so the couplings gx, gy, gxy, gxz, gyz and
-        #     the static shifts) uses the cavity wavenumber Cavity.k, not the tweezer's
+        # corrections of the physical model from the static cavity field and the cavity wavenumber
+        # (see setup_static_cavity_shifts and Dimension.standing_wave_k):
         #   - static_cavity_shifts: the trap frequencies include the cotrapping shifts of the
         #     coherent-scattering potential and the dispersive shifts of the cavity intensity, and
-        #     everything downstream (zero-point fluctuations, couplings, occupations) uses them
-        # toy parameters have no standing wave or static cavity field, so there both are ignored
+        #     everything downstream (zero-point fluctuations, couplings, occupations) uses them. On by
+        #     default with physical parameters since levisim 1.0 (opt-in in 0.1.1); pass
+        #     static_cavity_shifts=False for the numbers of levisim <= 0.1.1
+        #   - cavity_wavenumber: the standing wave (and so the couplings gx, gy, gxy, gxz, gyz and
+        #     the static shifts) uses the cavity wavenumber Cavity.k, not the tweezer's (off by default;
+        #     a relative change of |Δ|/ωtw ~ 6e-10)
+        # toy parameters have no standing wave or static cavity field, so there both are off
         self.cavity_wavenumber = bool(kwargs.get('cavity_wavenumber', False))
-        self.static_cavity_shifts = bool(kwargs.get('static_cavity_shifts', False))
-        if self.toy_params and (self.cavity_wavenumber or self.static_cavity_shifts):
-            logger.warning(
-                'cavity_wavenumber and static_cavity_shifts only apply to physical parameters and are'
-                ' ignored with toy_params'
-            )
+        static_cavity_shifts = kwargs.get('static_cavity_shifts')
+        if self.toy_params:
+            if self.cavity_wavenumber or static_cavity_shifts:
+                logger.warning(
+                    'cavity_wavenumber and static_cavity_shifts only apply to physical parameters and are'
+                    ' ignored with toy_params (give shifted frequencies through the toy Ω model instead)'
+                )
             self.cavity_wavenumber = False
             self.static_cavity_shifts = False
+        else:
+            self.static_cavity_shifts = True if static_cavity_shifts is None else bool(static_cavity_shifts)
 
         if self.toy_params:
             self.cavity = Cavity(**cavity_kwargs)
@@ -224,6 +230,9 @@ class MultiTrapBase:
         # ------------------------------------------------------------------------------------------
         self.G_dict = {label: dim.G for label, dim in self.dimensions.items()}
         self.G_array = np.array(list(self.G_dict.values()))
+
+        # direct mechanical couplings between dimensions, in one matrix (see its docstring)
+        self.mechanical_coupling_matrix = self.build_mechanical_coupling_matrix()
 
 
         # ------------------------------------------------------------------------------------------
@@ -621,6 +630,35 @@ class MultiTrapBase:
     ################################################################################################
     # SETUP FUNCTIONS
     # ----------------------------------------------------------------------------------------------
+    def build_mechanical_coupling_matrix(self):
+        """
+        The direct mechanical couplings between the dimensions, as one matrix
+
+        Entry [j, k] is the rate gjk at which dimension k drives dimension j, in levisim's g
+        convention: the term -gjk·qj·qk of H/ħ (qj = bj + bj†), so that ::
+
+            dbj/dt ∋ +i·gjk·qk,   dbj†/dt ∋ -i·gjk·qk
+
+        Both axes are ordered as `self.labels`. The matrix is real and need not be symmetric (a
+        non-reciprocal coupling has gjk ≠ gkj). It is what the drift matrix, the hybridisation
+        functions and the analytic methods read their mechanical couplings from.
+
+        Built from the Dimensions, it holds the couplings between the axes of one bead (gxy, gxz
+        and gyz, from the coherent-scattering expansion or the toy parameters toy_gxy, toy_gxz,
+        toy_gyz) and zeros elsewhere: with two axes per trap only gxy is used, with three all of
+        them, with one none. Dimensions of different beads are not coupled directly.
+        [2π·Hz]
+        """
+        couplings = np.zeros((self.num_dimensions, self.num_dimensions))
+        dims = [self.dimensions[label] for label in self.labels]
+        for jj, dim_j in enumerate(dims):
+            for kk, dim_k in enumerate(dims):
+                if jj == kk or dim_j.trap_index != dim_k.trap_index:
+                    continue
+                axes = ''.join(sorted(dim_j.axis + dim_k.axis))
+                couplings[jj, kk] = getattr(dim_j, f'g{axes}')
+        return couplings
+
     def setup_levitated_physics(self, **kwargs):
         """
         Setup the physics of many beads levitated in tweezer traps
@@ -877,22 +915,25 @@ class MultiTrapBase:
 
         The linearisation of `setup_linearised_coherent_scattering_physics` keeps, at second order
         in the bead displacement, only the off-diagonal terms of the coherent-scattering potential
-        (gxy ∝ A0, gxz and gyz ∝ P0). The same expansion has diagonal "cotrapping" terms
-        ∝ A0·cos Φ, and the bead also sits in the cavity's own standing-wave intensity (the
-        dispersive potential V_c), whose curvature ∝ ``|α|²·cos 2Φ`` adds diagonal terms and an x-y
-        term along the cavity axis. These are the 3 × 3 Hessians K of
+        (gxy ∝ A0, gxz and gyz ∝ P0). The same expansion has diagonal terms ∝ A0·cos Φ, and the
+        bead also sits in the cavity's own standing-wave intensity ``-α_pol·E0²·|α|²·cos²(k·d·r + Φ)``,
+        whose curvature ``∝ |α|²·cos 2Φ`` adds diagonal terms and an x-y term along the cavity axis
+        d = (sin θ, cos θ, 0). These are the 3 × 3 Hessians K of
         `levisim.physics.coherent_scattering.static_cavity_hessian` [N/m], one per trap, kept in
-        `self.static_cavity_hessians` (zero unless `static_cavity_shifts=True`). With
-        `static_cavity_shifts=True` each dimension's frequency becomes ::
+        `self.static_cavity_hessians`. With `static_cavity_shifts=True` (the default with physical
+        parameters) each dimension's frequency becomes ::
 
             Ωjn = Ωjn,tw·√(1 + Kjj/(m·Ωjn,tw²))      (Ωjn,tw = Trap.Ωj, the tweezer's)
 
-        and Kxy adds -Kxy·x_zpf·y_zpf/ħ to gxy. The shifted Ωjn is used self-consistently: it is
-        Dimension.Ω (the mechanical susceptibilities), it sets the zero-point fluctuation (so every
-        coupling is rescaled by √(Ωtw/Ω) per dimension), the thermal and recoil phonon occupations
-        and the cooling estimates. A trap given measured frequencies (`override_Ω_dict` in its
-        `trap_kwargs`) keeps them, since a measured frequency already contains the static shift.
-        `self.static_shifted_Ωj[n]` holds the frequencies of trap n per axis.
+        and Kxy adds -Kxy·x_zpf·y_zpf/ħ to gxy. A trap given measured frequencies
+        (`override_Ω_dict` in its `trap_kwargs`) keeps them as they are, since a measured
+        frequency already contains the static shift. The shifted Ωjn is used self-consistently: it is
+        Dimension.Ω (the mechanical susceptibilities), it sets the zero-point fluctuation (so
+        every coupling g, gxy, gxz, gyz is rescaled by √(Ωtw/Ω) per dimension), the thermal and
+        recoil phonon occupations and the cooling estimates. Both terms vanish when the static
+        cavity field is zero, i.e. when every bead is at a node, and the frequencies are then
+        bit-identical to those without shifts. `static_cavity_shifts=False` reproduces the
+        couplings and frequencies of levisim ≤ 0.1.0.
 
         Raises ValueError if a modelled dimension is statically unstable (Ωtw² + K/m ≤ 0).
         """
@@ -911,6 +952,9 @@ class MultiTrapBase:
             shifted = {}
             for ii, axis in enumerate('xyz'):
                 Ω_tw = trap.Ωj[axis]
+                # NOTE: frequencies given through override_Ω_dict are measured ones, which already
+                # contain whatever static shift the cavity field causes, so it is not added again
+                # (the x-y coupling of the cavity's dispersive potential still is)
                 if K[ii, ii] == 0 or trap.override_Ω_dict:
                     shifted[axis] = Ω_tw
                     continue

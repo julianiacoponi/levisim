@@ -56,11 +56,14 @@ The essential lines:
 :pyobject: mode_rotations
 ```
 
-**What levisim does not include.** The paper also shows that the static field stiffens the mechanical
+**The frequency shifts.** The paper also shows that the static field stiffens the mechanical
 frequencies away from the node, opposing the optical spring of the cavity dynamics, and that the two
-frequency shifts cancel at the same point. levisim includes the static coupling $g_{xy}$, and so the
-rotation, but not the static coherent-scattering frequency shifts, so its mode frequencies away from
-the node carry only the optical spring.
+frequency shifts cancel at the same point. The figure is drawn without these static shifts
+(`static_cavity_shifts=False`), as first made. `MultiTrap` includes them by default (see
+[static cavity shifts](../concepts/static_cavity_shifts.md)): they move the rotation's cancellation
+point by at most $0.001\pi$, and the net frequency shift of each mode then crosses zero at
+$\Phi = 0.257\pi$ ($x$) and $0.255\pi$ ($y$) for $\Delta/2\pi = -450$ kHz, beside the rotation's
+$0.248\pi$, and at $0.315\pi$ and $0.308\pi$ for $-150$ kHz (rotation $0.3135\pi$ with the shifts, $0.3133\pi$ without), as the paper found.
 
 :::{figure} ../guide/figures/showcase/prr5_mode_orientations.png
 :width: 100%
