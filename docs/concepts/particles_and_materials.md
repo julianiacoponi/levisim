@@ -18,7 +18,8 @@ units,
   $\varepsilon' + i\varepsilon''$ with $\varepsilon'' > 0$ for an absorbing material, a $3\times3$
   tensor in the body frame for a birefringent crystal, a function $\varepsilon_r(\lambda)$ of the
   vacuum wavelength, the name of a dispersion model (`'Malitson'`, the Sellmeier formula for fused
-  silica), or a table of values at given wavelengths;
+  silica), a table of values at given wavelengths, or a full table of $n$ and $\kappa$ against
+  the wavelength (`RefractiveIndexTable`), interpolated linearly at any wavelength inside it;
 - the magnetic volume susceptibility $\chi_m$ (dimensionless, negative for a diamagnet), a scalar
   or a body-frame tensor;
 - a remanent magnetisation $M_r$ [A/m] for a permanent magnet, and an electrical conductivity
@@ -49,13 +50,24 @@ the sample, `material.notes` says so.
 |---|---|---|---|
 | `LEVISIM_DEFAULT_SILICA` | 1850 | $\varepsilon_r = 1.98$ | - |
 | `FUSED_SILICA` | 2201 | Malitson (1965) Sellmeier, 0.21-3.71 μm | - |
-| `SILICON` | 2330 | complex at 1064 nm, real at 1550 nm | - |
-| `DIAMOND` | 3515 | 1064 and 1550 nm | - |
+| `SILICON` | 2330 | $n, \kappa$ table, 0.25-14 μm (Green 2008; Li 1980) | - |
+| `DIAMOND` | 3515 | $n, \kappa$ table, 0.035-10 μm (Phillip and Taft 1964) | - |
 | `VATERITE` | 2540 | uniaxial tensor, $n_o = 1.55$, $n_e = 1.65$ | - |
-| `GOLD` | 19320 | complex at 1064 and 1550 nm | - |
+| `GOLD` | 19320 | $n, \kappa$ table, 0.3-24.9 μm (Olmon et al. 2012, evaporated) | - |
 | `PYROLYTIC_GRAPHITE` | 2200 | - | anisotropic diamagnet |
 | `BISMUTH` | 9747 | - | diamagnet, $\chi_m = -1.7 \times 10^{-4}$ |
 | `NDFEB` | 7400 | - | $B_r = 1.23$ T, conductive |
+
+`SILICON`, `DIAMOND` and `GOLD` carry the complete $n, \kappa$ tables of their sources, shipped in
+`levisim/physics/optical_data` as CSV files whose headers give the citation. The numbers were copied
+from the refractiveindex.info database (public domain, CC0), which reproduces each source's table.
+$n$ and $\kappa$ are interpolated separately and linearly in $\lambda$, and
+$\varepsilon_r = (n + i\kappa)^2$; a wavelength outside the table raises an error (there is no
+extrapolation), and `material.wavelength_range` gives the limits. The silicon table joins Green
+(2008, 300 K, with band-to-band $\kappa$) below 1.45 μm to Li (1980, 293 K, $\kappa = 0$) above it;
+at the join the two differ by $5 \times 10^{-4}$ in $n$. At 1064 and 1550 nm the values are exactly
+those of the earlier two-wavelength library. A table of your own is
+`RefractiveIndexTable(λ, n, κ, source=...)` or `RefractiveIndexTable.from_csv(path)`.
 
 `LEVISIM_DEFAULT_SILICA` is the material of `Bead()`. Its density is the supplier's value for the
 porous silica spheres used in the experiments, and $\varepsilon_r = 1.98$ is the value used in

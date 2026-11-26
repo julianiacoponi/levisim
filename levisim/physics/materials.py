@@ -6,8 +6,9 @@ Every value below was retrieved from the cited source when this module was writt
 grade, crystal quality, film versus bulk) the docstring of the material says so. Optical values
 from tabulated data were read from the refractiveindex.info database
 (https://github.com/polyanskiy/refractiveindex.info-database, CC0), which reproduces each source's
-table; linear interpolation between the two neighbouring tabulated wavelengths is written out in
-the code where it is used.
+table. SILICON, DIAMOND and GOLD carry the full n, κ tables of their sources (shipped as CSV files in
+levisim/physics/optical_data, each with its citation in the header) as a `RefractiveIndexTable`,
+interpolated linearly in n and κ at any wavelength inside the table.
 
 Access a material by its module constant (e.g. `FUSED_SILICA`) or by name with
 `get_material('fused_silica')`; `MATERIALS` maps every name to its `Material`.
@@ -18,27 +19,28 @@ Materials are immutable and shared: derive a variant with `material.replace(...)
 import numpy as np
 
 from levisim.core.constants import μ0
-from levisim.core.units import nm
-from levisim.physics.material import Material
+from levisim.physics.material import (
+    Material,
+    RefractiveIndexTable,
+    load_refractive_index_table,
+)
 
 __all__ = [
-    'LEVISIM_DEFAULT_SILICA',
-    'FUSED_SILICA',
-    'SILICON',
-    'DIAMOND',
-    'VATERITE',
-    'GOLD',
-    'PYROLYTIC_GRAPHITE',
     'BISMUTH',
-    'NDFEB',
+    'DIAMOND',
+    'DIAMOND_NK',
+    'FUSED_SILICA',
+    'GOLD',
+    'GOLD_NK',
+    'LEVISIM_DEFAULT_SILICA',
     'MATERIALS',
+    'NDFEB',
+    'PYROLYTIC_GRAPHITE',
+    'SILICON',
+    'SILICON_NK',
+    'VATERITE',
     'get_material',
 ]
-
-
-def _interpolate(λ, λ1, v1, λ2, v2):
-    """Linear interpolation between two tabulated points (λ1, v1) and (λ2, v2)"""
-    return v1 + (λ - λ1) * (v2 - v1) / (λ2 - λ1)
 
 
 NIST_SRD_126 = (
@@ -110,31 +112,45 @@ FUSED_SILICA = Material(
 ####################################################################################################
 # Silicon
 # --------------------------------------------------------------------------------------------------
-# n, κ at 1064 nm: Green, Sol. Energ. Mat. Sol. Cells 92, 1305 (2008), doi:10.1016/j.solmat.2008.06.009,
-# intrinsic Si at 300 K, tabulated every 10 nm: (1.06 μm: 3.553, 9.3631e-5), (1.07 μm: 3.550, 6.8118e-5)
-_Si_n_1064 = _interpolate(1.064, 1.06, 3.553, 1.07, 3.550)
-_Si_κ_1064 = _interpolate(1.064, 1.06, 9.3631e-5, 1.07, 6.8118e-5)
-# n at 1550 nm: Li, J. Phys. Chem. Ref. Data 9, 561 (1980), doi:10.1063/1.555624, 293 K table:
-# n(1.55 μm) = 3.4757; below the band gap, κ is taken as 0 (free-carrier absorption neglected)
-_Si_n_1550 = 3.4757
+# n, κ from 0.25 to 1.45 μm: Green, Sol. Energ. Mat. Sol. Cells 92, 1305 (2008),
+# doi:10.1016/j.solmat.2008.06.009, intrinsic Si at 300 K, every 10 nm (κ is band-to-band absorption);
+# n beyond 1.45 μm up to 14 μm: Li, J. Phys. Chem. Ref. Data 9, 561 (1980), doi:10.1063/1.555624, 293 K
+# table, with κ = 0 (free-carrier absorption neglected). The two join at 1.45 μm, where Green gives
+# n = 3.485 and Li 3.4845. At 1064 nm the table gives the Green interpolation between 1.06 μm
+# (3.553, 9.3631e-5) and 1.07 μm (3.550, 6.8118e-5), and at 1550 nm Li's tabulated n = 3.4757.
+_SI_GREEN = load_refractive_index_table('silicon_green2008.csv')
+_SI_LI = load_refractive_index_table('silicon_li1980_293K.csv')
+_si_beyond = _SI_LI._λ_μm > _SI_GREEN._λ_μm[-1]
+SILICON_NK = RefractiveIndexTable(
+    np.concatenate([_SI_GREEN.λ, _SI_LI.λ[_si_beyond]]),
+    np.concatenate([_SI_GREEN.n_values, _SI_LI.n_values[_si_beyond]]),
+    np.concatenate([_SI_GREEN.κ_values, _SI_LI.κ_values[_si_beyond]]),
+    source=(
+        'Green, Sol. Energ. Mat. Sol. Cells 92, 1305 (2008), doi:10.1016/j.solmat.2008.06.009 (0.25-1.45 μm, '
+        '300 K); Li, J. Phys. Chem. Ref. Data 9, 561 (1980), doi:10.1063/1.555624 (1.5-14 μm, 293 K, κ = 0); '
+        'via the refractiveindex.info database (CC0)'
+    ),
+    name='silicon (Green 2008 + Li 1980)',
+    λ_μm=np.concatenate([_SI_GREEN._λ_μm, _SI_LI._λ_μm[_si_beyond]]),
+)
 
 SILICON = Material(
     name='silicon',
     # NIST SRD 126 Table 1: Si, 2.330 g/cm³
     ρ=2330.0,
-    permittivity={
-        1064*nm: (_Si_n_1064 + 1j*_Si_κ_1064)**2,
-        1550*nm: _Si_n_1550**2,
-    },
+    permittivity=SILICON_NK,
     references={
         'ρ': NIST_SRD_126 + ' (Si: 2.330 g/cm³)',
-        'εr(1064 nm)': 'Green, Sol. Energ. Mat. Sol. Cells 92, 1305 (2008), doi:10.1016/j.solmat.2008.06.009',
-        'εr(1550 nm)': 'Li, J. Phys. Chem. Ref. Data 9, 561 (1980), doi:10.1063/1.555624',
+        'εr(0.25-1.45 μm)': 'Green, Sol. Energ. Mat. Sol. Cells 92, 1305 (2008), doi:10.1016/j.solmat.2008.06.009',
+        'εr(1.5-14 μm)': 'Li, J. Phys. Chem. Ref. Data 9, 561 (1980), doi:10.1063/1.555624',
+        'tables': 'refractiveindex.info database (CC0), https://github.com/polyanskiy/refractiveindex.info-database, '
+                  'shipped as levisim/physics/optical_data/silicon_*.csv',
     },
     notes=(
-        'Crystalline, intrinsic. The two wavelengths come from different sources and temperatures '
-        '(300 K and 293 K). At 1064 nm silicon absorbs weakly (κ ≈ 8 × 10⁻⁵, band-to-band), which heats '
-        'a levitated particle; doping adds free-carrier absorption not included here.'
+        'Crystalline, intrinsic. Two sources at slightly different temperatures (300 K below 1.45 μm, '
+        '293 K above), joined at 1.45 μm (n = 3.485 against 3.4845). At 1064 nm silicon absorbs weakly '
+        '(κ ≈ 8 × 10⁻⁵, band-to-band), which heats a levitated particle; doping adds free-carrier '
+        'absorption not included here, and κ = 0 beyond 1.45 μm.'
     ),
 )
 
@@ -142,29 +158,30 @@ SILICON = Material(
 # Diamond
 # --------------------------------------------------------------------------------------------------
 # Phillip and Taft, Phys. Rev. 136, A1445 (1964), doi:10.1103/PhysRev.136.A1445 (Kramers-Kronig
-# analysis, natural diamond), tabulated n: (1.033201562 μm: 2.390522955), (1.239841874 μm: 2.388124787),
-# (1.549802343 μm: 2.387783491), (2.066403124 μm: 2.38324149); κ = 0 in this range
-_C_n_1064 = _interpolate(1.064, 1.033201562, 2.390522955, 1.239841874, 2.388124787)
-_C_n_1550 = _interpolate(1.55, 1.549802343, 2.387783491, 2.066403124, 2.38324149)
+# analysis, natural diamond), n, κ from 0.0354 to 10 μm. Near the usual lasers the rows are
+# (1.033201562 μm: 2.390522955), (1.239841874 μm: 2.388124787), (1.549802343 μm: 2.387783491),
+# (2.066403124 μm: 2.38324149), with κ = 0
+DIAMOND_NK = load_refractive_index_table('diamond_phillip1964.csv', name='diamond (Phillip and Taft 1964)')
 
 DIAMOND = Material(
     name='diamond',
     # Ioffe NSM archive, diamond basic parameters at 300 K: 3.515 g/cm³
     # https://www.ioffe.ru/SVA/NSM/Semicond/Diamond/basic.html
     ρ=3515.0,
-    permittivity={
-        1064*nm: _C_n_1064**2,
-        1550*nm: _C_n_1550**2,
-    },
+    permittivity=DIAMOND_NK,
     references={
         'ρ': 'Ioffe NSM archive, Diamond basic parameters (3.515 g/cm³), https://www.ioffe.ru/SVA/NSM/Semicond/Diamond/basic.html',
         'εr': 'Phillip and Taft, Phys. Rev. 136, A1445 (1964), doi:10.1103/PhysRev.136.A1445',
+        'tables': 'refractiveindex.info database (CC0), https://github.com/polyanskiy/refractiveindex.info-database, '
+                  'shipped as levisim/physics/optical_data/diamond_phillip1964.csv',
     },
     notes=(
         'Source-dependent at the 1% level: ellipsometry of single-crystal CVD diamond (Taylor et al., '
         'Diam. Relat. Mater. 135, 109837 (2023), doi:10.1016/j.diamond.2023.109837) gives n = 2.3744 at '
-        '1064 nm and 2.3682 at 1550 nm, against 2.3902 and 2.3878 here. Nanodiamonds contain sp² carbon '
-        'and are less dense (about 3.1-3.2 g/cm³).'
+        '1064 nm and 2.3682 at 1550 nm, against 2.3902 and 2.3878 here. The table is sparse in the near '
+        'infrared (rows at 1.03, 1.24, 1.55 and 2.07 μm), so interpolated values between rows carry the '
+        'linear-interpolation error (below 1e-4 in n). Nanodiamonds contain sp² carbon and are less '
+        'dense (about 3.1-3.2 g/cm³).'
     ),
 )
 
@@ -197,22 +214,19 @@ VATERITE = Material(
 # Gold
 # --------------------------------------------------------------------------------------------------
 # Olmon et al., Phys. Rev. B 86, 235147 (2012), doi:10.1103/PhysRevB.86.235147, evaporated gold,
-# tabulated n, κ: (1.06 μm: 0.1705, 7.075), (1.07 μm: 0.1731, 7.152), (1.55 μm: 0.3226, 10.62)
-_Au_n_1064 = _interpolate(1.064, 1.06, 0.1705, 1.07, 0.1731)
-_Au_κ_1064 = _interpolate(1.064, 1.06, 7.075, 1.07, 7.152)
-_Au_n_1550, _Au_κ_1550 = 0.3226, 10.62
+# n, κ from 0.3 to 24.93 μm, e.g. (1.06 μm: 0.1705, 7.075), (1.07 μm: 0.1731, 7.152), (1.55 μm: 0.3226, 10.62)
+GOLD_NK = load_refractive_index_table('gold_olmon2012_evaporated.csv', name='evaporated gold (Olmon et al. 2012)')
 
 GOLD = Material(
     name='gold',
     # NIST SRD 126 Table 1: Au, 19.32 g/cm³
     ρ=19320.0,
-    permittivity={
-        1064*nm: (_Au_n_1064 + 1j*_Au_κ_1064)**2,
-        1550*nm: (_Au_n_1550 + 1j*_Au_κ_1550)**2,
-    },
+    permittivity=GOLD_NK,
     references={
         'ρ': NIST_SRD_126 + ' (Au: 19.32 g/cm³)',
         'εr': 'Olmon et al., Phys. Rev. B 86, 235147 (2012), doi:10.1103/PhysRevB.86.235147 (evaporated gold)',
+        'tables': 'refractiveindex.info database (CC0), https://github.com/polyanskiy/refractiveindex.info-database, '
+                  'shipped as levisim/physics/optical_data/gold_olmon2012_evaporated.csv',
     },
     notes=(
         'Strongly sample-dependent in the infrared: Olmon et al. report different ε for evaporated, '

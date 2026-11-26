@@ -1,0 +1,40 @@
+# H. H. Li, Refractive index of silicon and germanium and its wavelength and temperature derivatives, J. Phys. Chem. Ref. Data 9, 561-658 (1980), doi:10.1063/1.555624
+# 293 K table of n; k is not tabulated (written as 0). The database header gives the year as 1993; volume 9 of J. Phys. Chem. Ref. Data is 1980.
+# Retrieved from the refractiveindex.info database (CC0 1.0, public domain), file database/data/main/Si/nk/Li-293K.yml,
+# https://github.com/polyanskiy/refractiveindex.info-database, commit e6d15e364f70de1cad8a96a20f75689f2fba8b21; numbers copied verbatim.
+# columns: vacuum wavelength [μm], n, κ
+1.20,3.5167,0
+1.22,3.5133,0
+1.24,3.5102,0
+1.26,3.5072,0
+1.28,3.5043,0
+1.30,3.5016,0
+1.32,3.4990,0
+1.34,3.4965,0
+1.36,3.4941,0
+1.38,3.4918,0
+1.40,3.4896,0
+1.45,3.4845,0
+1.50,3.4799,0
+1.55,3.4757,0
+1.60,3.4719,0
+1.65,3.4684,0
+1.70,3.4653,0
+1.80,3.4597,0
+1.90,3.4550,0
+2.00,3.4510,0
+2.25,3.4431,0
+2.50,3.4375,0
+2.75,3.4334,0
+3.00,3.4302,0
+4.00,3.4229,0
+5.00,3.4195,0
+6.00,3.4177,0
+7.00,3.4165,0
+8.00,3.4158,0
+9.00,3.4153,0
+10.0,3.4150,0
+11.0,3.4147,0
+12.0,3.4145,0
+13.0,3.4144,0
+14.0,3.4142,0
