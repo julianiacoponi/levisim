@@ -352,6 +352,25 @@ def test_equilibrium_and_report_levitating_bismuth():
     assert 'Ω_axes/2π' in trap.magnetic_trap_report_str(r_guess=(0, 0, 3e-6), scan_range=1e-4)
 
 
+def test_report_eddy_damping_for_isotropic_and_anisotropic_conductors():
+    particle, trap = _levitating_bismuth()
+    rep = trap.magnetic_trap_report(r_guess=(0, 0, 3e-6), scan_range=1e-4)
+    source = trap.fields[0].source
+    np.testing.assert_allclose(rep['eddy_damping_rates'],
+                               EddyCurrentDamping(source, rep['equilibrium']).damping_rates(particle), rtol=1e-14)
+    assert rep['eddy_damping_rate_bounds'] is None
+    graphite = Sphere(r=2e-6, material=PYROLYTIC_GRAPHITE)
+    source = _quadrupole(G0=1e3)
+    g_trap = Trap(fields=[MagneticTrap(source)], particle=graphite)
+    g_rep = g_trap.magnetic_trap_report(r_guess=(0, 0, 0), scan_range=1e-4)
+    assert g_rep['eddy_damping_rates'] is None
+    low, high = g_rep['eddy_damping_rate_bounds']
+    np.testing.assert_allclose(high, 1000 * low, rtol=1e-12)
+    np.testing.assert_allclose(high, EddyCurrentDamping(source, g_rep['equilibrium'], conductivity=2e5)
+                               .damping_rates(graphite), rtol=1e-14)
+    assert '(anisotropic σ)' in g_trap.magnetic_trap_report_str(r_guess=(0, 0, 0), scan_range=1e-4)
+
+
 def test_find_equilibrium_and_linearisation_at_equilibrium():
     _, trap = _levitating_bismuth(z_eq=7e-6)
     r = trap.find_equilibrium(r_guess=(0, 0, 0))
@@ -407,7 +426,10 @@ def test_eddy_current_damping_formula_and_trap_rates():
     np.testing.assert_allclose(np.diag(eddy.noise(particle)), 2 * 1.380649e-23 * 300 * particle.m
                                * np.diag(eddy.damping_tensor(particle)), rtol=1e-12)
     with pytest.raises(ValueError, match='conductivity'):
-        EddyCurrentDamping(source).damping_rates(particle)
+        EddyCurrentDamping(source).damping_rates(Sphere(r=20e-6, material=BISMUTH.replace(conductivity=None)))
+    # the library bismuth carries a cited conductivity (decision 16), used when none is given
+    np.testing.assert_allclose(EddyCurrentDamping(source).damping_rates(particle),
+                               eddy.damping_rates(particle) * BISMUTH.conductivity / σ, rtol=1e-14)
     with pytest.raises(NotImplementedError, match='sphere'):
         eddy.damping_rates(Spheroid(1e-6, 2.0, material=BISMUTH))
 

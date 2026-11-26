@@ -35,11 +35,14 @@ __all__ = [
     'LEVISIM_DEFAULT_SILICA',
     'MATERIALS',
     'NDFEB',
+    'NDFEB_GRADES',
+    'NDFEB_RECOIL_PERMEABILITY',
     'PYROLYTIC_GRAPHITE',
     'SILICON',
     'SILICON_NK',
     'VATERITE',
     'get_material',
+    'ndfeb_grade',
 ]
 
 
@@ -246,6 +249,14 @@ _χ_Bi = -170e-6
 _χ_PG_perpendicular = -450e-6
 _χ_PG_parallel = -85e-6
 
+# Electrical conductivity of pyrolytic graphite: Chen, Ammu, Masania, Steeneken and Alijani,
+# "Diamagnetic composites for high-Q levitating resonators", arXiv:2208.10393, Supplementary Table I
+# (material properties of their levitated pyrolytic graphite FEM): σ ∥ sheets (in-plane, σx,y) =
+# 200000 S/m and σ ⊥ sheets (along the c axis, σz) = 200 S/m, which they take from Pappis and Blum,
+# J. Am. Ceram. Soc. 44, 592 (1961) (not read here)
+_σ_PG_in_plane = 2.0e5
+_σ_PG_c_axis = 200.0
+
 PYROLYTIC_GRAPHITE = Material(
     name='pyrolytic graphite',
     # Liu et al., Micromachines 14, 1242 (2023), doi:10.3390/mi14061242: ρ = 2.2 g/cm³
@@ -253,16 +264,32 @@ PYROLYTIC_GRAPHITE = Material(
     permittivity=None,
     # body frame: graphite c axis (normal to the sheets) along z
     χ_m=np.diag([_χ_PG_parallel, _χ_PG_parallel, _χ_PG_perpendicular]),
+    conductivity=np.diag([_σ_PG_in_plane, _σ_PG_in_plane, _σ_PG_c_axis]),
     references={
         'ρ': 'Liu et al., Micromachines 14, 1242 (2023), doi:10.3390/mi14061242',
         'χ_m': 'Simon, Heflinger and Geim, Am. J. Phys. 69, 702 (2001), doi:10.1119/1.1375157, Table I',
+        'conductivity': (
+            'Chen et al., Diamagnetic composites for high-Q levitating resonators, arXiv:2208.10393, '
+            'https://arxiv.org/abs/2208.10393, Supplementary Table I: in-plane 2 × 10⁵ S/m, c axis 200 S/m '
+            '(their source: Pappis and Blum, J. Am. Ceram. Soc. 44, 592 (1961))'
+        ),
     },
     notes=(
-        'Anisotropic diamagnet. χ_m depends on the grade and falls in magnitude with temperature '
-        '(about 1 ppm/K out of plane); ρ depends on the grade (about 2.1-2.26 g/cm³). '
-        'No optical data here (graphite is absorbing and optically anisotropic).'
+        'Anisotropic diamagnet and conductor (body z = c axis, normal to the sheets). χ_m depends on the '
+        'grade and falls in magnitude with temperature (about 1 ppm/K out of plane); ρ depends on the '
+        'grade (about 2.1-2.26 g/cm³). The conductivity is a tensor: in-plane 2 × 10⁵ S/m, along the c '
+        'axis 200 S/m, and is grade-dependent. EddyCurrentDamping needs an isotropic σ: pass '
+        'conductivity=... explicitly (the in-plane value bounds the sphere damping from above, the c-axis '
+        'value from below). No optical data here (graphite is absorbing and optically anisotropic).'
     ),
 )
+
+# Electrical conductivity of bismuth: Xiong, Guo, Chen, Du, Li and Wu, Commun. Phys. 8, 80 (2025),
+# doi:10.1038/s42005-025-02010-7, the value used in their FEM of and fit to the eddy-current damping
+# of a levitated bismuth sphere: σ = 8.7 × 10⁵ S/m (their source of the number is not stated). Single
+# crystals are anisotropic: about 1.35 and 1.10 μΩ·m along and across the trigonal axis at 300 K
+# ("Finite- and Quantum-Size Effects of Bismuth Nanowires", IntechOpen, https://www.intechopen.com/chapters/10520).
+_σ_Bi = 8.7e5
 
 BISMUTH = Material(
     name='bismuth',
@@ -270,13 +297,20 @@ BISMUTH = Material(
     ρ=9747.0,
     permittivity=None,
     χ_m=_χ_Bi,
+    conductivity=_σ_Bi,
     references={
         'ρ': NIST_SRD_126 + ' (Bi: 9.747 g/cm³)',
         'χ_m': 'Simon, Heflinger and Geim, Am. J. Phys. 69, 702 (2001), doi:10.1119/1.1375157, Table I',
+        'conductivity': (
+            'Xiong et al., Commun. Phys. 8, 80 (2025), doi:10.1038/s42005-025-02010-7 '
+            '(σ = 8.7 × 10⁵ S/m, used for their levitated bismuth sphere)'
+        ),
     },
     notes=(
         'Polycrystalline bismuth metal; the single crystal is anisotropic. Other compilations give '
-        'χ_m = -1.66 × 10⁻⁴. No optical data here.'
+        'χ_m = -1.66 × 10⁻⁴. The conductivity is that of bulk bismuth at room temperature (resistivity '
+        'about 1.1-1.35 μΩ·m depending on the crystal direction); sintered or powder-built particles '
+        'conduct far less (Xiong et al. reduce the eddy damping 1000-fold that way).'
     ),
 )
 
@@ -289,10 +323,44 @@ _NdFeB_Br = 1.23
 _NdFeB_ρ = 7400.0
 _NdFeB_resistivity = 1.4e-6
 
+# Recoil permeability of sintered NdFeB, μ_rec ≈ 1.05: Constantinides and Gulick, "NdFeB for High
+# Temperature Motor Applications", Arnold Magnetic Technologies, SMMA Fall Technical Conference (2004),
+# https://www.arnoldmagnetics.com/wp-content/uploads/2017/10/NdFeB-for-high-temperature-motor-applications.pdf
+# ("Typical values of Recoil Permeability are about 1.05 for sintered Ferrite, SmCo and NdFeB"); also
+# Kwon et al., Rare Metals (2020), doi:10.1007/s12598-019-01336-w (≈ 1.05, fully magnetised).
+# The recoil slope is measured along the easy axis: M = M_r + (μ_rec - 1) H there.
+NDFEB_RECOIL_PERMEABILITY = 1.05
+
+# Typical (nominal) remanence B_r [T] of common sintered grades at 20 °C: Arnold Magnetic
+# Technologies, Neodymium-Iron-Boron Magnet Catalog, Rev. 210607, summary table of basic grades,
+# https://www.arnoldmagnetics.com/wp-content/uploads/2019/06/Arnold-Neo-Catalog.pdf. The same catalogue's
+# grade sheets give density 7.6 g/cm³ and electrical resistivity 150 μΩ·cm along and 130 μΩ·cm across
+# the easy axis for every basic grade (e.g. N35, N42 and N52).
+NDFEB_GRADES = {
+    'N35': 1.210,
+    'N38': 1.260,
+    'N40': 1.270,
+    'N42': 1.315,
+    'N45': 1.350,
+    'N48': 1.400,
+    'N50': 1.425,
+    'N52': 1.450,
+    'N55': 1.490,
+}
+_ARNOLD_NEO = 'Arnold Magnetic Technologies, Neodymium-Iron-Boron Magnet Catalog, Rev. 210607, ' \
+    'https://www.arnoldmagnetics.com/wp-content/uploads/2019/06/Arnold-Neo-Catalog.pdf'
+_RECOIL_SOURCE = (
+    'Constantinides and Gulick, NdFeB for High Temperature Motor Applications (Arnold Magnetic Technologies, '
+    'SMMA 2004), https://www.arnoldmagnetics.com/wp-content/uploads/2017/10/NdFeB-for-high-temperature-motor-applications.pdf; '
+    'Kwon et al., Rare Metals (2020), doi:10.1007/s12598-019-01336-w'
+)
+
 NDFEB = Material(
     name='NdFeB (sintered)',
     ρ=_NdFeB_ρ,
     permittivity=None,
+    # recoil susceptibility μ_rec - 1 along the easy axis (body z); no cited transverse value, so 0
+    χ_m=np.diag([0.0, 0.0, NDFEB_RECOIL_PERMEABILITY - 1]),
     # remanent magnetisation M_r = B_r/μ0, body frame: easy axis along z
     magnetisation=np.array([0.0, 0.0, _NdFeB_Br / μ0]),
     conductivity=1 / _NdFeB_resistivity,
@@ -300,13 +368,50 @@ NDFEB = Material(
         'ρ': 'Sagawa et al., J. Appl. Phys. 55, 2083 (1984), doi:10.1063/1.333572',
         'magnetisation': 'Sagawa et al. (1984), doi:10.1063/1.333572: B_r = 1.23 T, M_r = B_r/μ0',
         'conductivity': 'Sagawa et al. (1984), doi:10.1063/1.333572: specific resistivity 1.4 μΩm',
+        'χ_m': 'recoil permeability μ_rec ≈ 1.05 along the easy axis: ' + _RECOIL_SOURCE,
     },
     notes=(
-        'The original 1984 sintered magnet; commercial grades span B_r ≈ 1.0-1.5 T. The recoil '
-        'susceptibility (μ_rec - 1 ≈ 0.05) is not included (χ_m = 0). Micro- and nanoscale NdFeB '
-        'particles generally have a lower remanence than bulk.'
+        'The original 1984 sintered magnet; commercial grades span B_r ≈ 1.2-1.5 T (NDFEB_GRADES, '
+        'ndfeb_grade()). χ_m holds the recoil susceptibility μ_rec - 1 = 0.05 along the easy axis (body z) '
+        'only; the transverse susceptibility (set by the anisotropy field) is not included. levisim\'s '
+        'magnet dynamics (MeissnerImagePlane) use the permanent moment only; χ_m is recorded for '
+        'reference. Micro- and nanoscale NdFeB particles generally have a lower remanence than bulk.'
     ),
 )
+
+
+def ndfeb_grade(grade, recoil_susceptibility=True):
+    """
+    A sintered NdFeB `Material` of a commercial grade ('N35' ... 'N55', see `NDFEB_GRADES`) with its
+    typical remanence B_r (M_r = B_r/μ0 along the body z axis), density 7.6 g/cm³ and the conductivity
+    tensor of 1/(130 μΩ·cm) across and 1/(150 μΩ·cm) along the easy axis (Arnold Magnetic Technologies
+    catalogue, Rev. 210607). With `recoil_susceptibility` (default), χ_m = μ_rec - 1 = 0.05 along the
+    easy axis (`NDFEB_RECOIL_PERMEABILITY`); False gives χ_m = 0.
+    """
+    key = str(grade).strip().upper()
+    if key not in NDFEB_GRADES:
+        raise KeyError(f'Unknown NdFeB grade {grade!r}; known grades: {sorted(NDFEB_GRADES)}')
+    B_r = NDFEB_GRADES[key]
+    χ_easy = NDFEB_RECOIL_PERMEABILITY - 1 if recoil_susceptibility else 0.0
+    return Material(
+        name=f'NdFeB {key} (sintered, typical)',
+        ρ=7600.0,
+        permittivity=None,
+        χ_m=np.diag([0.0, 0.0, χ_easy]),
+        magnetisation=np.array([0.0, 0.0, B_r / μ0]),
+        conductivity=np.diag([1 / 1.30e-6, 1 / 1.30e-6, 1 / 1.50e-6]),
+        references={
+            'magnetisation': f'{_ARNOLD_NEO}: typical B_r of {key} = {B_r} T',
+            'ρ': f'{_ARNOLD_NEO}: grade sheets, density 7.6 g/cm³',
+            'conductivity': f'{_ARNOLD_NEO}: grade sheets, resistivity 150 μΩ·cm ∥ and 130 μΩ·cm ⊥ easy axis',
+            'χ_m': 'recoil permeability μ_rec ≈ 1.05 along the easy axis: ' + _RECOIL_SOURCE,
+        },
+        notes=(
+            'Nominal catalogue values; each grade has a ± spread of about 30-40 mT in B_r (e.g. N42: '
+            '1.28-1.35 T), and B_r falls by about 0.12 %/°C. Easy axis along body z.'
+        ),
+    )
+
 
 ####################################################################################################
 MATERIALS = {

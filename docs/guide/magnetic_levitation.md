@@ -158,8 +158,13 @@ $$
 
 `EddyCurrentDamping(source, position, conductivity=None, temperature=300 K)` adds the diagonal of Γ to
 `Trap.Γx`, `Γy`, `Γz` and, in the simulation, the matching thermal force noise $2k_BT\gamma$. It needs a
-conductivity, from the material or given; none of the library's diamagnets has one yet. The formula
-holds when the skin depth is much larger than $R$ and the field changes little across the particle.
+conductivity, from the material or given: the library's `BISMUTH` has $8.7 \times 10^5$ S/m. The
+formula holds for an isotropic conductor, when the skin depth is much larger than $R$ and the field
+changes little across the particle. For an anisotropic conductor such as `PYROLYTIC_GRAPHITE`,
+`EddyCurrentDamping` asks for an explicit `conductivity=`; the dissipation
+$\min_\phi \int \mathbf e\cdot\boldsymbol\sigma\,\mathbf e\,dV$ grows with every principal
+conductivity, so the smallest and the largest principal values bound the damping from below and
+above, and `magnetic_trap_report` returns these bounds as `eddy_damping_rate_bounds`.
 
 ## What was checked
 

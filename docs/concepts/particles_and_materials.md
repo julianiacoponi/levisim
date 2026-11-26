@@ -23,7 +23,7 @@ units,
 - the magnetic volume susceptibility $\chi_m$ (dimensionless, negative for a diamagnet), a scalar
   or a body-frame tensor;
 - a remanent magnetisation $M_r$ [A/m] for a permanent magnet, and an electrical conductivity
-  $\sigma$ [S/m].
+  $\sigma$ [S/m], a scalar or a body-frame tensor (`conductivity_tensor`).
 
 `material.εr(λ)` returns the permittivity at a vacuum wavelength, `material.n(λ)` the refractive
 index $n = \sqrt{\varepsilon_r}$ (complex if absorbing, three principal indices if anisotropic), and
@@ -54,9 +54,9 @@ the sample, `material.notes` says so.
 | `DIAMOND` | 3515 | $n, \kappa$ table, 0.035-10 μm (Phillip and Taft 1964) | - |
 | `VATERITE` | 2540 | uniaxial tensor, $n_o = 1.55$, $n_e = 1.65$ | - |
 | `GOLD` | 19320 | $n, \kappa$ table, 0.3-24.9 μm (Olmon et al. 2012, evaporated) | - |
-| `PYROLYTIC_GRAPHITE` | 2200 | - | anisotropic diamagnet |
-| `BISMUTH` | 9747 | - | diamagnet, $\chi_m = -1.7 \times 10^{-4}$ |
-| `NDFEB` | 7400 | - | $B_r = 1.23$ T, conductive |
+| `PYROLYTIC_GRAPHITE` | 2200 | - | anisotropic diamagnet; $\sigma$ = 2 × 10<sup>5</sup> S/m in plane, 200 S/m along $c$ |
+| `BISMUTH` | 9747 | - | diamagnet, $\chi_m = -1.7 \times 10^{-4}$; $\sigma$ = 8.7 × 10<sup>5</sup> S/m |
+| `NDFEB` | 7400 | - | $B_r = 1.23$ T, $\mu_\text{rec} = 1.05$ (easy axis), conductive |
 
 `SILICON`, `DIAMOND` and `GOLD` carry the complete $n, \kappa$ tables of their sources, shipped in
 `levisim/physics/optical_data` as CSV files whose headers give the citation. The numbers were copied
@@ -68,6 +68,19 @@ extrapolation), and `material.wavelength_range` gives the limits. The silicon ta
 at the join the two differ by $5 \times 10^{-4}$ in $n$. At 1064 and 1550 nm the values are exactly
 those of the earlier two-wavelength library. A table of your own is
 `RefractiveIndexTable(λ, n, κ, source=...)` or `RefractiveIndexTable.from_csv(path)`.
+
+The magnetic and electrical data have cited sources too. `NDFEB` (the 1984 sintered specimen of
+Sagawa et al.) carries the recoil susceptibility $\mu_\text{rec} - 1 = 0.05$ along its easy axis
+(`NDFEB_RECOIL_PERMEABILITY`, from Arnold Magnetic Technologies and Kwon et al. 2020); the
+transverse susceptibility is not included. `ndfeb_grade('N42')` builds a commercial grade from the
+typical remanence of the Arnold catalogue (`NDFEB_GRADES`, N35 to N55, $B_r$ = 1.21-1.49 T), with
+its density and its resistivity along (150 μΩ·cm) and across (130 μΩ·cm) the easy axis;
+`recoil_susceptibility=False` sets $\chi_m = 0$. Bismuth has $\sigma = 8.7 \times 10^5$ S/m, the
+value Xiong et al., Communications Physics 8, 80 (2025) use for a levitated bismuth sphere.
+Pyrolytic graphite conducts anisotropically, $2 \times 10^5$ S/m in the sheets and 200 S/m along
+the $c$ axis (body $z$), as tabulated by Chen et al., arXiv:2208.10393, from Pappis and Blum (1961).
+Conductivities depend strongly on the sample: particles sintered or built from powder conduct far
+less than the bulk.
 
 `LEVISIM_DEFAULT_SILICA` is the material of `Bead()`. Its density is the supplier's value for the
 porous silica spheres used in the experiments, and $\varepsilon_r = 1.98$ is the value used in

@@ -243,7 +243,8 @@ class Material:
       negative for a diamagnet
     - magnetisation: remanent magnetisation M_r [A/m], a magnitude or a body-frame 3-vector;
       None for a material without one
-    - conductivity: electrical conductivity σ [S/m]; None if not specified
+    - conductivity: electrical conductivity σ [S/m], scalar or 3×3 body-frame tensor (e.g.
+      pyrolytic graphite, in-plane and along the c axis); None if not specified
     - references: {quantity: citation} with the source of each number
     - notes: free text on caveats, e.g. where a value depends on the sample
 
@@ -326,9 +327,20 @@ class Material:
                 raise ValueError(f'magnetisation must be a magnitude or a 3-vector, got shape {M.shape}')
             self.magnetisation = float(M) if M.ndim == 0 else M
 
-        # Electrical conductivity
+        # Electrical conductivity, scalar or body-frame tensor
         # [S/m]
-        self.conductivity = None if conductivity is None else float(conductivity)
+        if conductivity is None:
+            self.conductivity = None
+        else:
+            σ = np.asarray(conductivity, dtype=float)
+            if σ.shape == (3, 3):
+                if not np.allclose(σ, σ.T) or np.any(np.linalg.eigvalsh(σ) < 0):
+                    raise ValueError('a conductivity tensor must be symmetric and positive semi-definite')
+                self.conductivity = σ
+            elif σ.ndim == 0:
+                self.conductivity = float(σ)
+            else:
+                raise ValueError(f'conductivity must be a scalar or a 3×3 body-frame tensor, got shape {σ.shape}')
 
         self.references = dict(references or {})
         self.notes = str(notes)
@@ -498,6 +510,19 @@ class Material:
         return not _is_isotropic(self.χ_m_tensor)
 
     @property
+    def conductivity_tensor(self):
+        """
+        Electrical conductivity as a 3×3 body-frame tensor (None if not specified)
+        [S/m]
+        """
+        return None if self.conductivity is None else _as_tensor(self.conductivity)
+
+    @property
     def is_conductor(self):
-        """Whether a conductivity is given and positive [bool]"""
-        return self.conductivity is not None and self.conductivity > 0
+        """Whether a conductivity is given and positive along some axis [bool]"""
+        return self.conductivity is not None and bool(np.max(np.linalg.eigvalsh(self.conductivity_tensor)) > 0)
+
+    @property
+    def is_electrically_anisotropic(self):
+        """Whether the conductivity is a tensor that is not a multiple of the identity [bool]"""
+        return self.conductivity is not None and not _is_isotropic(self.conductivity_tensor)
