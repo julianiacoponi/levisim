@@ -13,6 +13,8 @@ only when a compiled loop is actually used, so `import levisim` stays fast witho
 - `numba_available()`: whether numba can be imported
 - `require_numba()`: raises an ImportError with installation advice when it cannot
 - `resolve_backend(backend, num_steps)`: which backend a simulation should use
+- `UnsupportedBackendError`: raised when backend='numba' is requested explicitly for a configuration
+  without a compiled kernel (backend='auto' falls back to NumPy instead)
 - `choose_threading(num_setups, num_particles)`: the threading plan for compiled kernels
 """
 
@@ -25,6 +27,7 @@ __all__ = [
     'AUTO_NUMBA_MIN_STEPS',
     'BACKENDS',
     'ThreadingPlan',
+    'UnsupportedBackendError',
     'choose_threading',
     'numba_available',
     'require_numba',
@@ -36,6 +39,23 @@ BACKENDS = ('auto', 'numpy', 'numba')
 # 'auto' uses numba only for runs of at least this many steps: below it, loading the cached
 # kernels costs about as much as the NumPy loop itself (see the stochastic simulations guide)
 AUTO_NUMBA_MIN_STEPS = 2**15
+
+
+class UnsupportedBackendError(ValueError):
+    """
+    backend='numba' was requested explicitly for a configuration that has no compiled kernel
+
+    An explicit request never silently runs another backend: use backend='numpy', or backend='auto'
+    (which falls back to NumPy for such configurations).
+    """
+
+
+def unsupported_backend_error(owner, reason):
+    """The UnsupportedBackendError for simulation class name owner and the reason it cannot compile"""
+    return UnsupportedBackendError(
+        f"backend='numba' was requested, but this {owner} configuration has no compiled kernel "
+        f"({reason}). Use backend='numpy', or backend='auto' to fall back to NumPy automatically."
+    )
 
 
 @lru_cache(maxsize=1)
@@ -64,7 +84,8 @@ def resolve_backend(backend, num_steps):
     - 'numba': numba (ImportError if it is not installed)
     - 'auto': numba if it is installed and num_steps ≥ AUTO_NUMBA_MIN_STEPS, otherwise NumPy
 
-    The simulation may still fall back to NumPy when its configuration has no compiled kernel.
+    With 'auto' the simulation may still fall back to NumPy when its configuration has no compiled
+    kernel; with an explicit 'numba' it raises UnsupportedBackendError instead.
     """
     if backend not in BACKENDS:
         raise ValueError(f"Unknown backend={backend!r}; use one of {BACKENDS}")

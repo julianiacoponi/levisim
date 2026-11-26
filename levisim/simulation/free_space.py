@@ -217,6 +217,7 @@ class FreeSpaceSimulation(StochasticSimulation):
         or Tweezer subclass that overrides the forces, a custom integrator, or rk_loop_debug
         """
         reason = self._compiled_kernel_unsupported_reason(integrator, G, X0)
+        self.compiled_kernel_unsupported = reason
         if reason:
             logger.debug('FreeSpaceSimulation: NumPy loop instead of numba ({})', reason)
             return None

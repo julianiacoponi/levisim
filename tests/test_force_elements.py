@@ -342,10 +342,17 @@ def test_numba_falls_back_to_numpy_for_other_elements():
     from levisim.simulation.backends import numba_available
     if not numba_available():
         pytest.skip('numba is not installed or is disabled')
+    from levisim.simulation.backends import (
+        AUTO_NUMBA_MIN_STEPS,
+        UnsupportedBackendError,
+    )
     trap = Trap(fields=[Tweezer(), HarmonicPotential(1e-7), Feedback(2*kHz, 2*kHz)])
-    sim = FreeSpaceSimulation(trap=trap, num_samples=200, seed=1, backend='numba')
+    # an explicit backend='numba' never runs another backend: it raises, naming the element
+    with pytest.raises(UnsupportedBackendError, match='HarmonicPotential'):
+        FreeSpaceSimulation(trap=trap, num_samples=200, seed=1, backend='numba')
+    # backend='auto' falls back to the NumPy loop
+    sim = FreeSpaceSimulation(trap=trap, num_samples=AUTO_NUMBA_MIN_STEPS, seed=1, backend='auto')
     assert 'HarmonicPotential' in sim._compiled_kernel_unsupported_fields()
-    sim.simulate_dynamics()
     assert sim.backend_used == 'numpy'
     # the standard set, spelled as explicit fields, still compiles and matches its NumPy run
     explicit = Trap(fields=[Tweezer(), Feedback(2.1*kHz, 2.5*kHz), Gravity()], photon_recoil=True)

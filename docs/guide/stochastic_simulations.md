@@ -16,7 +16,8 @@ motion of a `Trap` and returns position traces.
 time-domain simulation shares: the time axis, the random numbers and their seeding, the chunked noise
 generation, the integrators of `levisim.simulation.integrators` and the recording into `Trace`
 objects. The class used to be called `Simulation` (`levisim.data.simulation.Simulation`); that name
-still works, with the same keyword arguments and the same numbers, but emits a `DeprecationWarning`.
+still works, with the same keyword arguments and the same numbers, but emits a `DeprecationWarning`
+and will be removed in levisim 2.0, the next major release; new code should use `FreeSpaceSimulation`.
 
 ## Physical model
 
@@ -212,7 +213,9 @@ With numba installed (the `fast` extra), the time loop can run as a compiled ker
 - `backend='auto'` (default): numba when it is installed and the run has at least $2^{15}$ steps
   (shorter runs cost less in NumPy than loading the kernels), NumPy otherwise;
 - `backend='numpy'`: the NumPy loop, which remains the tested reference;
-- `backend='numba'`: the compiled loop; an `ImportError` explains how to install numba if it is missing.
+- `backend='numba'`: the compiled loop; an `ImportError` explains how to install numba if it is missing,
+  and an `UnsupportedBackendError` (a `ValueError`) names the reason when the configuration has no
+  compiled kernel. An explicit request never silently runs the NumPy loop instead.
 
 `sim.backend_used` records which loop ran. Both loops draw the same random numbers in the same order
 (the compiled loop takes them from the same chunked generator), so a seeded run gives the same
@@ -223,7 +226,8 @@ Over very long runs the anharmonic, lightly damped $z$ motion amplifies any last
 long trajectories from the two backends agree statistically rather than sample by sample. Every
 option on this page (kicks, gravity, photon recoil, `override_Ω_dict`, the detection floor, the stored
 traces) has a compiled kernel; a subclass that overrides the physics methods, or
-`rk_loop_debug=True`, falls back to NumPy.
+`rk_loop_debug=True`, runs the NumPy loop with `backend='auto'` and raises `UnsupportedBackendError`
+with `backend='numba'`.
 
 The kernels are cached on disk, so only the first run on a machine compiles them:
 
@@ -269,6 +273,26 @@ dimensions of time³. `fit_PSD` reports `Afit`, `Γfit`, `Ωfit` in angular unit
 The `window` keyword (`'hann'`, `'blackmanharris'`, …) is normalised to unit mean square, which
 preserves broadband levels. Use it when the tail matters: the rectangular window's sidelobes leak
 the resonance into the tail and, in the example below, inflate the 0.3–0.5 MHz band by 25%.
+
+### Ensemble-averaged spectra
+
+The periodograms can also be averaged over independent members of an ensemble, which lowers the
+relative scatter per bin to $1/\sqrt{\text{members}\times\text{segments}}$ without coarsening the
+frequency resolution. Pass a list of sources of equal length and $\Delta t$, or a source with
+trajectories (a `CavitySimulation`) and `ensemble=True` (every trajectory) or a list of trajectory
+indices:
+
+```python
+runs = [FreeSpaceSimulation(trap=trap, num_samples=2**18, seed=seed) for seed in range(8)]
+Sxx = SpectralDensityEstimate(runs, 'xx', num_segments=16)          # 8 × 16 periodograms
+Shh = SpectralDensityEstimate(cavity_sim, ('homodyne', 'homodyne'), num_segments=16, ensemble=True)
+```
+
+The values are the ensemble average; `averaging_time` is the total averaged time (members ×
+segments × segment time), and the per-segment arrays (`fft_per_segment_A`, `SDs_per_segment`, …)
+gain a leading ensemble axis. `subtract_segment_mean=True` removes each segment's mean before
+windowing, and `keep_segments=False` skips storing the per-segment arrays. Without an ensemble
+nothing changes. `CavitySimulation.averaged_psd` is a thin wrapper of this estimate.
 
 ## Worked example
 

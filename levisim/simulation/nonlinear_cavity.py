@@ -197,6 +197,7 @@ class NonlinearCavityModel:
         self.Γ = np.zeros((N, 3))
         self.generic_elements = [[] for _ in range(N)]
         self.compilable = True
+        self.not_compilable_reason = ''    # why compilable is False
         for n, trap in enumerate(self.traps):
             index = trap.trap_index
             if trap.override_Ω_dict:
@@ -248,6 +249,10 @@ class NonlinearCavityModel:
                 self.generic_elements[n].extend(recoils)
             if self.generic_elements[n]:
                 self.compilable = False
+                self.not_compilable_reason = (
+                    f'trap {index} has force elements outside the compiled set: '
+                    + ', '.join(type(element).__name__ for element in self.generic_elements[n])
+                )
 
             drive = trap.drive_tweezer
             Ed = 0.5 * drive_polarisability(trap) * trap.cavity_drive_field * self.E0
@@ -258,6 +263,7 @@ class NonlinearCavityModel:
             ]
         if self.interactions:
             self.compilable = False
+            self.not_compilable_reason = 'pair interactions'
         self.parameters = P
         self.zpf = P[:, _ZPF].copy()
 
