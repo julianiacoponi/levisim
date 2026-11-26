@@ -87,6 +87,14 @@ class Tweezer(ForceElement):
         # relevant if making two tweezers interact via a cavity
         self.φ = float(kwargs.get('φ', 0.0*degrees))
 
+        # ------------------------------------------------------------------------------------------
+        # Polarisation (Jones vector in the focal plane)
+        # [·]
+        # None: linear along y, levisim's default. Otherwise a complex Jones vector (Ex, Ey) or a
+        # lab-frame 3-vector with no z component, normalised here; see `elliptical_polarisation`
+        polarisation = kwargs.get('polarisation', None)
+        self._polarisation = None if polarisation is None else self._as_jones_vector(polarisation)
+
     ################################################################################################
     # INFORMATION PRINTING FUNCTIONS
     # ----------------------------------------------------------------------------------------------
@@ -312,14 +320,147 @@ class Tweezer(ForceElement):
     ################################################################################################
     # FORCE ELEMENT INTERFACE (see levisim.physics.fields)
     # ----------------------------------------------------------------------------------------------
+    @staticmethod
+    def _as_jones_vector(polarisation):
+        e = np.asarray(polarisation, dtype=complex)
+        if e.shape == (2,):
+            e = np.array([e[0], e[1], 0.0], dtype=complex)
+        if e.shape != (3,) or not np.all(np.isfinite(e)):
+            raise ValueError(f'polarisation must be a Jones vector (Ex, Ey) or a 3-vector, not {polarisation}')
+        norm = np.linalg.norm(e)
+        if norm == 0:
+            raise ValueError('polarisation must not be zero')
+        if abs(e[2]) > 1e-12 * norm:
+            raise ValueError('the polarisation of a Tweezer (propagating along z) must lie in the x-y plane')
+        e = e / norm
+        if not np.any(np.imag(e)):
+            # a linear polarisation stays a real vector
+            return np.real(e)
+        return e
+
+    @staticmethod
+    def elliptical_polarisation(ψ, ζ=0.0):
+        """
+        Jones vector ê = cos ψ·ê1 + i sin ψ·ê2 of an elliptical polarisation with ellipticity angle ψ
+        (0: linear along ê1, π/4: circular) and major axis ê1 = (-sin ζ, cos ζ, 0) at the angle ζ
+        from levisim's y axis, ê2 = ẑ × ê1. The light's spin Im(ê* × ê) is sin 2ψ·ẑ, so ψ > 0 turns
+        a particle about +z, the propagation direction (as Rudolph et al., Phys. Rev. A 103, 043514
+        (2021), Eq. (12), whose ζ is measured from x)
+        [·]
+        """
+        e1 = np.array([-np.sin(ζ), np.cos(ζ), 0.0])
+        e2 = np.cross([0.0, 0.0, 1.0], e1)
+        return np.cos(ψ) * e1 + 1j * np.sin(ψ) * e2
+
+    @property
+    def has_default_polarisation(self):
+        """Whether the light is linearly polarised along y, levisim's default [bool]"""
+        return getattr(self, '_polarisation', None) is None
+
     @property
     def polarisation(self):
         """
-        Unit polarisation vector of the tweezer light at the focus, in the lab frame: levisim's
-        tweezers are polarised along y (θ rotates the cavity axis, not the polarisation)
+        Unit polarisation vector of the tweezer light at the focus, in the lab frame: by default
+        linear along y (θ rotates the cavity axis, not the polarisation); a complex Jones vector
+        for circular or elliptical light (`Tweezer(polarisation=...)`)
         [·]
         """
-        return np.array([0.0, 1.0, 0.0])
+        if self.has_default_polarisation:
+            return np.array([0.0, 1.0, 0.0])
+        return self._polarisation.copy()
+
+    @property
+    def spin_density(self):
+        """
+        Im(ê* × ê): the light's spin per unit intensity, (0, 0, sin 2ψ) for an elliptical
+        polarisation of ellipticity angle ψ, zero for linear light
+        [·]
+        """
+        e = np.asarray(self.polarisation, dtype=complex)
+        return np.imag(np.cross(np.conj(e), e))
+
+    def field_vector(self, r):
+        """
+        Complex amplitude vector of the tweezer field at r = (x, y, z), E_field_amplitude(r)·ê (the
+        phase k·z + Gouy, common to all components, is left out: it does not enter the torques)
+        [V/m]
+        """
+        x, y, z = as_position(r)
+        return self.E_field_amplitude(x, y, z) * np.asarray(self.polarisation, dtype=complex)
+
+    def lab_effective_polarisability(self, particle, orientation=None):
+        """
+        Lab-frame effective polarisability tensor of the particle at this tweezer's wavenumber,
+        R α_eff,body Rᵀ for `orientation` (default the particle's own); α_eff·𝟙 for a sphere of
+        isotropic material
+        [complex Fm²]
+        """
+        if _has_scalar_polarisability(particle):
+            return (particle.α / (1 - 1j * (self.k**3 / (6*π*ε0)) * particle.α)) * np.eye(3)
+        return particle.lab_tensor(particle.body_effective_polarisability_tensor(self.k), orientation)
+
+    def torque(self, r, t, particle, orientation=None):
+        """
+        Time-averaged optical torque ½ Re(p* × E) - k³/(12πε0)·Im(p* × p) on the particle at r,
+        p = α_eff,lab E (`levisim.physics.rotation.optical_torque`, with the recoil of the radiated
+        angular momentum); `orientation` (a unit quaternion) defaults to the particle's own. It
+        contains the alignment torque of an anisotropic polarisability and the spin torque of
+        circularly or elliptically polarised light: on a sphere the absorbed power over ω, on a
+        lossless anisotropic particle k³E0²(α_1 - α_2)²/(24πε0) in circular light. t is not used.
+        [N·m]
+        """
+        from levisim.physics.rotation import optical_torque
+        α = self.lab_effective_polarisability(particle, orientation)
+        return optical_torque(α, self.field_vector(r), self.k)
+
+    def torque_stiffness(self, particle, orientation=None, r0=None):
+        """
+        Torque stiffness K_ij = -∂τ_i/∂θ_j of `torque` for small rotations θ about the lab axes at
+        `orientation` (default the particle's own) and position r0 (default the focus) ::
+
+            K_ij = -½ Re((∂_j α E)* × E)_i + k³/(12πε0)·Im(∂_j p* × p + p* × ∂_j p)_i,
+            ∂_j p = ∂_j α E,   ∂_j α = G_j α - α G_j
+
+        For linear polarisation along y and a particle whose principal axes lie along the lab axes
+        it is diag(½E0²(α_y - α_z), 0, ½E0²(α_y - α_x)) with Re α_eff: rotations about x and z are
+        confined when the most polarisable axis is along the polarisation, and rotation about the
+        polarisation is free.
+        [N·m/rad]
+        """
+        from levisim.physics.rotation import rotated_tensor_derivatives
+        r0 = np.zeros(3) if r0 is None else as_position(r0)
+        E = self.field_vector(r0)
+        α = self.lab_effective_polarisability(particle, orientation)
+        dα, _ = rotated_tensor_derivatives(α)
+        K = np.zeros((3, 3))
+        p = α @ E
+        c = self.k**3 / (12 * π * ε0)
+        for j in range(3):
+            dp = dα[j] @ E
+            K[:, j] = -0.5 * np.real(np.cross(np.conj(dp), E)) + c * np.imag(
+                np.cross(np.conj(dp), p) + np.cross(np.conj(p), dp)
+            )
+        return K
+
+    def recoil_torque_noise(self, particle, orientation=None, r0=None):
+        """
+        Two-sided recoil torque noise of the scattered tweezer light, S_τ = ħk³/(12πε0)·Re(M M†)
+        (`levisim.physics.rotation.recoil_torque_noise`), the rotational counterpart of `noise`
+        (Rudolph et al., Phys. Rev. A 103, 043514 (2021), Eq. (31b)). Zero for a sphere of isotropic
+        material.
+        [N²·m²/Hz]
+        """
+        from levisim.physics.rotation import recoil_torque_noise
+        r0 = np.zeros(3) if r0 is None else as_position(r0)
+        α = self.lab_effective_polarisability(particle, orientation)
+        return recoil_torque_noise(α, self.field_vector(r0), self.k)
+
+    def torque_noise(self, particle, orientation=None, r0=None):
+        """
+        The element's torque noise (`ForceElement.torque_noise`): `recoil_torque_noise`
+        [N²·m²/Hz]
+        """
+        return self.recoil_torque_noise(particle, orientation, r0)
 
     def effective_polarisability(self, particle):
         """
@@ -349,11 +490,18 @@ class Tweezer(ForceElement):
         first entry is Re α_eff exactly, as in the original code).
         [Fm², ·]
         """
-        if _has_scalar_polarisability(particle):
-            return np.real(self.effective_polarisability(particle)), np.array([2.0, 1.0, 7.0])
-        p = np.real(particle.effective_polarisability_tensor(self.k) @ self.polarisation)
+        if self.has_default_polarisation:
+            if _has_scalar_polarisability(particle):
+                return np.real(self.effective_polarisability(particle)), np.array([2.0, 1.0, 7.0])
+            p = np.real(particle.effective_polarisability_tensor(self.k) @ self.polarisation)
+            magnitude = float(np.linalg.norm(p))
+            p_hat2 = (p / magnitude)**2 if magnitude > 0 else np.array([0.0, 1.0, 0.0])
+            return magnitude, 2 - p_hat2 + np.array([0.0, 0.0, 5.0])
+        # a general (complex) polarisation: the cycle-averaged emission pattern of the dipole
+        # p ∝ Re(α_eff) ê gives the weights 2 - |p_j|²/‖p‖² (plus 5 along the beam)
+        p = np.real(self.lab_effective_polarisability(particle)) @ np.asarray(self.polarisation, dtype=complex)
         magnitude = float(np.linalg.norm(p))
-        p_hat2 = (p / magnitude)**2 if magnitude > 0 else np.array([0.0, 1.0, 0.0])
+        p_hat2 = np.abs(p / magnitude)**2 if magnitude > 0 else np.array([0.0, 1.0, 0.0])
         return magnitude, 2 - p_hat2 + np.array([0.0, 0.0, 5.0])
 
     @property
@@ -424,7 +572,7 @@ class Tweezer(ForceElement):
         anisotropic particle the induced dipole need not lie along the polarisation, and Re α_eff and
         c_j become ‖Re α_eff ê‖ and the weights of `recoil_coefficients`.
         """
-        if _has_scalar_polarisability(particle):
+        if _has_scalar_polarisability(particle) and self.has_default_polarisation:
             α = np.real(self.effective_polarisability(particle))
             prefactor = π * ħ / (15 * ε0) * (α * self.E0 / (2*π))**2 * self.k**5
             return np.diag([2 * prefactor, prefactor, 7 * prefactor])
