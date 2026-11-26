@@ -60,6 +60,54 @@ $5.6\times10^{-3}$ (unequal phases) and by orders of magnitude (two axes per par
 node). (3) raises `ValueError` if asked
 for a homodyne or heterodyne spectrum.
 
+### Direct couplings between particles
+
+The mechanical coupling matrix $g_{jk}$ (`MultiTrapBase.mechanical_coupling_matrix`, entry $[j, k]$ the
+rate at which $k$ drives $j$ in $H/\hbar \ni -g_{jk}\hat q_j\hat q_k$) may couple dimensions of
+different particles, from `MultiTrap(interactions=[...])` (see [interactions](interactions.md)) or
+`toy_params['g_direct']`, and need not be symmetric. Every method supports it:
+
+- (1)-(3) read $g_{jk}$ from the drift matrix.
+- (4) and (5): the hybridisation function gains the direct term for any pair,
+  $R_{j_n k_m} = (i\mu_{j_n}/M_{j_n})\,[\,i\eta_\text{c}^-\mathrm{Re}(G_{j_n}G_{k_m}^*) + \eta_\text{c}^+\mathrm{Im}(G_{j_n}G_{k_m}^*) + g_{j_n k_m}]$.
+  The deranged determinant and adjugate are already power series in all $N^2 - N$ functions
+  $R_{j_n k_m}$, so the shipped power-series pickles are unchanged.
+- (6) and (7): the mechanical response becomes $\mathbf W = (\mathrm{diag}(1/\mu) - i\mathbf g)^{-1}$
+  with the full matrix $\mathbf g$, inverted per group of directly coupled dimensions
+  (`AnalyticMixin.mechanical_coupling_structure`; one group when every particle interacts with every
+  other). The cavity part, of rank 2, is still eliminated in closed form. A non-symmetric
+  $\mathbf W$ gives the $a$ and $a^\dagger$ equations different collective sums,
+
+  $$
+  D(0) = \mathbf G^\top\mathbf W\mathbf G^*, \qquad \bar D(0) = \mathbf G^{*\top}\mathbf W\mathbf G, \qquad
+  M_\text{norm} = 1 + \chi_\text{c}(\omega)D(0) - \chi_\text{c}^*(-\omega)\bar D(0) - \xi_\text{c}P,
+  $$
+
+  with $P = D(0)\bar D(0) - D(2)D(-2) = 2i\,(\mathbf W^\top\mathbf G)^\top\mathbf I(\mathbf W^\top\mathbf G^*)$
+  in the cancellation-free form. The response is
+  $\mathbf H = \mathbf W + \mathbf W\boldsymbol\Phi\mathbf W/M_\text{norm}$ with
+  $\boldsymbol\Phi = i\mathbf C - 4\xi_\text{c}\mathbf I\mathbf W^\top\mathbf I$ (Woodbury), and each
+  group's diagonal block is taken from the Schur complement over the other groups, as before per
+  particle. For a symmetric $\mathbf W$ every expression reduces to the earlier one, and systems whose
+  couplings are all within one particle and symmetric keep the earlier evaluation, so their numbers
+  are unchanged bit for bit.
+
+Maximum relative difference from LAM (position PSDs and homodyne spectrum, the larger of the two;
+`tests/test_inter_bead_methods.py`), toy systems on 250-320 kHz (140 points), the Coulomb system on
+100-320 kHz (400 points):
+
+| System | (2) | (3) | (4) | (5) | (6) | (7) |
+|---|---|---|---|---|---|---|
+| `OFF_NODE` pairs toy 2×2, non-reciprocal inter-particle couplings | 1.3e-15 | 8.9e-16 | 6.9e-15 | 1.2e-14 | 3.3e-14 | 3.3e-14 |
+| `OFF_NODE` pairs toy 3×2, two coupled groups | 1.8e-15 | 1.3e-15 | 3.6e-14 | 5.0e-14 | 2.6e-14 | 2.6e-14 |
+| `OFF_NODE` pairs toy 3×2, one coupled group | 1.8e-15 | 8.9e-16 | 2.5e-14 | 1.6e-13 | 2.5e-14 | 2.5e-14 |
+| `OFF_NODE` pairs toy 2×3 | 8.9e-16 | 2.7e-14 | 4.9e-14 | - | 5.1e-14 | 5.1e-14 |
+| `OFF_NODE` pairs toy 2×2, non-reciprocal coupling within one particle | 1.6e-15 | 7.8e-16 | 2.5e-14 | 2.7e-14 | 2.8e-14 | 2.8e-14 |
+| physical 3×2, Coulomb between charged particles off the node | 1.8e-15 | 1.1e-15 | 8.5e-15 | 1.4e-14 | 1.8e-14 | 1.8e-14 |
+
+(5) is not run for 2×3, which has no shipped power series. Until round 5, (5)-(7) raised
+`NotImplementedError` for a coupling between particles, and (6)-(7) also for a non-symmetric one.
+
 ## Code pathways
 
 The rest of this page follows each method through the code: which function computes which

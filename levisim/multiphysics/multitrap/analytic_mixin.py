@@ -14,8 +14,6 @@ import itertools
 
 from functools import cached_property
 
-from levisim.core.logger import logger
-
 
 __all__ = [
     'AnalyticMixin',
@@ -88,39 +86,57 @@ class AnalyticMixin:
             for trap_index in sorted(set(trap_indices))
         ]
 
-    @cached_property
+    @property
     def intra_bead_coupling_matrix(self):
         """
-        Symmetric matrix of the direct mechanical couplings between dimensions of the same bead
+        The direct mechanical couplings between dimensions of the same bead
 
-        This is `mechanical_coupling_matrix`, which the drift matrix also uses: entry (j, k) is
-        gxy, gxz or gyz when dimensions j and k belong to the same bead, and zero otherwise.
-        Ordered as `self.labels` on both axes. The closed form below is derived for couplings
-        within one bead that are reciprocal (gjk = gkj), so a matrix with a non-zero entry
-        between different beads, or an asymmetric one, raises NotImplementedError rather than
-        being silently mis-handled.
+        `mechanical_coupling_matrix` with every entry between different beads set to zero: gxy, gxz
+        or gyz (plus any toy `g_direct` within a bead). Ordered as `self.labels` on both axes.
         [2π·Hz]
+        """
+        couplings = np.array(self.mechanical_coupling_matrix, dtype=float)
+        trap_indices = np.array([self.dimensions[label].trap_index for label in self.labels])
+        couplings[trap_indices[:, None] != trap_indices[None, :]] = 0.0
+        return couplings
+
+    def mechanical_coupling_structure(self):
+        """
+        (is_bead_local, groups) of `mechanical_coupling_matrix`
+
+        - is_bead_local: True if every direct coupling is between dimensions of one bead and the
+          matrix is symmetric. The analytic closed form then uses its original evaluation (W
+          symmetric and block diagonal per bead), whose numbers are unchanged.
+        - groups: the dimension indices of each group of directly coupled dimensions (the connected
+          components of the coupling graph, every bead's dimensions joined), in the order of their
+          first dimension. W is block diagonal over these groups. With an interaction between all
+          particles there is a single group.
+
+        [bool, list of int arrays]
         """
         couplings = np.asarray(self.mechanical_coupling_matrix, dtype=float)
         trap_indices = np.array([self.dimensions[label].trap_index for label in self.labels])
-        off_bead = trap_indices[:, None] != trap_indices[None, :]
-        if np.any(couplings[off_bead] != 0):
-            jj, kk = np.argwhere(off_bead & (couplings != 0))[0]
-            msg = (
-                f'mechanical_coupling_matrix couples {self.labels[jj]} to {self.labels[kk]}, which belong to'
-                ' different beads: the analytic methods do not yet support inter-bead mechanical couplings'
-                ' (use the LINEAR_AMPLIFIER_MODEL method)'
-            )
-            logger.error(msg)
-            raise NotImplementedError(msg)
-        if not np.array_equal(couplings, couplings.T):
-            msg = (
-                'mechanical_coupling_matrix is not symmetric: the analytic methods assume reciprocal'
-                ' couplings gjk = gkj (use the LINEAR_AMPLIFIER_MODEL method)'
-            )
-            logger.error(msg)
-            raise NotImplementedError(msg)
-        return couplings.copy()
+        same_bead = trap_indices[:, None] == trap_indices[None, :]
+        is_bead_local = bool(not np.any(couplings[~same_bead]) and np.array_equal(couplings, couplings.T))
+        if is_bead_local:
+            return True, list(self.trap_dimension_indices)
+        connected = same_bead | (couplings != 0) | (couplings.T != 0)
+        group_of = -np.ones(self.num_dimensions, dtype=int)
+        groups = []
+        for start in range(self.num_dimensions):
+            if group_of[start] >= 0:
+                continue
+            members, frontier = {start}, [start]
+            while frontier:
+                jj = frontier.pop()
+                for kk in np.flatnonzero(connected[jj]):
+                    if kk not in members:
+                        members.add(int(kk))
+                        frontier.append(int(kk))
+            indices = np.array(sorted(members))
+            group_of[indices] = len(groups)
+            groups.append(indices)
+        return False, groups
 
     ################################################################################################
     # FUNCTIONS OF ONLY FREQUENCY
@@ -139,12 +155,13 @@ class AnalyticMixin:
 
             (W⁻¹ - iC)·q = sources,   C = iχC·G*Gᵀ - iχC*·GG†  (rank 2: the two light channels)
 
-        where W = (diag(1/μ) - i·g_intra)⁻¹ is the mechanical response matrix, μjn = χjn(ω) - χjn*(-ω),
-        and g_intra holds the direct mechanical couplings gxy, gxz, gyz between the dimensions of the
-        same bead (`intra_bead_coupling_matrix`). W is block diagonal per bead (W = diag(μ) when a
-        bead's dimensions are uncoupled), symmetric, and only needs one (axes × axes) inverse per
-        bead - the closed form never inverts an N×N matrix. Each thermal drive enters through
-        B⁻¹ = W·diag(1/μ).
+        where W = (diag(1/μ) - i·g)⁻¹ is the mechanical response matrix, μjn = χjn(ω) - χjn*(-ω),
+        and g = `mechanical_coupling_matrix` holds the direct mechanical couplings (gxy, gxz, gyz
+        within a bead, and those between beads from interactions or toy g_direct). W is block
+        diagonal over the groups of directly coupled dimensions (`mechanical_coupling_structure`):
+        per bead when only the intra-bead couplings are present (W = diag(μ) for an uncoupled bead),
+        a single N×N block when every particle interacts with every other. The cavity part (rank 2)
+        is always eliminated in closed form. Each thermal drive enters through B⁻¹ = W·diag(1/μ).
         Because C has rank 2, the cavity field only ever sees three collective response sums ::
 
             D(0) = Gᵀ·W·G*,   D(2) = Gᵀ·W·G,   D(-2) = G*ᵀ·W·G*
@@ -171,6 +188,19 @@ class AnalyticMixin:
 
         (with g_intra = 0, B⁻¹ = 1 and these are exactly the brackets of PRR 8).
 
+        GENERAL W (inter-bead or non-reciprocal couplings, `mechanical_coupling_structure` gives
+        is_bead_local = False). W is then not symmetric, and the a and a† equations see different
+        collective sums ::
+
+            D(0) = Gᵀ·W·G*,   D̄(0) = G*ᵀ·W·G   (= D(0) for symmetric W)
+            M_norm = 1 + χC·D(0) - χC*(-ω)·D̄(0) - ξC·P
+            P = D(0)·D̄(0) - D(2)·D(-2) = 2i·h_Lᵀ·I·h̃_L,   h_L = Wᵀ·G,   h̃_L = Wᵀ·G*
+
+        The thermal brackets keep the form above with h = W·G, h̃ = W·G* and B⁻¹ = W·diag(1/μ); the
+        cavity-input terms of the positions use h_L and h̃_L (see `analytic_hybridised_positions`).
+        For symmetric W every expression reduces to the one above. The bead-local case keeps its
+        original evaluation, so its numbers are unchanged.
+
         The result for the last ω requested is cached, since the analytic noise vectors call
         D, P and M_norm several times per frequency.
         [dict of complex arrays and scalars]
@@ -184,6 +214,12 @@ class AnalyticMixin:
         G_star = np.conjugate(G)
         μ = np.array([dim.μm(ω) for dim in self.dimensions.values()])
         I = self.coupling_quadrature_overlap_matrix
+
+        is_bead_local, groups = self.mechanical_coupling_structure()
+        if not is_bead_local:
+            kernel = self._general_analytic_kernel(ω, χC, χC_star, G, G_star, μ, I, groups)
+            self._analytic_kernel_cache = (ω, kernel)
+            return kernel
 
         # W⁻¹ = diag(1/μ) - i·g_intra per bead, and its inverse W. W is built by inverting W⁻¹
         # rather than as (I - i·diag(μ)·g_intra)⁻¹·diag(μ): on a resonance the latter matrix has a
@@ -221,9 +257,63 @@ class AnalyticMixin:
             # for beads without intra-bead coupling)
             thermal_a=B_inv.T @ (G - 2j * χC_star * (I.T @ h)),
             thermal_a_dag=B_inv.T @ (G_star - 2j * χC * (I.T @ h_tilde)),
+            # the general-W entries (see the docstring), equal to the ones above for symmetric W
+            D0_bar=D0,
+            h_left=h,
+            h_tilde_left=h_tilde,
+            groups=self.trap_dimension_indices,
+            is_bead_local=True,
         )
         self._analytic_kernel_cache = (ω, kernel)
         return kernel
+
+    def _general_analytic_kernel(self, ω, χC, χC_star, G, G_star, μ, I, groups):
+        """
+        `analytic_kernel` for a general mechanical coupling matrix (between beads, or
+        non-reciprocal): W is inverted per group of directly coupled dimensions
+        """
+        couplings = np.asarray(self.mechanical_coupling_matrix, dtype=float)
+        W = np.zeros((self.num_dimensions, self.num_dimensions), dtype=np.complex128)
+        B_inv = np.zeros_like(W)
+        W_inv_blocks = []
+        for indices in groups:
+            block = np.ix_(indices, indices)
+            W_inv_n = np.diag(1 / μ[indices]) - 1j * couplings[block]
+            W_inv_blocks.append(W_inv_n)
+            W[block] = np.linalg.inv(W_inv_n)
+            B_inv[block] = W[block] / μ[np.newaxis, indices]
+        h, h_tilde = W @ G, W @ G_star
+        h_left, h_tilde_left = W.T @ G, W.T @ G_star
+        D0 = G @ h_tilde
+        D0_bar = G_star @ h
+        D2 = G @ h
+        Dm2 = G_star @ h_tilde
+        P = 2j * h_left @ I @ h_tilde_left
+        return {
+            'μ': μ,
+            'W': W,
+            'W_inv_blocks': W_inv_blocks,
+            'h': h,
+            'h_tilde': h_tilde,
+            'h_left': h_left,
+            'h_tilde_left': h_tilde_left,
+            'D': {0: D0, 2: D2, -2: Dm2},
+            'D0_bar': D0_bar,
+            'P': P,
+            'M_norm': 1 + χC * D0 - χC_star * D0_bar - self.cavity.ξC(ω) * P,
+            'thermal_a': B_inv.T @ (G - 2j * χC_star * (I.T @ h)),
+            'thermal_a_dag': B_inv.T @ (G_star - 2j * χC * (I.T @ h_tilde)),
+            'groups': groups,
+            'is_bead_local': False,
+        }
+
+    def D0_bar(self, ω):
+        """
+        D̄(0) = G*ᵀ·W·G, the collective sum of the a† equation (see `analytic_kernel`); it equals
+        D(0) unless the mechanical coupling matrix is non-symmetric or couples different beads
+        [complex 2π·Hz]
+        """
+        return self.analytic_kernel(ω)['D0_bar']
 
     def D(self, n, ω):
         """
@@ -308,7 +398,8 @@ class AnalyticMixin:
         """
         Normalisation function for transducing all input noises into the collective modes Q, Q†
 
-        M_norm = 1 + ηm·D(0) - ξC·P, i.e. the determinant of the 2×2 light-only problem.
+        M_norm = 1 + ηm·D(0) - ξC·P, i.e. the determinant of the 2×2 light-only problem (for a general
+        mechanical coupling matrix 1 + χC·D(0) - χC*(-ω)·D̄(0) - ξC·P, see `analytic_kernel`).
         NOTE: this used to show a larger relative difference than the alternative forms below
         because P was evaluated as D(0)² - D(2)·D(-2), which cancels catastrophically on a
         mechanical resonance (e.g. 7.8e-10 relative error at ω = Ωy2 for the 2×2
@@ -507,7 +598,7 @@ class AnalyticMixin:
         [complex 1/√(2π·Hz)]
         """
         iκg = 1j * np.sqrt(self.cavity.κ) / self.gbar
-        return iκg * (np.conjugate(self.cavity.χC(-ω)) * self.D(0, ω) + self.cavity.ξC(ω) * self.P(ω))
+        return iκg * (np.conjugate(self.cavity.χC(-ω)) * self.D0_bar(ω) + self.cavity.ξC(ω) * self.P(ω))
 
     def Fa_dag(self, ω):
         """
@@ -539,7 +630,7 @@ class AnalyticMixin:
         Q ∝ FQ·Q_TOT
         [complex]
         """
-        return 1 - np.conjugate(self.cavity.χC(-ω)) * self.D(0, ω)
+        return 1 - np.conjugate(self.cavity.χC(-ω)) * self.D0_bar(ω)
 
     def FQ_dag(self, ω):
         """
@@ -663,7 +754,9 @@ class AnalyticMixin:
 
         where ^(¬n) means the same quantity built from all the OTHER beads only, with
         Φ_nn^(¬n) = iC_nn - 4ξC·I_n,¬n·W_¬n·I_¬n,n. This is one small (axes × axes) inverse per
-        bead, so the closed form never inverts an N×N matrix. For a single uncoupled dimension it
+        bead (one per group of directly coupled dimensions, `mechanical_coupling_structure`, when
+        beads interact; Φ then has Wᵀ in place of W), so the closed form inverts no matrix larger than
+        a group. For a single uncoupled dimension it
         reduces to H_jj = μj·M_norm^(¬j)/M_norm: the dimension's susceptibility, renormalised by
         the cavity with and without it.
         Ordered as `self.labels` on both axes.
@@ -678,23 +771,44 @@ class AnalyticMixin:
         h, h_tilde = kernel['h'], kernel['h_tilde']
 
         C = 1j * χC * np.outer(G_star, G) - 1j * χC_star * np.outer(G, G_star)
-        Φ = 1j * C - 4 * ξC * (I @ W @ I)
+        if kernel['is_bead_local']:
+            Φ = 1j * C - 4 * ξC * (I @ W @ I)
+        else:
+            # Woodbury for a non-symmetric W: Φ = iC - 4ξC·I·Wᵀ·I
+            Φ = 1j * C - 4 * ξC * (I @ W.T @ I)
         H = W + W @ Φ @ W / M_norm
-
-        traps = self.trap_dimension_indices
-        D0_per_trap = np.array([G[n] @ h_tilde[n] for n in traps])
-        P_per_trap_pair = np.array([[2j * h[n] @ I[np.ix_(n, m)] @ h_tilde[m] for m in traps] for n in traps])
+        traps = kernel['groups']
+        if kernel['is_bead_local']:
+            D0_per_trap = np.array([G[n] @ h_tilde[n] for n in traps])
+            P_per_trap_pair = np.array([[2j * h[n] @ I[np.ix_(n, m)] @ h_tilde[m] for m in traps] for n in traps])
+        else:
+            D0_per_trap = np.array([G[n] @ h_tilde[n] for n in traps])
+            D0_bar_per_trap = np.array([G_star[n] @ h[n] for n in traps])
+            h_left, h_tilde_left = kernel['h_left'], kernel['h_tilde_left']
+            P_per_trap_pair = np.array([
+                [2j * h_left[n] @ I[np.ix_(n, m)] @ h_tilde_left[m] for m in traps] for n in traps
+            ])
         for ii, n in enumerate(traps):
             other_traps = [jj for jj in range(len(traps)) if jj != ii]
             others = np.concatenate([np.zeros(0, dtype=int)] + [traps[jj] for jj in other_traps])
-            M_norm_without_n = (
-                1
-                + ηm * np.sum(D0_per_trap[other_traps])
-                - ξC * np.sum(P_per_trap_pair[np.ix_(other_traps, other_traps)])
-            )
+            if kernel['is_bead_local']:
+                M_norm_without_n = (
+                    1
+                    + ηm * np.sum(D0_per_trap[other_traps])
+                    - ξC * np.sum(P_per_trap_pair[np.ix_(other_traps, other_traps)])
+                )
+                W_others = W[np.ix_(others, others)]
+            else:
+                M_norm_without_n = (
+                    1
+                    + χC * np.sum(D0_per_trap[other_traps])
+                    - χC_star * np.sum(D0_bar_per_trap[other_traps])
+                    - ξC * np.sum(P_per_trap_pair[np.ix_(other_traps, other_traps)])
+                )
+                W_others = W[np.ix_(others, others)].T
             Φ_nn_without_n = (
                 1j * C[np.ix_(n, n)]
-                - 4 * ξC * I[np.ix_(n, others)] @ W[np.ix_(others, others)] @ I[np.ix_(others, n)]
+                - 4 * ξC * I[np.ix_(n, others)] @ W_others @ I[np.ix_(others, n)]
             )
             H[np.ix_(n, n)] = np.linalg.inv(kernel['W_inv_blocks'][ii] - Φ_nn_without_n / M_norm_without_n)
         return H
@@ -735,8 +849,9 @@ class AnalyticMixin:
 
         positions = np.zeros((self.num_dimensions, self.num_operators), dtype=np.complex128)
         # cavity input noise
-        positions[:, 0] = W @ (1j * χC * np.sqrt(κ) / M_norm * (G_star + 2j * χC_star * (I.T @ kernel['h_tilde'])))
-        positions[:, 1] = W @ (1j * χC_star * np.sqrt(κ) / M_norm * (G + 2j * χC * (I.T @ kernel['h'])))
+        # (h_left = Wᵀ·G and h̃_left = Wᵀ·G* are h and h̃ themselves for a symmetric W)
+        positions[:, 0] = W @ (1j * χC * np.sqrt(κ) / M_norm * (G_star + 2j * χC_star * (I.T @ kernel['h_tilde_left'])))
+        positions[:, 1] = W @ (1j * χC_star * np.sqrt(κ) / M_norm * (G + 2j * χC * (I.T @ kernel['h_left'])))
         # thermal noise
         thermal_response = self.analytic_response_matrix(ω) / μ[np.newaxis, :]
         for kk, dim in enumerate(self.dimensions.values()):
