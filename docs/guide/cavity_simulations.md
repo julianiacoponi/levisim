@@ -263,7 +263,8 @@ $$
 $$
 
 with $\omega_d = E_d/\hbar$ (`Trap.ωd`) and $\delta = \alpha_{\mathrm{pol}}E_0^2/\hbar$, the pull of
-the cavity frequency by one particle (a few Hz for a 60 nm bead, which `MultiTrap` leaves out). The
+the cavity frequency by one particle at an antinode ($\delta/2\pi \approx 3.4$ kHz for a 60 nm bead in
+levisim's default cavity; `MultiTrap` includes it as `Cavity.dispersive_shift`). The
 drive (`cavity_drive`) and the back-action force (`optical_force`) are therefore conjugate by
 construction. Expanding $H$ to second order about the trap centre reproduces `MultiTrap`'s
 linearised Hamiltonian: the term linear in $r$ of $-2E_d\mathrm{Re}(\alpha_n^* D_n)$ gives

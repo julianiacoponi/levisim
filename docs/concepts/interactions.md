@@ -206,13 +206,49 @@ $\Phi_n - \Phi_1 \not\equiv k\hat d\cdot(X_n - X_1) \pmod{2\pi}$, a WARNING is l
   g_{jk} = -\frac{K_{jk}\,x_{\text{zpf},j}\,x_{\text{zpf},k}}{\hbar}.
   $$
 
+A trap given measured frequencies (`override_Ω_dict`) keeps them: a measured frequency already
+contains the interactions' self-stiffness (and the static cavity shift), so neither is added; the
+pair couplings are. `interaction_frequency_shifts='all'` adds the self-stiffness to measured
+frequencies too (frequencies that are the traps' own, without the interaction; levisim <= 0.1.1 did
+this by default), and `False` adds it to no frequency.
+
 The static forces of the interactions at those positions are kept in `interaction_static_forces`.
-They do not move the particles: place the traps at the equilibrium positions instead. The
+They do not move the particles: place the traps at the equilibrium positions instead, or build the
+MultiTrap with `MultiTrap.from_nonlinear_equilibrium`, which linearises every force (pair forces,
+cavity terms, gravity, recoil) at the equilibrium of the nonlinear model
+([static cavity field](static_cavity_shifts.md)). The
 displacement each force would cause in its trap alone is logged at DEBUG. In toy mode,
 `toy_params['g_direct'] = {('z1', 'z2'): (g_12, g_21)}` sets the rates directly (a single number for
 $g_{12} = g_{21}$). All seven calculation methods support these couplings
 ([calculation methods](calculation_methods.md)), and so does the stability analysis
 ([stability](stability.md)).
+
+## Ultrastrong coupling and the Brownian bath
+
+levisim's mechanical bath is the rotating-wave one: each dimension's $b_j$ is damped at $\Gamma/2$
+with its own input noise, which damps both quadratures. It thermalises each local oscillator, but
+when direct couplings mix the dimensions into normal modes with $g/\Omega$ not small, the normal modes
+do not come to one temperature (the rotating-wave bath is not the physical one there). For the axial
+modes of the Penny et al. (2023) notebook (372.74 and 298.03 Hz, $g/2\pi$ = 77.82 Hz) the steady-state
+covariance then differs from the Gibbs state by more than 1 %.
+
+`MultiTrap(brownian_bath=True)` uses the Brownian (velocity, Caldeira-Leggett) bath instead: the force
+$-\Gamma p$ and a momentum noise only,
+
+$$
+\dot X_j = \Omega_j P_j, \qquad \dot P_j = -\Omega_j X_j - \Gamma_j P_j + \ldots + \sqrt{2\Gamma_j}\,P_{\text{in},j},
+$$
+
+with $P_{\text{in}}$ of symmetrised variance $2n_j + 1$ (thermal and photon-recoil occupation as before),
+i.e. $\mathrm db_j/\mathrm dt \ni -\tfrac{\Gamma_j}{2}(b_j - b_j^\dagger) + \sqrt{\Gamma_j/2}\,(b_{\text{in},j} - b_{\text{in},j}^\dagger)$.
+Its fluctuation-dissipation relation holds for any potential, so the coupled modes reach the Gibbs
+state of the bath temperature: for the Penny system the steady-state covariance agrees with
+$k_BT$ times the inverse of the potential matrix to $1.4 \times 10^{-7}$ (the round-off of the
+occupation at $\hbar\Omega/k_BT \sim 10^{-10}$; `tests/test_equilibrium_and_brownian_bath.py`). It is the
+damping form of `FreeSpaceSimulation` and of the nonlinear cavity model's `damping='velocity'`. The
+option is opt-in and applies to the drift matrix, the Linear Amplifier Model methods (LAM, hybrid LAM,
+TNT LAM), `QuadratureSystem.from_multitrap` and the covariance functions; the hybridisation and
+analytic methods assume the rotating-wave bath and raise NotImplementedError with it.
 
 ## Time domain
 
