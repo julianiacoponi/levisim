@@ -130,6 +130,65 @@ def test_plain_tweezer_multitrap_is_unchanged_by_intra_trap_couplings():
 
 
 # --------------------------------------------------------------------------------------------------
+# decision 34: exact (Floquet) frequencies of a hybrid Paul trap
+# --------------------------------------------------------------------------------------------------
+def hill_beta(a, q, N=40):
+    """
+    Characteristic exponent β of y'' + (a + 2q cos 2τ) y = 0 from Hill's method, independent of the
+    monodromy: for a Floquet solution e^{iβτ} Σ c_n e^{2inτ}, a is the lowest eigenvalue of the
+    tridiagonal matrix (β + 2n)² δ_nm - q (δ_n,m+1 + δ_n,m-1), which brentq inverts for β ∈ (0, 1)
+    """
+    n = np.arange(-N, N + 1)
+
+    def lowest_a(β):
+        M = np.diag((β + 2*n)**2) - q * (np.eye(2*N + 1, k=1) + np.eye(2*N + 1, k=-1))
+        return np.linalg.eigvalsh(M)[0]
+    return brentq(lambda β: lowest_a(β) - a, 1e-9, 1 - 1e-9, xtol=1e-14)
+
+
+def _hybrid_paul_multitrap(q_axis, **kwargs):
+    bead = Bead(charge=2000)
+    tweezer = Tweezer(Power=4e-3)
+    f_rf = 300e3
+    # the ring trap about x has rf curvature -2 on x: q_x = -4 Q V/(m r0² Ω_rf²)
+    V = q_axis * bead.m * (1*mm)**2 * (f_rf*Hz)**2 / (4 * bead.q)
+    paul = PaulTrap.ring(V, f_rf*Hz, r0=1*mm, axis='x')
+    mt = MultiTrap(
+        tweezers=[tweezer], beads=[bead], trap_kwargs=[{'extra_fields': [paul], 'Γ_fbx': 0.0, 'Γ_fby': 0.0}],
+        Cartesian_axes_per_trap=3, static_cavity_shifts=False, gas_kwargs={'P': 1e-9*mbar}, **kwargs,
+    )
+    return mt, paul, bead, tweezer
+
+
+@pytest.mark.parametrize('q_axis', [0.2, 0.45])
+def test_hybrid_paul_multitrap_frequencies_are_the_floquet_values(q_axis):
+    mt, paul, bead, tweezer = _hybrid_paul_multitrap(q_axis)
+    K_tw = np.diag(Trap(tweezer=tweezer, bead=bead).stiffness_tensor)
+    a, q = paul.mathieu_parameters(bead, extra_stiffness=K_tw)
+    assert abs(q[0]) == pytest.approx(q_axis, rel=1e-12)
+    trap = mt.traps[0]
+    assert mt.floquet_paul_traps == {1}
+    for j, axis in enumerate('xyz'):
+        exact = hill_beta(a[j], q[j]) * paul.Ω_rf / 2
+        Ω = mt.dimensions[f'{axis}1'].Ω
+        assert Ω == pytest.approx(exact, rel=1e-8)
+        assert Ω == trap.paul_trap_report()['Ω_exact'][j]
+        assert mt.dimensions[f'{axis}1'].static_cavity_shift == 0.0
+    # the lowest-order stiffness is below the Floquet value on x, by 0.9% at |q| = 0.2 and 4.6% at
+    # |q| = 0.45 in this hybrid trap
+    lowest = mt.dimensions['x1'].Ω / trap.Ωx - 1
+    assert lowest == pytest.approx(0.0088 if q_axis < 0.3 else 0.046, rel=0.05)
+    old, *_ = _hybrid_paul_multitrap(q_axis, paul_exact_frequencies=False)
+    assert old.floquet_paul_traps == set()
+    assert [old.dimensions[f'{axis}1'].Ω for axis in 'xyz'] == [trap.Ωx, trap.Ωy, trap.Ωz]
+
+
+def test_hybrid_paul_multitrap_beyond_the_stability_region_raises():
+    with pytest.raises(ValueError, match='first Mathieu stability region'):
+        _hybrid_paul_multitrap(1.2)
+
+
+# --------------------------------------------------------------------------------------------------
 # decision 36: directed force noise β
 # --------------------------------------------------------------------------------------------------
 def test_directed_noise_default_depends_on_how_the_trap_is_built():

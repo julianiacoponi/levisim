@@ -155,7 +155,8 @@ A new trap is a new element. Two non-optical ones are in place:
   time-dependent `force`, $Q\,\mathbf{E}_\mathrm{rf}(\mathbf{r})\cos\Omega_\mathrm{rf}t$ plus the static
   part, so the time-domain simulation shows the micromotion and the Mathieu stability boundary. Its
   `stiffness` returns the secular (pseudopotential) stiffness, to lowest order in the Mathieu
-  parameters, which is what `MultiTrap` and $\Omega_j$ use, and `Trap.static_force` takes its
+  parameters, which is what $\Omega_j$ uses (`MultiTrap` takes the exact Floquet frequencies of the
+  hybrid trap instead, see the guide), and `Trap.static_force` takes its
   time-averaged `secular_force` (elements declare this with `is_time_dependent`). Its `noise` is the
   electrode voltage noise as a force noise $Q\,E_\mathrm{noise}$, which `FreeSpaceSimulation` adds.
 - The **magnetic trap** (`MagneticTrap`, see the guide [Magnetic levitation](../guide/magnetic_levitation.md))

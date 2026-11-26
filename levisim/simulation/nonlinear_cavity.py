@@ -211,7 +211,8 @@ class NonlinearCavityModel:
                     dim = mtrap.dimensions[label]
                     Ω, zpf, Γ = dim.Ω, dim.zpf, dim.Γ
                 else:
-                    Ω = mtrap.static_shifted_Ωj[index][axis] if mtrap.static_cavity_shifts else trap.Ωj[axis]
+                    shifted = mtrap.static_cavity_shifts or index in getattr(mtrap, 'floquet_paul_traps', ())
+                    Ω = mtrap.static_shifted_Ωj[index][axis] if shifted else trap.Ωj[axis]
                     zpf = np.sqrt(ħ / 2 / (m * Ω))
                     Γ = trap.Γth
                 self.Ω[n, a] = Ω
