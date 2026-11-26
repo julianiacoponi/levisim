@@ -6,12 +6,12 @@ surface). Above an infinite flat surface this is the field of an image dipole: a
 has its image μ' = μ - 2(μ·n̂)n̂ at depth h, and the energy of the magnet in the field of the image
 (half the dipole-dipole energy, since the image is induced) is ::
 
-    U(h, μ) = μ0 (|μ|² + (μ·n̂)²) / (64π h³) = μ0 (μ∥² + 2μ⊥²) / (64π h³)
+    U(h, μ) = μ0 (‖μ‖² + (μ·n̂)²) / (64π h³) = μ0 (μ∥² + 2μ⊥²) / (64π h³)
 
 (μ∥ parallel to the surface, μ⊥ = μ·n̂ normal to it). It repels the magnet (F = 3U/h along n̂) and
 turns its moment parallel to the surface. With gravity along -n̂ the magnet levitates at ::
 
-    h0⁴ = 3μ0|μ|² / (64π m g),     Ωz² = 4g/h0,     κ_tilt = 2μ0|μ|²/(64π h0³) = (2/3) m g h0
+    h0⁴ = 3μ0‖μ‖² / (64π m g),     Ωz² = 4g/h0,     κ_tilt = 2μ0‖μ‖²/(64π h0³) = (2/3) m g h0
 
 (the tilt of μ out of the surface plane; Vinante et al., Phys. Rev. Applied 13, 064027 (2020),
 Eqs. (1)-(6)). A flat surface gives no lateral confinement and no confinement of the azimuth of μ or
@@ -45,7 +45,7 @@ __all__ = [
 
 def meissner_levitation_height(moment, mass, g=g_earth):
     """
-    Equilibrium height h0 = (3μ0μ²/64π m g)^¼ of a magnet with moment |μ| and mass m above an
+    Equilibrium height h0 = (3μ0μ²/64π m g)^¼ of a magnet with moment ‖μ‖ and mass m above an
     infinite superconducting plane, its moment parallel to the surface (Vinante et al. (2020), Eq. (2))
     [m]
     """
@@ -105,7 +105,7 @@ class MeissnerImagePlane(ForceElement):
 
     def potential(self, r, particle, orientation=None):
         """
-        U = μ0(|μ|² + (μ·n̂)²)/(64π h³)
+        U = μ0(‖μ‖² + (μ·n̂)²)/(64π h³)
         [J]
         """
         μ = self._moment(particle, orientation)
@@ -141,7 +141,7 @@ class MeissnerImagePlane(ForceElement):
     def torque_stiffness(self, particle, orientation=None, r0=None):
         """
         K_ij = ∂²U/∂θ_i∂θ_j = 2c[(n̂·G_iμ)(n̂·G_jμ) + (n̂·μ)(n̂·½{G_i, G_j}μ)], c = μ0/(64π h³); with μ
-        parallel to the surface, 2c|μ|² for the tilt out of the surface plane and zero otherwise
+        parallel to the surface, 2c‖μ‖² for the tilt out of the surface plane and zero otherwise
         [N·m/rad]
         """
         from levisim.physics.rotation import GENERATORS

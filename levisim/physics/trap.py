@@ -952,9 +952,10 @@ class Trap:
     @cached_property
     def finite_size_tensors(self):
         """
-        (k, S/m): the translational stiffness tensor that the finite-size torque uses (m·Ωj² from
-        `override_Ω_dict` when it gives x, y and z, else `stiffness_tensor`) and the particle's
-        lab-frame mass-weighted second moment ⟨r rᵀ⟩ (`levisim.physics.rotation.second_moment_tensor`)
+        The pair of tensors that the finite-size torque uses: the translational stiffness tensor
+        (m·Ωj² from `override_Ω_dict` when it gives x, y and z, else `stiffness_tensor`) and the
+        particle's lab-frame mass-weighted second moment ⟨r rᵀ⟩ = S/m
+        (`levisim.physics.rotation.second_moment_tensor`)
         [N/m], [m²]
         """
         from levisim.physics.rotation import second_moment_tensor

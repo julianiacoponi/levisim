@@ -17,7 +17,9 @@ from levisim.core.constants import kB
 from levisim.core.logger import logger
 from levisim.core.plotting import set_plt_rcParams_to_xmgrace_style
 from levisim.core.units import kHz, mbar, nm, μs
-from levisim.multiphysics.enums.quantum_linear_theory_method import QuantumLinearTheoryMethod as Q
+from levisim.multiphysics.enums.quantum_linear_theory_method import (
+    QuantumLinearTheoryMethod as Q,
+)
 from levisim.multiphysics.multitrap import MultiTrap
 from levisim.physics import Ellipsoid, Gas, HarmonicPotential, Spheroid, Trap, Tweezer
 from levisim.physics.particle import body_axis_to_quaternion
