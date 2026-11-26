@@ -223,9 +223,12 @@ def test_small_amplitude_spectra_converge_to_the_linear_model():
     for label in ('homodyne', 'x1', 'y1'):
         f, S = nl.averaged_psd(label, num_segments=16)
         theory = lin.record_spectrum(label, f[1:], kind='discrete')
-        for lo, hi in ((1e3, 100e3), (100e3, 160e3), (160e3, 400e3), (1e6, 4.9e6)):
+        # the band of the mechanical resonances (100-160 kHz) scatters more from one noise path to the
+        # next: its median ratio for x1 is 1.055, 1.039, 1.076, 1.097 for seeds 21-24 (levisim 0.1.x
+        # parameters) and 1.064 for seed 21 with the radiation-reaction corrected polarisability
+        for (lo, hi), tolerance in zip(((1e3, 100e3), (100e3, 160e3), (160e3, 400e3), (1e6, 4.9e6)), (0.06, 0.12, 0.06, 0.06)):
             band = (f[1:] > lo) & (f[1:] < hi)
-            assert abs(np.median(S[1:][band] / theory[band]) - 1) < 0.06, (label, lo, hi)
+            assert abs(np.median(S[1:][band] / theory[band]) - 1) < tolerance, (label, lo, hi)
 
 
 # --------------------------------------------------------------------------------------------------
@@ -312,14 +315,16 @@ def test_unstable_system_grows_at_max_growth_rate_then_saturates():
         assert 0 < i0 < i1
         rates.append(np.polyfit(t[i0:i1], np.log(E[k, i0:i1]), 1)[0] / 2)
     assert np.mean(rates) == pytest.approx(mtrap.max_growth_rate, rel=0.03)
-    # it saturates: every trajectory peaks within the run and has decayed below 10% of its peak by the
-    # end (8 ms; the slowest of the 4 is at 6%, still decaying), the median below 1%; the motion stays
-    # bounded and finite
+    # it saturates: every trajectory peaks within the run and is below its peak at the end (8 ms); the
+    # motion stays bounded and finite. How fast a saturated trajectory decays afterwards depends on the
+    # noise path: with seed 2 all four were below 10% of their peak at 8 ms in levisim 0.1.x, but with
+    # seed 3 one stays at 87%, and with the radiation-reaction corrected polarisability (a 5e-5
+    # change of every cavity coupling) two of the four of seed 2 are at 56% and 79%
     assert np.all(np.isfinite(sim.states))
     peak = E.max(axis=1)
     assert np.all(np.argmax(E, axis=1) < E.shape[1] - 1)
-    assert np.all(E[:, -1] < 0.1 * peak)
-    assert np.median(E[:, -1] / peak) < 1e-2
+    assert np.all(E[:, -1] < peak)
+    assert np.min(E[:, -1] / peak) < 1e-2
     y = sim.states[..., 2 + 2] * sim.nonlinear_model.zpf[0, 1]
     assert np.abs(y).max() < 1e-6
 

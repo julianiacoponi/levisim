@@ -27,8 +27,8 @@ cavity decay, gas damping and the noises, are ::
     dp_n = [F_elements,n(r_n) + 2·Ed_n·Re(α_n*·∇D_n) - α_pol·E0²·|α|²·k·sin(2(k·d·r_n + Φ_n))·d
             + Σ_m F_pair,nm - Γ_n·p_n] dt + thermal and photon-recoil force noise
 
-with ωd = Ed/ħ, Ed = α_pol·E_d·E0/2 (`Trap.Ed`) and δ = α_pol·E0²/ħ (the cavity pull of one bead,
-a few Hz for a 60 nm bead). The drive and the force are conjugate by construction
+with ωd = Ed/ħ, Ed = α_pol·E_d·E0/2 (`Trap.Ed`) and δ = α_pol·E0²/ħ (the cavity pull of one bead at
+an antinode, δ/2π ≈ 3.4 kHz for a 60 nm bead in levisim's default cavity). The drive and the force are conjugate by construction
 (`cavity_drive`, `optical_force`). Expanding H to second order in r and in α - ᾱ about the trap
 centre gives exactly `MultiTrap`'s linearised Hamiltonian H/ħ = -Δa†a - Σ q_j(G_j a† + G_j* a) - ...:
 the linear term in r of -2·Ed·Re(α_n*·D_n) is -ħ·g_j·q_j·(a_n + a_n†) for x, y (∝ sin Φ) and
@@ -37,7 +37,14 @@ the linear term in r of -2·Ed·Re(α_n*·D_n) is -ħ·g_j·q_j·(a_n + a_n†) 
 `static_cavity_hessian`. `tests/test_cavity_nonlinear.py::test_jacobian_equals_the_drift_matrix_at_the_node`
 checks this numerically: at the node the Jacobian of the drift below (damping='symmetric') equals
 `MultiTrap.drift_matrix` in quadratures to 1.5 × 10⁻¹³ of its largest entry (measured for 1×2, 2×2,
-1×3, 2×3, 3×2; the test requires 10⁻⁸).
+1×3, 2×3, 3×2; the test requires 10⁻⁸). Off the node, evaluated at MultiTrap's static field and the
+trap centres, it equals the drift matrix to ~2 × 10⁻¹³ as well, with unequal tweezer phases
+(`tests/test_static_cavity_field.py`), since MultiTrap includes the tweezer phases of the static
+field, the dispersive coupling and pull, the envelope and Re α_eff (levisim 1.0 defaults). The
+standing wave carries the cavity mode's transverse envelope exp(-ρ²/w²) (`cavity_envelope`) when the
+MultiTrap does (`MultiTrap(cavity_envelope=True)`, the default), and the polarisability of the cavity
+terms is the MultiTrap's (`cavity_effective_polarisability`). `MultiTrap.from_nonlinear_equilibrium`
+builds a MultiTrap from this model's Jacobian at the true equilibrium.
 
 Quadratures and scaling
 -----------------------
@@ -106,8 +113,8 @@ _REC = 12                   # ½·Im α_eff, k of the recoil element; flag at _R
 _GRAV = 15                  # constant force (3) [N]
 _HARM_K = 18                # stiffness (9, row-major) [N/m]
 _HARM_KC = 27               # K·c (3) [N]
-_CS = 30                    # s, c, k, Φ, wx0, wy0, zR (drive tweezer), ωd, 2·Ed, cos φ, sin φ, δ, α_pol·E0²
-NUM_PARAMETERS = 43
+_CS = 30                    # s, c, k, Φ, wx0, wy0, zR (drive tweezer), ωd, 2·Ed, cos φ, sin φ, δ, α_pol·E0², 1/w²
+NUM_PARAMETERS = 44
 
 
 def _bose_einstein(Ω, T):
@@ -180,6 +187,8 @@ class NonlinearCavityModel:
 
         cavity = mtrap.cavity
         self.Δ, self.κ, self.E0 = float(cavity.Δ), float(cavity.κ), float(cavity.E0)
+        # the cavity mode's transverse envelope, as MultiTrap(cavity_envelope=True) uses it
+        self.cavity_waist = float(cavity.waist) if getattr(mtrap, 'cavity_envelope', False) else None
         self._setup_particles()
         self._setup_linear_part()
         self._setup_noise()
@@ -249,11 +258,14 @@ class NonlinearCavityModel:
                 self.compilable = False
 
             drive = trap.drive_tweezer
-            Ed = 0.5 * drive_polarisability(trap) * trap.cavity_drive_field * self.E0
+            effective = getattr(mtrap, 'cavity_effective_polarisability', False)
+            Ed = 0.5 * drive_polarisability(trap, effective) * trap.cavity_drive_field * self.E0
+            α_cav = cavity_mode_polarisability(trap, effective)
             φ = float(trap.tweezer.φ)
-            P[n, _CS:_CS + 13] = [
+            P[n, _CS:_CS + 14] = [
                 np.sin(drive.θ), np.cos(drive.θ), drive.k, trap.bead.Φ, drive.wx0, drive.wy0, drive.zR,
-                Ed / ħ, 2 * Ed, np.cos(φ), np.sin(φ), cavity_mode_polarisability(trap) * self.E0**2 / ħ, cavity_mode_polarisability(trap) * self.E0**2,
+                Ed / ħ, 2 * Ed, np.cos(φ), np.sin(φ), α_cav * self.E0**2 / ħ, α_cav * self.E0**2,
+                1 / self.cavity_waist**2 if self.cavity_waist is not None else 0.0,
             ]
         if self.interactions:
             self.compilable = False
@@ -396,6 +408,14 @@ class NonlinearCavityModel:
             u = kk * (s * x + c * y) + Φ
             cos_u, sin_u = np.cos(u), np.sin(u)
             α = (U[:, 0] + 1j * U[:, 1]) / 2
+            inv_w2 = P[:, _CS + 13]
+            envelope = bool(np.any(inv_w2 > 0))
+            if envelope:
+                # the cavity mode's envelope e = exp(-ρ²/w²) about its axis, ∇ln e = -2·(r - d(d·r))/w²
+                along = s * x + c * y
+                tx, ty, tz = x - along * s, y - along * c, z
+                env = np.exp(-(tx**2 + ty**2 + tz**2) * inv_w2)
+                gl = np.stack([-2 * tx * inv_w2, -2 * ty * inv_w2, -2 * tz * inv_w2], axis=-1)
         if 'coherent_scattering' in terms:
             ωd, two_Ed, cos_φ, sin_φ = (P[:, _CS + i] for i in range(7, 11))
             w2 = 1 + (z / zR)**2
@@ -408,6 +428,11 @@ class NonlinearCavityModel:
             gx = D * (-2 * x / (wx0**2 * w2)) - dD_sin * s
             gy = D * (-2 * y / (wy0**2 * w2)) - dD_sin * c
             gz = D * ((z / zR**2) / w2 * (2 * e - 1)) + 1j * (kk - zR / (zR**2 + z**2)) * D
+            if envelope:
+                gx = env * (gx + D * gl[..., 0])
+                gy = env * (gy + D * gl[..., 1])
+                gz = env * (gz + D * gl[..., 2])
+                D = D * env
             e_iφ = cos_φ + 1j * sin_φ
             α_n_conj = np.conj(α)[:, None] * e_iφ          # (α·e^{-iφ})*
             force[..., 0] += two_Ed * np.real(α_n_conj * gx)
@@ -417,9 +442,16 @@ class NonlinearCavityModel:
         if 'cavity' in terms:
             δ, αpol_E0sq = P[:, _CS + 11], P[:, _CS + 12]
             Fcav = -αpol_E0sq * (np.abs(α)**2)[:, None] * kk * 2 * sin_u * cos_u
-            force[..., 0] += Fcav * s
-            force[..., 1] += Fcav * c
-            dα = dα + 1j * α * np.sum(δ * cos_u**2, axis=1)
+            if envelope:
+                intensity = αpol_E0sq * (np.abs(α)**2)[:, None] * env**2
+                force[..., 0] += env**2 * Fcav * s + intensity * 2 * cos_u**2 * gl[..., 0]
+                force[..., 1] += env**2 * Fcav * c + intensity * 2 * cos_u**2 * gl[..., 1]
+                force[..., 2] += intensity * 2 * cos_u**2 * gl[..., 2]
+                dα = dα + 1j * α * np.sum(δ * cos_u**2 * env**2, axis=1)
+            else:
+                force[..., 0] += Fcav * s
+                force[..., 1] += Fcav * c
+                dα = dα + 1j * α * np.sum(δ * cos_u**2, axis=1)
         if 'interactions' in terms and self.interactions:
             for k in range(K):
                 lab = self.trap_positions + r[k]

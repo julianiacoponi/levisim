@@ -38,8 +38,17 @@ The wavenumber kc of the standing wave is the cavity's, `Cavity.k` = (ωtw - Δ)
 here takes it as the keyword `kc`; ``kc=None`` uses the tweezer wavenumber instead, which is what
 `MultiTrap` does unless `cavity_wavenumber=True` (the two differ by abs(Δ)/ωtw ~ 6 × 10⁻¹⁰).
 The cavity mode's transverse envelope (waist ~ 61 μm) is left out unless `cavity_waist` is given
-(it changes the second derivatives by ~2/(k·w)² ~ 10⁻⁵), and the cross term uses the static
-polarisability `Bead.α` (as Ed does) where the tweezer term uses Re `Trap.α_eff` (as `Trap.kj` does).
+(it changes the second derivatives by ~2/(k·w)² ~ 10⁻⁵); `MultiTrap(cavity_envelope=True)`, the
+default, gives it `Cavity.waist`.
+
+Polarisability: every term uses the real part of the radiation-reaction corrected polarisability,
+Re α_eff = Re[α/(1 - i·k³α/(6πε0))] (the lab-frame tensor Re[α(𝟙 - i·k³α/(6πε0))⁻¹] for an
+anisotropic particle), at the wavenumber of the light the particle scatters into the cavity (the
+drive tweezer's): the same polarisability as the tweezer stiffness `Trap.kj`. Re α_eff differs from
+the static `Bead.α` by (k³α/(6πε0))² ≈ 5 × 10⁻⁵ for a 60 nm silica bead at 1064 nm.
+`effective_polarisability=False` (``MultiTrap(cavity_effective_polarisability=False)``) uses the
+static polarisability in the coherent-scattering and cavity terms instead, as levisim did before
+1.0.
 """
 import numpy as np
 
@@ -48,6 +57,7 @@ from levisim.core.constants import ħ
 __all__ = [
     'cavity_axis',
     'cavity_drive',
+    'cavity_envelope',
     'cavity_mode_polarisability',
     'cavity_polarisation',
     'drive_polarisability',
@@ -91,27 +101,43 @@ def _static_lab_polarisability(particle):
     return particle.lab_tensor(_as_tensor(particle.static_polarisability_tensor()))
 
 
+def _lab_polarisability(trap, effective_polarisability=True):
+    """
+    The real lab-frame polarisability tensor of the cavity terms: Re α_eff at the drive tweezer's
+    wavenumber (`Tweezer.lab_effective_polarisability`), or the static tensor
+    [Fm²]
+    """
+    if effective_polarisability:
+        return np.real(trap.drive_tweezer.lab_effective_polarisability(trap.bead))
+    return _static_lab_polarisability(trap.bead)
+
+
 def _uses_scalar_drive(trap):
     from levisim.physics.tweezer import _has_scalar_polarisability
     return _has_scalar_polarisability(trap.bead) and trap.drive_tweezer.has_default_polarisation
 
 
-def drive_polarisability(trap):
+def drive_polarisability(trap, effective_polarisability=True):
     """
     The polarisability α_pol that scatters the drive tweezer's light into the cavity mode, defined so
     that α_pol·sin θ = e_c·α·ê (e_c `cavity_polarisation`, ê the drive tweezer's polarisation, α the
-    particle's static lab-frame tensor); it enters Ed = α_pol·E_d·E0/2 (`Trap.Ed`)
+    particle's lab-frame tensor: Re α_eff, or the static tensor with effective_polarisability=False);
+    it enters Ed = α_pol·E_d·E0/2 (`Trap.Ed`)
 
-    For an isotropic sphere in levisim's y-polarised tweezer it is `Bead.α` itself (the same object,
-    so every number is unchanged). For an anisotropic particle it includes the cross-polarised
+    For an isotropic sphere in levisim's y-polarised tweezer it is Re α_eff at the drive tweezer's
+    wavenumber (`Tweezer.effective_polarisability`, the polarisability of `Trap.kj`), or `Bead.α`
+    itself with effective_polarisability=False. For an anisotropic particle it includes the cross-polarised
     scattering of a tilted particle (e_c·α·ŷ rather than ŷ·α·ŷ). A drive whose e_c·α·ê is complex
     (elliptical light) or non-zero at sin θ = 0 cannot be written in this form: NotImplementedError.
     [Fm²]
     """
     if _uses_scalar_drive(trap):
+        if effective_polarisability:
+            return float(np.real(trap.drive_tweezer.effective_polarisability(trap.bead)))
         return trap.bead.α
     θ = trap.drive_tweezer.θ
-    s = complex(cavity_polarisation(θ) @ _static_lab_polarisability(trap.bead) @ np.asarray(trap.drive_tweezer.polarisation, dtype=complex))
+    α_lab = _lab_polarisability(trap, effective_polarisability)
+    s = complex(cavity_polarisation(θ) @ α_lab @ np.asarray(trap.drive_tweezer.polarisation, dtype=complex))
     if abs(np.sin(θ)) < 1e-12:
         if s == 0:
             return 0.0
@@ -128,20 +154,24 @@ def drive_polarisability(trap):
     return float(value.real)
 
 
-def cavity_mode_polarisability(trap):
+def cavity_mode_polarisability(trap, effective_polarisability=True):
     """
     The polarisability e_c·α·e_c of the particle for the cavity mode's own light (the cavity
-    dispersive term U_cav and the cavity pull); `Bead.α` for an isotropic sphere
+    dispersive term U_cav and the cavity pull), with α = Re α_eff at the drive tweezer's wavenumber
+    (the cavity light's, to |Δ|/ω ~ 10⁻⁹), or the static tensor with effective_polarisability=False;
+    Re α_eff (or `Bead.α`) for an isotropic sphere
     [Fm²]
     """
     from levisim.physics.tweezer import _has_scalar_polarisability
     if _has_scalar_polarisability(trap.bead):
+        if effective_polarisability:
+            return float(np.real(trap.drive_tweezer.effective_polarisability(trap.bead)))
         return trap.bead.α
     e_c = cavity_polarisation(trap.drive_tweezer.θ)
-    return float(np.real(e_c @ _static_lab_polarisability(trap.bead) @ e_c))
+    return float(np.real(e_c @ _lab_polarisability(trap, effective_polarisability) @ e_c))
 
 
-def librational_expansion(trap, cavity_E0, α, kc=None):
+def librational_expansion(trap, cavity_E0, α, kc=None, effective_polarisability=True):
     """
     The coherent-scattering and cavity terms of the librations (small rotations θ = (θα, θβ, θγ) about
     the lab axes at the particle's orientation) of one particle at its trap centre, from the same
@@ -163,9 +193,13 @@ def librational_expansion(trap, cavity_E0, α, kc=None):
         K_rθ_CS     -E_d·E0·Re(α_c*·∇_i F·∂_j s)  (rows x, y, z)         [N/rad]
         K_rθ_cav    E0²·|α_c|²·k·sin 2Φ·d_i·∂_j c                        [N/rad]
         torque      static torque -∂U/∂θ of the cavity terms at θ = 0     [N·m]
+        light_cav   c'_j such that the dynamical coupling of U_cav is G_j = c'_j·θ_zpf,j·α_c
+                    (cavity frame), c'_j = E0²·cos²Φ·∂_j c/ħ                [1/(s·rad)]
 
     E_d = `Trap.cavity_drive_field`, E0 = `Cavity.E0` (field per photon), α_c the static intracavity
-    amplitude (bead frame), the static polarisability tensor α as for `Trap.Ed`, kc the standing-wave
+    amplitude (bead frame), the polarisability tensor α as for `Trap.Ed` (Re α_eff, or the static
+    tensor with effective_polarisability=False; the radiation reaction commutes with the rotation,
+    so α(θ) is the rotated Re α_eff), kc the standing-wave
     wavenumber (None: the drive tweezer's, as everywhere in this module). The cavity mode
     polarised along z (perpendicular to levisim's cavity polarisation e_c) is not modelled, so the
     rotations it would couple (about x for the default geometry) have no light coupling here.
@@ -179,7 +213,7 @@ def librational_expansion(trap, cavity_E0, α, kc=None):
     e_c = cavity_polarisation(θc).astype(complex)
     ê = np.asarray(drive.polarisation, dtype=complex)
     d = cavity_axis(θc)
-    α_lab = _static_lab_polarisability(trap.bead)
+    α_lab = _lab_polarisability(trap, effective_polarisability)
     dα, d2α = rotated_tensor_derivatives(α_lab)
     # e_c is real, so e_c·T·v needs no conjugation
     s_j = np.einsum('a,jab,b->j', e_c, dα, ê)
@@ -198,6 +232,7 @@ def librational_expansion(trap, cavity_E0, α, kc=None):
         'K_rθ_CS': -EdE0 * np.real(np.conj(α) * np.outer(grad_F, s_j)),
         'K_rθ_cav': intensity * k_sw * np.sin(2 * Φ) * np.outer(d, c_j),
         'torque': EdE0 * np.real(np.conj(α) * F0 * s_j) + intensity * np.cos(Φ)**2 * c_j,
+        'light_cav': cavity_E0**2 * np.cos(Φ)**2 * c_j / ħ,
     }
 
 
@@ -206,7 +241,7 @@ def _split_position(r):
     return r[..., 0], r[..., 1], r[..., 2]
 
 
-def optical_potential(r, trap, cavity_E0, α, terms=_TERMS, cavity_waist=None, kc=None):
+def optical_potential(r, trap, cavity_E0, α, terms=_TERMS, cavity_waist=None, kc=None, effective_polarisability=True):
     """
     Dipole potential of one bead in its tweezer and a static cavity field, at displacement r
 
@@ -220,6 +255,8 @@ def optical_potential(r, trap, cavity_E0, α, terms=_TERMS, cavity_waist=None, k
         - cavity_waist: if given, the cavity mode's transverse Gaussian envelope exp(-ρ²/w²) about
           the cavity axis through the trap centre is included [m]
         - kc: wavenumber of the standing wave [m⁻¹]; None uses the drive tweezer's
+        - effective_polarisability: Re α_eff in the cavity terms (default) or the static
+          polarisability (see the module docstring)
 
     [J]
     """
@@ -247,14 +284,15 @@ def optical_potential(r, trap, cavity_E0, α, terms=_TERMS, cavity_waist=None, k
         A0, P0 = 2 * α.real, 2 * α.imag
         envelope = drive.E_field_amplitude(x, y, z) / drive.E0
         ψ = k * z - np.arctan(z / drive.zR)
-        Ed = 0.5 * drive_polarisability(trap) * trap.cavity_drive_field * cavity_E0
+        Ed = 0.5 * drive_polarisability(trap, effective_polarisability) * trap.cavity_drive_field * cavity_E0
         U = U - Ed * np.sin(θ) * envelope * standing_wave * (A0 * np.cos(ψ) + P0 * np.sin(ψ))
     if 'cavity' in terms:
-        U = U - cavity_mode_polarisability(trap) * cavity_E0**2 * abs(α)**2 * standing_wave**2
+        U = U - cavity_mode_polarisability(trap, effective_polarisability) * cavity_E0**2 * abs(α)**2 * standing_wave**2
     return U
 
 
-def static_cavity_hessian(trap, cavity_E0, α, kc=None, terms=('coherent_scattering', 'cavity')):
+def static_cavity_hessian(trap, cavity_E0, α, kc=None, terms=('coherent_scattering', 'cavity'), cavity_waist=None,
+                          effective_polarisability=True):
     """
     The static stiffness that the cavity field adds to the trap and that the linearised couplings
     leave out, at the trap centre: a symmetric 3 × 3 matrix K over (x, y, z), δU = ½·Σ Kjk·rj·rk
@@ -271,8 +309,19 @@ def static_cavity_hessian(trap, cavity_E0, α, kc=None, terms=('coherent_scatter
 
     A dimension's frequency becomes Ω² → Ω² + Kjj/m, and Kxy adds -Kxy·x_zpf·y_zpf/ħ to gxy.
 
+    With `cavity_waist` w the standing wave carries the cavity mode's transverse envelope
+    exp(-ρ²/w²) about the cavity axis through the trap centre (ρ² = r² - (d·r)²), whose curvature
+    adds, to both terms and including the off-diagonal x-y entry (which levisim's gxy leaves out) ::
+
+        K_env = (2/w²)·[Ed·s·A0·cos Φ + 2·α_pol·E0²·|α|²·cos²Φ]·(𝟙 - d dᵀ)
+
+    (~2/(kc·w)² ≈ 10⁻⁵ of the terms above; the envelope's gradient vanishes at the trap centre, so
+    it adds no force and no linear coupling).
+
         - terms: 'coherent_scattering' (cotrapping) and/or 'cavity' (dispersive)
         - kc: wavenumber of the standing wave [m⁻¹]; None uses the drive tweezer's
+        - cavity_waist: the cavity mode's waist w [m] (`Cavity.waist`); None leaves the envelope out
+        - effective_polarisability: Re α_eff (default) or the static polarisability
 
     [N/m]
     """
@@ -286,7 +335,7 @@ def static_cavity_hessian(trap, cavity_E0, α, kc=None, terms=('coherent_scatter
     s, c = np.sin(θ), np.cos(θ)
     K = np.zeros((3, 3))
     if 'coherent_scattering' in terms:
-        Ed = 0.5 * drive_polarisability(trap) * trap.cavity_drive_field * cavity_E0
+        Ed = 0.5 * drive_polarisability(trap, effective_polarisability) * trap.cavity_drive_field * cavity_E0
         prefactor = Ed * s * A0 * np.cos(Φ)
         K = K + np.diag([
             prefactor * (k_sw**2 * s**2 + 2 / drive.wx0**2),
@@ -295,17 +344,25 @@ def static_cavity_hessian(trap, cavity_E0, α, kc=None, terms=('coherent_scatter
         ])
     if 'cavity' in terms:
         d = cavity_axis(θ)
-        K = K + 2 * cavity_mode_polarisability(trap) * cavity_E0**2 * abs(α)**2 * k_sw**2 * np.cos(2 * Φ) * np.outer(d, d)
+        K = K + 2 * cavity_mode_polarisability(trap, effective_polarisability) * cavity_E0**2 * abs(α)**2 * k_sw**2 * np.cos(2 * Φ) * np.outer(d, d)
+    if cavity_waist is not None:
+        transverse = np.eye(3) - np.outer(cavity_axis(θ), cavity_axis(θ))
+        curvature = 0.0
+        if 'coherent_scattering' in terms:
+            curvature = curvature + Ed * s * A0 * np.cos(Φ)
+        if 'cavity' in terms:
+            curvature = curvature + 2 * cavity_mode_polarisability(trap, effective_polarisability) * cavity_E0**2 * abs(α)**2 * np.cos(Φ)**2
+        K = K + (2 / cavity_waist**2) * curvature * transverse
     return K
 
 
-def static_cavity_force(trap, cavity_E0, α, kc=None):
+def static_cavity_force(trap, cavity_E0, α, kc=None, effective_polarisability=True):
     """
     The static force of the cavity field on the bead at the trap centre, -∇(U_CS + U_cav) at r = 0
 
-    levisim linearises about the trap centre and does not move the bead to the displaced
+    `MultiTrap` linearises about the trap centre and does not move the bead to the displaced
     equilibrium r_eq ≈ K_tw⁻¹·F that this force implies; this function quantifies that
-    approximation.
+    approximation (`MultiTrap.from_nonlinear_equilibrium` linearises at the true equilibrium).
     [N]
     """
     drive = trap.drive_tweezer
@@ -316,11 +373,11 @@ def static_cavity_force(trap, cavity_E0, α, kc=None):
     α = complex(α)
     A0, P0 = 2 * α.real, 2 * α.imag
     s = np.sin(θ)
-    Ed = 0.5 * drive_polarisability(trap) * trap.cavity_drive_field * cavity_E0
+    Ed = 0.5 * drive_polarisability(trap, effective_polarisability) * trap.cavity_drive_field * cavity_E0
     d = cavity_axis(θ)
     # -∂U_CS/∂r = Ed·s·[-k·sin Φ·A0·d + cos Φ·P0·kz·ẑ];  -∂U_cav/∂r = -α_pol·E0²·|α|²·k·sin 2Φ·d
     F_CS = Ed * s * (-k_sw * np.sin(Φ) * A0 * d + np.array([0.0, 0.0, np.cos(Φ) * P0 * kz]))
-    F_cav = -cavity_mode_polarisability(trap) * cavity_E0**2 * abs(α)**2 * k_sw * np.sin(2 * Φ) * d
+    F_cav = -cavity_mode_polarisability(trap, effective_polarisability) * cavity_E0**2 * abs(α)**2 * k_sw * np.sin(2 * Φ) * d
     return F_CS + F_cav
 
 
@@ -389,6 +446,20 @@ def _amplitude_gradient(g):
     return grad
 
 
+def cavity_envelope(r, trap, cavity_waist):
+    """
+    The cavity mode's transverse envelope e(r) = exp(-ρ²/w²) about the cavity axis through the trap
+    centre (ρ² = r² - (d·r)², d `cavity_axis`) and ∇ln e = -2·(r - d·(d·r))/w², at displacement(s) r
+    of shape (..., 3) [m]; cavity_waist w [m]. Returns (e [·], ∇ln e [1/m], shape (..., 3)).
+    """
+    r = np.asarray(r, dtype=float)
+    d = cavity_axis(trap.drive_tweezer.θ)
+    along = r @ d
+    transverse = r - along[..., None] * d
+    ρ2 = np.sum(transverse**2, axis=-1)
+    return np.exp(-ρ2 / cavity_waist**2), -2 * transverse / cavity_waist**2
+
+
 def scattering_amplitude_gradient(r, trap):
     """
     ∇D of `scattering_amplitude`, shape (..., 3), in closed form ::
@@ -400,7 +471,8 @@ def scattering_amplitude_gradient(r, trap):
     return _amplitude_gradient(scattering_geometry(r, trap))
 
 
-def optical_force(r, trap, cavity_E0, α, terms=('tweezer', 'coherent_scattering', 'cavity')):
+def optical_force(r, trap, cavity_E0, α, terms=('tweezer', 'coherent_scattering', 'cavity'), cavity_waist=None,
+                  effective_polarisability=True):
     """
     The force -∇U of `optical_potential` (plane-wave cavity mode), in closed form ::
 
@@ -409,7 +481,10 @@ def optical_force(r, trap, cavity_E0, α, terms=('tweezer', 'coherent_scattering
         F_cav = -α_pol·E0²·|α|²·k·sin(2(k·d·r + Φ))·d
 
     - r: displacement(s) from the trap centre, shape (..., 3) [m]
-    - trap, cavity_E0, α (bead-frame static amplitude), terms: as `optical_potential`
+    - trap, cavity_E0, α (bead-frame static amplitude), terms, effective_polarisability: as
+      `optical_potential`
+    - cavity_waist: the cavity mode's waist [m]: D → D·e and cos² → cos²·e² with the envelope e of
+      `cavity_envelope` (None: a plane-wave mode)
 
     The tests check it against central differences of `optical_potential`. Returns shape (..., 3).
     [N]
@@ -432,15 +507,28 @@ def optical_force(r, trap, cavity_E0, α, terms=('tweezer', 'coherent_scattering
         ], axis=-1)
     if 'coherent_scattering' in terms or 'cavity' in terms:
         g = scattering_geometry(r, trap)
+        if cavity_waist is not None:
+            e, grad_ln_e = cavity_envelope(r, trap, cavity_waist)
     if 'coherent_scattering' in terms:
-        Ed = 0.5 * drive_polarisability(trap) * trap.cavity_drive_field * cavity_E0
-        F = F + 2 * Ed * np.real(np.conj(α) * _amplitude_gradient(g))
+        Ed = 0.5 * drive_polarisability(trap, effective_polarisability) * trap.cavity_drive_field * cavity_E0
+        grad_D = _amplitude_gradient(g)
+        if cavity_waist is not None:
+            D = g['s'] * g['f'] * np.cos(g['u']) * np.exp(1j * g['ψ'])
+            grad_D = e[..., None] * (grad_D + D[..., None] * grad_ln_e)
+        F = F + 2 * Ed * np.real(np.conj(α) * grad_D)
     if 'cavity' in terms:
-        F = F - (cavity_mode_polarisability(trap) * cavity_E0**2 * abs(α)**2 * g['k'] * np.sin(2 * g['u']))[..., None] * g['d']
+        intensity = cavity_mode_polarisability(trap, effective_polarisability) * cavity_E0**2 * abs(α)**2
+        if cavity_waist is None:
+            F = F - (intensity * g['k'] * np.sin(2 * g['u']))[..., None] * g['d']
+        else:
+            F = F + (intensity * e**2)[..., None] * (
+                -(g['k'] * np.sin(2 * g['u']))[..., None] * g['d'] + (2 * np.cos(g['u'])**2)[..., None] * grad_ln_e
+            )
     return F
 
 
-def cavity_drive(r, trap, cavity_E0, α, φ=0.0, terms=('coherent_scattering', 'cavity')):
+def cavity_drive(r, trap, cavity_E0, α, φ=0.0, terms=('coherent_scattering', 'cavity'), cavity_waist=None,
+                 effective_polarisability=True):
     """
     The bead's contribution to dα/dt of the cavity amplitude α (lab frame) at displacement r ::
 
@@ -448,21 +536,25 @@ def cavity_drive(r, trap, cavity_E0, α, φ=0.0, terms=('coherent_scattering', '
 
     with ωd = Ed/ħ, φ the tweezer phase (the bead-frame amplitude is α·e^{-iφ}) and D the
     `scattering_amplitude`. The first term is the coherent-scattering drive; at the trap centre it
-    is levisim's static drive i·ωd·sin θ·cos Φ (times e^{iφ}, which `MultiTrap`'s static field
-    leaves out). The second is the frequency pull of the cavity by the bead (U_cav), which
-    `MultiTrap` leaves out of the detuning. Drive and force come from the one energy
+    is levisim's static drive i·ωd·sin θ·cos Φ·e^{iφ} (`MultiTrap(static_cavity_phases=True)`). The second
+    is the frequency pull of the cavity by the bead (U_cav), which `MultiTrap(cavity_dispersive_coupling=True)`
+    includes in the detuning (`Cavity.dispersive_shift`). Drive and force come from the one energy
     H = -ħΔ|α|² + Σ U_n through dα/dt = -(i/ħ)·∂H/∂α* and dp/dt = -∇H, so they are conjugate.
-    r: shape (..., 3) [m]; α [√photons]; φ [rad]
+    r: shape (..., 3) [m]; α [√photons]; φ [rad]; cavity_waist [m] as `optical_force`
     [√photons/s]
     """
     α = complex(α)
     g = scattering_geometry(r, trap)
+    e = 1.0 if cavity_waist is None else cavity_envelope(r, trap, cavity_waist)[0]
     drive = np.zeros(np.shape(g['u']), dtype=complex)
     if 'coherent_scattering' in terms:
-        ωd = 0.5 * drive_polarisability(trap) * trap.cavity_drive_field * cavity_E0 / ħ
+        ωd = 0.5 * drive_polarisability(trap, effective_polarisability) * trap.cavity_drive_field * cavity_E0 / ħ
         D = g['s'] * g['f'] * np.cos(g['u']) * np.exp(1j * g['ψ'])
+        if cavity_waist is not None:
+            D = D * e
         drive = drive + 1j * ωd * np.exp(1j * φ) * D
     if 'cavity' in terms:
-        δ = cavity_mode_polarisability(trap) * cavity_E0**2 / ħ
-        drive = drive + 1j * δ * np.cos(g['u'])**2 * α
+        δ = cavity_mode_polarisability(trap, effective_polarisability) * cavity_E0**2 / ħ
+        standing = np.cos(g['u'])**2 if cavity_waist is None else np.cos(g['u'])**2 * e**2
+        drive = drive + 1j * δ * standing * α
     return drive

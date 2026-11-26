@@ -83,7 +83,13 @@ def quadrature_diffusion_matrix(mtrap):
     γ = np.asarray(mtrap.γ, dtype=float)
     factors = np.asarray(mtrap.quantum_factor_per_noise_operator, dtype=float)
     per_mode = [γ[2*k] * (factors[2*k] + factors[2*k + 1]) for k in range(len(γ) // 2)]
-    return np.diag(np.repeat(per_mode, 2))
+    D = np.diag(np.repeat(per_mode, 2))
+    if getattr(mtrap, 'brownian_bath', False):
+        # momentum diffusion only, 2γ(2n + 1), for every mechanical mode
+        for k in range(1, len(per_mode)):
+            D[2*k, 2*k] = 0.0
+            D[2*k + 1, 2*k + 1] = 2 * per_mode[k]
+    return D
 
 
 def quadrature_matrices(mtrap, cavity=True, extra_heating=None):
@@ -97,7 +103,7 @@ def quadrature_matrices(mtrap, cavity=True, extra_heating=None):
       couplings and static shifts but without the cavity (exact when no dimension couples to the
       cavity, G = 0)
     - extra_heating: {label: Γ_h} heating rates [phonons/s] added to the diffusion, 2Γ_h on both
-      quadratures of each listed mechanical mode
+      quadratures of each listed mechanical mode (4Γ_h on the momentum with brownian_bath=True)
 
     [2π·Hz, 2π·Hz]
     """
@@ -105,8 +111,12 @@ def quadrature_matrices(mtrap, cavity=True, extra_heating=None):
     D = quadrature_diffusion_matrix(mtrap)
     for label, rate in (extra_heating or {}).items():
         k = mode_index(mtrap, label)
-        D[2*k, 2*k] += 2 * rate
-        D[2*k + 1, 2*k + 1] += 2 * rate
+        if getattr(mtrap, 'brownian_bath', False):
+            # a momentum diffusion, as the Brownian bath's own noise
+            D[2*k + 1, 2*k + 1] += 4 * rate
+        else:
+            D[2*k, 2*k] += 2 * rate
+            D[2*k + 1, 2*k + 1] += 2 * rate
     if not cavity:
         A, D = A[2:, 2:], D[2:, 2:]
     return A, D

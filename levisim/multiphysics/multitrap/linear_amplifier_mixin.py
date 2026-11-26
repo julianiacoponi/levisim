@@ -66,7 +66,7 @@ class LinearAmplifierMixin:
         self.identity_matrix = np.eye(self.num_operators)
         self.drift_matrix = np.zeros((self.num_operators, self.num_operators), dtype=np.complex128)
 
-        Δ, κ = self.cavity.Δ, self.cavity.κ
+        Δ, κ = self.cavity.Δ_eff, self.cavity.κ
 
         # the overall dampings for the nosies in the PSDs
         self.γ = np.zeros(self.num_operators)
@@ -112,6 +112,10 @@ class LinearAmplifierMixin:
                 self.drift_matrix[ii, 0] = -iG_star
                 self.drift_matrix[ii, 1] = -iG
                 self.drift_matrix[ii, ii] = 1j*Ωj - Γj/2
+            if getattr(self, 'brownian_bath', False):
+                # the Brownian (velocity) bath: dP/dt ∋ -Γ·P and no damping of X, i.e.
+                # dbj/dt ∋ -Γ/2·(bj - bj†) and dbj†/dt ∋ +Γ/2·(bj - bj†)
+                self.drift_matrix[ii, ii + 1 if is_annihilation_operator else ii - 1] = Γj/2
 
             # add the mech-to-mech couplings: row ii (bjn or bjn†) is driven by every dimension
             # whose entry in the mechanical coupling matrix is non-zero, and by every other
@@ -144,6 +148,14 @@ class LinearAmplifierMixin:
         #   ...
         # )
         self.c_in = np.sqrt(self.γ)
+        # the input matrix B of the noises, dc/dt = A·c + B·c_in/√γ: diag(√γ), or with
+        # brownian_bath=True the momentum noise √(2Γ)·P_in, P_in = -i(bj_in - bj_in†), of each
+        # dimension, which enters bj with √(Γ/2)·(bj_in - bj_in†) and bj† with the opposite sign
+        self.noise_input_matrix = np.diag(self.c_in).astype(np.complex128)
+        if getattr(self, 'brownian_bath', False):
+            for ii in range(2, self.num_operators, 2):
+                r = np.sqrt(self.γ[ii] / 2)
+                self.noise_input_matrix[ii:ii + 2, ii:ii + 2] = r * np.array([[1, -1], [-1, 1]])
 
         # Noise matrix
         # N ≡ diag(
@@ -165,6 +177,9 @@ class LinearAmplifierMixin:
         # nc ≡ photons due to optical noise inside cavity = 0 for shot noise
         # njn ≡ phonons due to jn degree of freedom ~ kB·T/ħ·Ωjn (Bose-Einstein distribution)
         self.noise_matrix = np.diag(self.γ * self.quantum_factor_per_noise_operator)
+        if getattr(self, 'brownian_bath', False):
+            B = self.noise_input_matrix
+            self.noise_matrix = B @ np.diag(np.asarray(self.quantum_factor_per_noise_operator, dtype=float)) @ B.conj().T
 
         self._check_linear_stability()
 
@@ -203,6 +218,8 @@ class LinearAmplifierMixin:
         """
         c_noise = np.zeros((self.num_operators, self.num_operators), dtype=np.complex128)
         T = self.T_matrix(ω)
+        if getattr(self, 'brownian_bath', False):
+            return T @ self.noise_input_matrix
         for ii in range(self.num_operators):
             T_row = T[ii, :]
             # https://stackoverflow.com/questions/3337301/numpy-matrix-to-array#3338368

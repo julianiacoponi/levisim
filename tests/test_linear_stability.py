@@ -30,7 +30,8 @@ def same_eigenvalues(a, b, tol):
 def test_built_in_phases_give_one_growing_mode():
     mtrap = default_2x2()
     assert not mtrap.is_stable
-    assert mtrap.max_growth_rate == pytest.approx(2677.5, rel=1e-4)
+    # 2677.5 /s with the static polarisability (cavity_effective_polarisability=False, levisim 0.1.x)
+    assert mtrap.max_growth_rate == pytest.approx(2676.7, rel=1e-4)
     [(Ω, rate)] = mtrap.unstable_modes
     assert Ω / kHz == pytest.approx(134.92, abs=0.01)
     # the two members of a conjugate pair agree only to round-off, and either can come first
@@ -89,9 +90,9 @@ def test_warning_and_info_use_the_report():
         logger.remove(sink)
     [message] = messages
     assert f'{len([λ for λ in unstable.drift_eigenvalues if λ.real > unstable.stability_tolerance])} of the 10' in message
-    assert '134.92 kHz' in message and '+2678 /s' in message
+    assert '134.92 kHz' in message and '+2677 /s' in message
     assert 'linearly_stable = False' in unstable.info_str
-    assert 'unstable mode at 134.922 kHz grows at Re λ = +2678 /s' in unstable.info_str
+    assert 'unstable mode at 134.923 kHz grows at Re λ = +2677 /s' in unstable.info_str
     assert 'linearly_stable = True' in stable.info_str and 'unstable mode' not in stable.info_str
 
 

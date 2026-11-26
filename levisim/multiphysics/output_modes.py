@@ -114,8 +114,16 @@ class QuadratureSystem:
         per_mode_N = np.array([factors[2*k] + factors[2*k + 1] for k in range(num_modes)])
         labels = [cavity_label, *mtrap.labels]
         cavity = mtrap.cavity
+        # the mechanical noise per mode: √γ on X and P (the rotating-wave bath), or √(2γ) on P alone
+        # with MultiTrap(brownian_bath=True)
+        brownian = getattr(mtrap, 'brownian_bath', False)
+        mechanical_B = np.diag(np.sqrt(np.repeat(per_mode_γ[1:], 2)))
+        if brownian:
+            mechanical_B = np.diag(np.ravel([[0.0, np.sqrt(2 * γ_k)] for γ_k in per_mode_γ[1:]]))
         if getattr(cavity, 'has_default_ports', True):
             B = np.diag(np.sqrt(np.repeat(per_mode_γ, 2)))
+            if brownian:
+                B[2:, 2:] = mechanical_B
             N = np.diag(np.repeat(per_mode_N, 2))
             return cls(A, B, N, labels, cavities={cavity_label: (float(mtrap.cavity.κ), (0, 1))})
         rates = [float(κ_j) for κ_j in cavity.port_rates]
@@ -127,7 +135,7 @@ class QuadratureSystem:
         for j, κ_j in enumerate(channels):
             B[0, 2*j] = B[1, 2*j + 1] = np.sqrt(κ_j)
             N[2*j, 2*j] = N[2*j + 1, 2*j + 1] = per_mode_N[0]
-        B[2:, num_cavity_columns:] = np.diag(np.sqrt(np.repeat(per_mode_γ[1:], 2)))
+        B[2:, num_cavity_columns:] = mechanical_B
         N[num_cavity_columns:, num_cavity_columns:] = np.diag(np.repeat(per_mode_N[1:], 2))
         ports = [(κ_j, (2*j, 2*j + 1)) for j, κ_j in enumerate(rates)]
         detected = ports[cavity.detected_port]

@@ -320,12 +320,15 @@ def test_light_couplings_against_rudolph_2021():
     mt = libration_multitrap(Φ)
     trap = mt.traps[0]
     θ = trap.tweezer.θ
-    α = np.real(np.diag(cs._static_lab_polarisability(trap.bead)))
+    α = np.real(np.diag(cs._lab_polarisability(trap)))  # Re α_eff, as the drive uses
     χc, χb = α[1], α[0]
     ζ = -π/2
     ratio = (χc - χb) * np.cos(Φ) * np.sin(θ - ζ) / (trap.tweezer.k * np.sin(θ) * np.sin(Φ) * χc * np.cos(θ - ζ))
     x, γ = mt.dimensions['x1'], mt.dimensions['γ1']
-    assert (γ.g / γ.zpf) / (x.g / x.zpf) == pytest.approx(ratio, rel=1e-10)
+    # the coherent-scattering parts (Dimension.G also has the dispersive coupling of the cavity's own
+    # standing wave, which Rudolph et al. do not consider)
+    G_x, G_γ = x.G - x.dispersive_G, γ.G - γ.dispersive_G
+    assert (G_γ.real / γ.zpf) / (G_x.real / x.zpf) == pytest.approx(ratio, rel=1e-10)
 
 
 def test_generic_expansion_reproduces_the_translational_couplings():
@@ -339,7 +342,8 @@ def test_generic_expansion_reproduces_the_translational_couplings():
     for j, axis in enumerate('xyz'):
         dim = mt.dimensions[f'{axis}1']
         G = trap.cavity_drive_field * mt.cavity.E0 / (2 * ħ) * grad_F[j] * s0 * dim.zpf
-        assert dim.G == pytest.approx(G, rel=1e-12)
+        # (Dimension.G also has the dispersive coupling of the cavity's own standing wave)
+        assert dim.G - dim.dispersive_G == pytest.approx(G, rel=1e-12)
 
 
 def test_tilted_particle_drive_uses_cross_polarised_scattering():
@@ -348,11 +352,16 @@ def test_tilted_particle_drive_uses_cross_polarised_scattering():
     mt = MultiTrap(num_traps=1, Cartesian_axes_per_trap=2, beads=[particle], tweezers=[Tweezer(θ=60*degrees)], ω_range=ω_range,
                    photon_recoil=False)
     trap = mt.traps[0]
-    α_lab = cs._static_lab_polarisability(particle)
     e_c = cs.cavity_polarisation(trap.tweezer.θ)
-    assert cs.drive_polarisability(trap) * np.sin(trap.tweezer.θ) == pytest.approx(e_c @ α_lab @ np.array([0, 1, 0]), rel=1e-12, abs=0)
+    for effective in (True, False):
+        # Re α_eff (radiation reaction on the whole tensor) or the static tensor
+        α_lab = np.real(trap.tweezer.lab_effective_polarisability(particle)) if effective else cs._static_lab_polarisability(particle)
+        assert cs.drive_polarisability(trap, effective) * np.sin(trap.tweezer.θ) == pytest.approx(
+            e_c @ α_lab @ np.array([0, 1, 0]), rel=1e-12, abs=0)
     assert cs.drive_polarisability(trap) != pytest.approx(particle.α, rel=1e-3, abs=0)
-    assert cs.drive_polarisability(Trap(tweezer=Tweezer(), particle=Bead())) == Bead().α
+    sphere_trap = Trap(tweezer=Tweezer(), particle=Bead())
+    assert cs.drive_polarisability(sphere_trap, effective_polarisability=False) == Bead().α
+    assert cs.drive_polarisability(sphere_trap) == np.real(sphere_trap.α_eff)
 
 
 def test_static_libration_terms_against_finite_differences():
@@ -363,7 +372,7 @@ def test_static_libration_terms_against_finite_differences():
     α_c = (mt.cavity.A0 + 1j * mt.cavity.P0) / 2
     E0c, Ed = mt.cavity.E0, trap.cavity_drive_field
     drive = trap.drive_tweezer
-    α_lab = cs._static_lab_polarisability(trap.bead)
+    α_lab = cs._lab_polarisability(trap)  # Re α_eff
     e_c = cs.cavity_polarisation(drive.θ)
     ê = np.array([0, 1, 0])
     d = cs.cavity_axis(drive.θ)
@@ -387,8 +396,9 @@ def test_static_libration_terms_against_finite_differences():
     exp = cs.librational_expansion(trap, E0c, α_c)
     K_θθ = exp['K_θθ_CS'] + exp['K_θθ_cav']
     K_rθ = exp['K_rθ_CS'] + exp['K_rθ_cav']
-    assert np.allclose(H[3:, 3:], K_θθ, rtol=1e-5, atol=1e-6 * np.max(np.abs(K_θθ)))
-    assert np.allclose(H[:3, 3:], K_rθ, rtol=1e-5, atol=1e-6 * np.max(np.abs(K_rθ)))
+    # (the second-order stencil's error is a few 10⁻⁶ of the largest entry)
+    assert np.allclose(H[3:, 3:], K_θθ, rtol=1e-5, atol=1e-5 * np.max(np.abs(K_θθ)))
+    assert np.allclose(H[:3, 3:], K_rθ, rtol=1e-5, atol=1e-5 * np.max(np.abs(K_rθ)))
 
 
 def test_librational_frequencies_and_damping():

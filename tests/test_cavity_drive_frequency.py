@@ -44,7 +44,9 @@ def test_1550_nm_tweezers_set_the_cavity_frequency(warnings_logged):
 
 def test_explicit_matching_ωtw_gives_no_warning(warnings_logged):
     tweezers = [Tweezer(λ=1550*nm, θ=45*degrees)]
-    mtrap = MultiTrap(num_traps=1, Cartesian_axes_per_trap=1, tweezers=tweezers, cavity_kwargs={'ωtw': tweezers[0].ω})
+    # (one axis leaves out y, which couples to the light: dropped_axis_warning=False silences that warning)
+    mtrap = MultiTrap(num_traps=1, Cartesian_axes_per_trap=1, tweezers=tweezers, cavity_kwargs={'ωtw': tweezers[0].ω},
+                      dropped_axis_warning=False)
     assert mtrap.cavity.ωtw == tweezers[0].ω
     assert not warnings_logged
 
