@@ -36,7 +36,7 @@ from common import COLOURS, save, setup_matplotlib  # noqa: E402
 
 from levisim.analysis.spectral_density_estimate import SpectralDensityEstimate  # noqa: E402
 from levisim.core.units import Hz, kHz, nm, μs  # noqa: E402
-from levisim.data.simulation import Simulation  # noqa: E402
+from levisim.simulation import FreeSpaceSimulation  # noqa: E402
 from levisim.physics.trap import Trap  # noqa: E402
 
 FIGURES = Path(__file__).resolve().parents[1] / 'figures'
@@ -48,7 +48,7 @@ IN_PHASE, IN_ANTIPHASE = COLOURS['orange'], COLOURS['teal']
 
 def simulate():
     """200 ms of the default Trap: 485 mW, 1064 nm tweezer; 60.1 nm bead; 4e-3 mbar; Γfb,x/y = 2.1, 2.5 kHz"""
-    return Simulation(trap=Trap(), num_samples=2_000_000, Δt=0.1*μs, seed=2026, detection_floor=G_FLOOR)
+    return FreeSpaceSimulation(trap=Trap(), num_samples=2_000_000, Δt=0.1*μs, seed=2026, detection_floor=G_FLOOR)
 
 
 def estimate(sim):

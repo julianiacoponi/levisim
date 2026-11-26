@@ -2,15 +2,21 @@
 
 This page describes the classical, stochastic (Langevin) simulation of a dielectric nanoparticle
 ("bead") held by a free-space optical tweezer in a dilute gas, as implemented in
-`levisim.data.Simulation`, together with the spectral tools used to analyse it
+`levisim.FreeSpaceSimulation`, together with the spectral tools used to analyse it
 (`SpectralDensityEstimate`, `SpectralDensityTheory`). It follows the notation of the
 *Stochastic Tweezer Bead Code Summary* (J. Iacoponi, October 2023); where the code has moved on
 since those notes, the differences are pointed out.
 
 The physics is set up by four classes: `Tweezer` (an elliptical Gaussian beam), `Bead` (a
 silica sphere), `Gas` (the background gas) and `Trap`, which combines them and adds feedback
-damping, a directed stochastic force and optional kicks. `Simulation` integrates the equations of
+damping, a directed stochastic force and optional kicks. `FreeSpaceSimulation` integrates the equations of
 motion of a `Trap` and returns position traces.
+
+`FreeSpaceSimulation` is built on `levisim.simulation.StochasticSimulation`, which holds what every
+time-domain simulation shares: the time axis, the random numbers and their seeding, the chunked noise
+generation, the integrators of `levisim.simulation.integrators` and the recording into `Trace`
+objects. The class used to be called `Simulation` (`levisim.data.simulation.Simulation`); that name
+still works, with the same keyword arguments and the same numbers, but emits a `DeprecationWarning`.
 
 ## Physical model
 
@@ -131,7 +137,7 @@ $p_\mathrm{th} = m_\mathrm{gas}\bar v$ is a gas molecule's mean momentum.
 
 ### Detection floor
 
-`Simulation(detection_floor=G_floor)` adds white measurement (imprecision) noise to the *recorded*
+`FreeSpaceSimulation(detection_floor=G_floor)` adds white measurement (imprecision) noise to the *recorded*
 traces only; the integrated state is untouched. `G_floor` is the one-sided displacement PSD [m²/Hz]
 of that noise, i.e. the flat level it produces far from resonance in a one-sided estimate. White
 samples of variance $\sigma^2$ every $\Delta t$ have one-sided PSD $2\sigma^2\Delta t$, so the code adds
@@ -148,7 +154,7 @@ $\mathcal{N}(0, G_\mathrm{floor}/2\Delta t)$ to every sample. A dict gives diffe
   (arXiv:2012.15822) gives 370.7 nm, because it omits the Gouy factor $1 - 1/(kz_R)$ ($kz_R = 17.3$).
   At $z_\mathrm{eq}$ the beam is wider, so `Trap.Ωj_at_z_eq` gives $\Omega_{x,y}$ 1.45% and $\Omega_z$ 2.98% below
   the focal values. Transverse scattering forces and recoil heating are not included.
-- **Gravity**, `Simulation(gravity=True, gravity_direction=(-1, 0, 0))`: adds the weight $mg$
+- **Gravity**, `FreeSpaceSimulation(gravity=True, gravity_direction=(-1, 0, 0))`: adds the weight $mg$
   (16.5 aN for the default 1.68 fg bead) along $-x$ by default (the experiment's tweezer axis is
   horizontal). It shifts the equilibrium by $g/\Omega_x^2 \approx 10$ pm.
 - **Dispersive permittivity**, `Bead(permittivity_model='Malitson', λ=1064e-9)`: sets
@@ -193,10 +199,45 @@ Roberts' variant cancel exactly. It is cheaper per step but less accurate near t
 
 ### Random numbers and reproducibility
 
-`Simulation(seed=...)` uses `np.random.default_rng(seed)`. With `seed=None` (default) numpy's legacy
+`FreeSpaceSimulation(seed=...)` uses `np.random.default_rng(seed)`. With `seed=None` (default) numpy's legacy
 global stream is used, so runs seeded with `np.random.seed(...)` reproduce earlier levisim versions
 bit for bit. The normals are pre-generated in chunks of $2^{15}$ steps; a $10^5$-sample run takes about
 3.4 s.
+
+### Compiled backend (`pip install levisim[fast]`)
+
+With numba installed (the `fast` extra), the time loop can run as a compiled kernel. The keyword
+`backend` chooses it:
+
+- `backend='auto'` (default): numba when it is installed and the run has at least $2^{15}$ steps
+  (shorter runs cost less in NumPy than loading the kernels), NumPy otherwise;
+- `backend='numpy'`: the NumPy loop, which remains the tested reference;
+- `backend='numba'`: the compiled loop; an `ImportError` explains how to install numba if it is missing.
+
+`sim.backend_used` records which loop ran. Both loops draw the same random numbers in the same order
+(the compiled loop takes them from the same chunked generator), so a seeded run gives the same
+trajectory to round-off: positions agree to about $10^{-14}$ relative over $3\times10^4$ steps, and
+the whole state agrees bit for bit where no exponential is evaluated (`override_Ω_dict` with Heun).
+Over very long runs the anharmonic, lightly damped $z$ motion amplifies any last-bit difference
+(perturbing $x_0$ by $10^{-15}$ relative in one loop gives $10^{-9}$ after $2^{20}$ Heun steps), so
+long trajectories from the two backends agree statistically rather than sample by sample. Every
+option on this page (kicks, gravity, photon recoil, `override_Ω_dict`, the detection floor, the stored
+traces) has a compiled kernel; a subclass that overrides the physics methods, or
+`rk_loop_debug=True`, falls back to NumPy.
+
+The kernels are cached on disk, so only the first run on a machine compiles them:
+
+| $2^{20}$ steps, default `Trap` | NumPy | numba |
+|---|---|---|
+| `vector_4` (Kasdin RK4) | 33 μs per step | 0.32 μs per step |
+| `vector_2` (Heun) | 14 μs per step | 0.15 μs per step |
+| first call, empty cache (both kernels) | | 0.7–0.8 s, plus 0.2 s to import numba |
+| first call, cached (both kernels) | | 0.11 s, plus 0.2 s to import numba |
+
+(Apple arm64, numba 0.68; best of three for numba, one run for NumPy.) A single free-space bead has
+nothing to thread over, so these kernels are serial; `levisim.simulation.backends.choose_threading`
+holds the policy that multi-particle and ensemble kernels will use (threads over independent setups,
+or over particles for large systems).
 
 ### Choosing $\Delta t$, the length and the resolution
 
@@ -234,11 +275,11 @@ the resonance into the tail and, in the example below, inflate the 0.3–0.5 MHz
 ```python
 from levisim.analysis.spectral_density_estimate import SpectralDensityEstimate
 from levisim.core.units import μs
-from levisim.data.simulation import Simulation
+from levisim.simulation import FreeSpaceSimulation
 from levisim.physics.trap import Trap
 
 trap = Trap()                       # 485 mW, 1064 nm; 60.1 nm silica bead; 4e-3 mbar; β = √2, ψ = 45°
-sim = Simulation(trap=trap, num_samples=2_000_000, Δt=0.1*μs, seed=2026, detection_floor=1e-27)
+sim = FreeSpaceSimulation(trap=trap, num_samples=2_000_000, Δt=0.1*μs, seed=2026, detection_floor=1e-27)
 
 Sxx = SpectralDensityEstimate(sim, 'xx', num_segments=100)    # one-sided, Δf = 0.5 kHz, 100 averages
 Sxy = SpectralDensityEstimate(sim, 'xy', num_segments=100)

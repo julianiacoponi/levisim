@@ -9,7 +9,7 @@
   routes are provided (linear-amplifier models, numerical and power-series hybridisation, and an
   exact closed form that inverts no N×N matrix), which agree with each other to within 5e-13
   (relative) on every system in the test suite and notebooks.
-- **One particle, free space.** `Simulation` integrates the stochastic (Langevin) dynamics of a bead
+- **One particle, free space.** `FreeSpaceSimulation` integrates the stochastic (Langevin) dynamics of a bead
   in a Gaussian-beam tweezer with gas damping, feedback cold damping, a directed force, kicks and
   an optional detection floor, photon recoil and gravity; `SpectralDensityEstimate` and
   `SpectralDensityTheory` analyse the traces.
@@ -18,6 +18,7 @@
 
 ```sh
 pip install levisim              # or: pip install --upgrade levisim
+pip install "levisim[fast]"      # optional: numba, compiled stochastic-simulation loops
 ```
 
 ```python
