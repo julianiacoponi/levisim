@@ -13,12 +13,15 @@ Simulations that take ``interactions=[...]`` call `forces` once per drift evalua
 - `NewtonianGravity`: -G·m_j·m_k/r
 - `Casimir`: retarded Casimir-Polder (r ≫ R) or proximity-force (gap ≪ R) attraction of
   dielectric spheres, at zero temperature
+- `OpticalBinding`: the non-conservative, non-reciprocal force of the light that each particle
+  scatters into the others' tweezers (point dipoles, free-space Green tensor)
 """
 
 from levisim.physics.interactions.base import (
     Interaction,
     PairInteraction,
     as_positions,
+    attach_interaction_traps,
     particle_radius,
 )
 from levisim.physics.interactions.central import (
@@ -29,6 +32,13 @@ from levisim.physics.interactions.central import (
     PowerLawPairInteraction,
     lifshitz_plate_factor,
 )
+from levisim.physics.interactions.optical_binding import (
+    OpticalBinding,
+    dipole_field,
+    dipole_green_tensor,
+    dipole_green_tensor_derivatives,
+    tweezer_field,
+)
 
 __all__ = [
     'Casimir',
@@ -36,9 +46,15 @@ __all__ = [
     'G_newton',
     'Interaction',
     'NewtonianGravity',
+    'OpticalBinding',
     'PairInteraction',
     'PowerLawPairInteraction',
     'as_positions',
+    'attach_interaction_traps',
+    'dipole_field',
+    'dipole_green_tensor',
+    'dipole_green_tensor_derivatives',
     'lifshitz_plate_factor',
     'particle_radius',
+    'tweezer_field',
 ]

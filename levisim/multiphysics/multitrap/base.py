@@ -54,6 +54,7 @@ from levisim.physics.gas import Gas
 from levisim.physics.cavity import Cavity
 from levisim.physics.coherent_scattering import hessian_to_coupling_rate, static_cavity_hessian
 from levisim.physics.trap import Trap
+from levisim.physics.interactions.base import attach_interaction_traps as _attach_traps
 
 from levisim.multiphysics.enums.quantum_linear_theory_method import QuantumLinearTheoryMethod
 from levisim.multiphysics.dimension import Dimension
@@ -1057,6 +1058,8 @@ class MultiTrapBase:
         if not self.interactions:
             return
         particles = [trap.bead for trap in self.traps]
+        for interaction in self.interactions:
+            _attach_traps(interaction, self.traps)
         for interaction in self.interactions:
             self.interaction_stiffness_blocks += interaction.stiffness_blocks(self.interaction_positions, particles)
             self.interaction_static_forces += interaction.forces(self.interaction_positions, particles, 0.0)

@@ -7,6 +7,7 @@ import numpy as np
 from levisim.core.logger import logger
 from levisim.core.units import nm
 from levisim.physics.interactions.base import as_positions
+from levisim.physics.interactions.base import attach_interaction_traps as _attach_traps
 from levisim.physics.trap import Trap
 from levisim.simulation.base import StochasticSimulation
 from levisim.simulation.free_space import FreeSpaceSimulation
@@ -78,6 +79,8 @@ class MultiParticleFreeSpaceSimulation(StochasticSimulation):
         self.particles = [trap.bead for trap in self.traps]
         self.trap_positions = np.array([trap.position for trap in self.traps])
         self.labels = [f'{axis}{n + 1}' for n in range(self.num_particles) for axis in 'xyz']
+        for interaction in self.interactions:
+            _attach_traps(interaction, self.traps)
         if self.interactions:
             # rejects overlapping particles before the integration starts
             self.interaction_forces(self.X0)
