@@ -195,9 +195,9 @@ orientation is logged but the orientation is not moved.
 
 The libration $\gamma$ of a 70:50 nm spheroid aligned with the polarisation, at 10 mbar of 3 K gas
 (small, linear librations): the Welch spectrum of a `RigidBodySimulation` (4 × 10⁵ steps of 5 ns),
-the thermal Lorentzian from $\Omega_\gamma = 2\pi\times829.6$ kHz, $\Gamma_\gamma$ and the
-fluctuation-dissipation torque noise, and the `MultiTrap` spectrum of $\gamma_1$. The time-domain
-variance is 1.06 × $k_BT/K$. MultiTrap's rotating-wave damping gives a peak area 14 % lower at this
+the thermal Lorentzian from $\Omega_\gamma = 2\pi\times830.9$ kHz (with the default finite-size
+torque; 829.6 kHz without), $\Gamma_\gamma$ and the fluctuation-dissipation torque noise, and the
+`MultiTrap` spectrum of $\gamma_1$. The time-domain variance is 1.07 × $k_BT/K$. MultiTrap's rotating-wave damping gives a peak area 14 % lower at this
 large damping ($\Gamma/\Omega = 0.14$).
 ```
 

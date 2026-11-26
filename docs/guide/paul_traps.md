@@ -147,7 +147,7 @@ to a trap; with a Paul trap it displaces the particle by $QE_j/k_j$.
 ![Simulated spectrum of a ring trap under gravity](figures/paul_trap_spectrum.png)
 
 The figure is a simulated ring trap ($q_x$ = 0.3, $q_z$ = −0.6, $f_\mathrm{rf}$ = 10 kHz, a 100 nm silica sphere
-with 500 e, gravity along $-x$, $10^{-9}$ mbar, 40 steps per rf period). The secular peaks are at 1080.3 and
+with 500 e, gravity along $-x$, $10^{-9}$ mbar, 40 steps per rf period). The secular peaks are at 1080.4 and
 2311.2 Hz, the Floquet values to 0.1 Hz (the pseudopotential gives 1060.7 and 2121.3 Hz). The micromotion
 sidebands sit at $f_\mathrm{rf} \mp \Omega_j/2\pi$, with relative amplitudes $q/((\beta \mp 2)^2 - a)$ from
 the Floquet recursion (25 % above the textbook $q/4$ for the lower sideband at $q$ = 0.3), and the line at
