@@ -211,3 +211,28 @@ def test_instantaneous_sampling_of_the_nonlinear_model_and_argument_checks():
     with pytest.raises(ValueError, match='sampling'):
         Position('x1', sampling='midpoint')
     assert 'instantaneous' in repr(Position('x1', sampling='instantaneous'))
+
+
+
+# ----------------------------------------------------------------------------------------------
+# squeezing with the Pontin parameters (decision 23; docs/guide/scripts/cavity_pontin_squeezing.py)
+# ----------------------------------------------------------------------------------------------
+@pytest.mark.skipif(not numba_available(), reason='long statistical run: needs numba')
+def test_pontin_parameter_squeezing_matches_multitrap():
+    """The docs figure's system at reduced statistics: 12.9% squeezing (η = 1) at the optimal angle"""
+    import importlib.util
+    from pathlib import Path
+    path = Path(__file__).resolve().parents[1] / 'docs' / 'guide' / 'scripts' / 'cavity_pontin_squeezing.py'
+    spec = importlib.util.spec_from_file_location('cavity_pontin_squeezing', path)
+    script = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(script)
+    mtrap = script.pontin_multitrap()
+    θ, f_opt, S_opt = script.optimal_angle(mtrap, np.arange(60e3, 170e3, 250.0))
+    assert S_opt == pytest.approx(0.8707, abs=1e-4) and f_opt == pytest.approx(87e3)
+    f, S, sim = script.simulate(mtrap, θ, 0.1 * μs, 2**18, 16, [7], 32)
+    dip = (f > f_opt - 5e3) & (f < f_opt + 5e3)
+    for label, η in (('ideal', 1.0), ('paper', script.η_PAPER)):
+        theory = (η * script.symmetrised_homodyne(mtrap, f[dip], θ) + 1 - η) * np.sinc(f[dip] * sim.Δt)**2
+        # 512 periodograms × 8 bins: ±1.6% on the band mean
+        assert np.mean(S[label][dip] / theory) == pytest.approx(1, abs=0.05), label
+    assert np.mean(S['ideal'][dip]) < 0.92          # theory 0.88 over the band: squeezed

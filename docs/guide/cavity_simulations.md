@@ -426,6 +426,36 @@ every number above (seeded; about a minute with numba).
   `tests/test_quadrature_squeezing.py` (0.915 measured against 0.916 predicted in a longer run), and
   the growth rate of the unstable 2×2 system (within 0.01%).
 
+### Squeezing with the parameters of Pontin et al.
+
+The strongly coupled test system squeezes the output by only about 9%. With the parameters fitted by
+Deplano, Pontin, Ranfagni, Marino and Marin, Nat. Commun. 16, 4215 (2025),
+doi:10.1038/s41467-025-59213-3 (Table 1: $\Omega/2\pi$ = 122.17 and 109.37 kHz, $g/2\pi$ = 14.13 and
+10.37 kHz, heating rates $\Gamma/2\pi$ = 4.03 and 3.05 kHz; $\kappa/2\pi$ = 57 kHz,
+$\Delta/2\pi$ = −111 kHz, $\eta$ = 0.32), the system whose optical squeezing Pontin, Deplano,
+Marino and Marin analyse in Phys. Rev. A 114, 053704 (2026), doi:10.1103/hms3-yb2h, the symmetrised
+homodyne spectrum at the optimal angle $\theta^*$ = −1.5228 rad dips to 0.8707 at 87 kHz (12.9%
+squeezing) for $\eta = 1$, and to 0.9586 for $\eta$ = 0.32. The toy `MultiTrap` is that of
+`notebooks/papers/pontin2026_optical_squeezing.ipynb` (fitted total heating imposed on the gas bath).
+
+![Squeezing of the cavity output with the Pontin parameters](figures/cavity_pontin_squeezing.png)
+
+*Homodyne records at $\theta^*$ of a `CavitySimulation` with the Pontin parameters
+(16 runs × 8 trajectories × $2^{20}$ samples of 0.1 μs; 16384 periodograms, $\Delta f$ = 1.22 kHz)
+against the symmetrised `MultiTrap.homodyne_spectrum`, mixed with vacuum as $\eta S + 1 - \eta$ and
+multiplied by $\mathrm{sinc}^2(f\Delta t)$. Lower panel: relative residual; the grey band is
+±2 standard errors of a plotted point.*
+
+Over 60-170 kHz the mean ratio of simulation to theory is 1.0016 ± 0.0008 ($\eta = 1$) and
+1.0004 ± 0.0008 ($\eta$ = 0.32); within ±5 kHz of the dip it is 0.9993 ± 0.0028 and 0.9963 ± 0.0028.
+At $\Delta t$ = 0.1 μs the $\mathrm{sinc}^2$ form differs from the exact discrete spectrum
+(`record_spectrum`) by at most $9.4\times10^{-4}$. A much coarser $\Delta t$ is not suited to this
+comparison: the sample average does not alias white noise, so the sampled vacuum stays at 1 while
+$\mathrm{sinc}^2(f\Delta t)$ would pull it down (by 5% at 120 kHz for $\Delta t$ = 1 μs); there
+`record_spectrum` is the reference. `python docs/guide/scripts/cavity_pontin_squeezing.py`
+regenerates the figure and these numbers (seeded; about two minutes with numba), and
+`tests/test_cavity_records.py` runs the same comparison at reduced statistics.
+
 ## Performance
 
 `num_trajectories=K` advances $K$ trajectories as one array, the cheap way to smooth averaged
