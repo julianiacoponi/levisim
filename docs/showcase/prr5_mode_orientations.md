@@ -37,8 +37,8 @@ scaled to its own largest value. The $x$ and $y$ motions are always anticorrelat
 sign at $\Omega_y/2\pi \approx 134$ kHz and $\Omega_x/2\pi \approx 155$ kHz), and the sign of the
 pattern flips between $\Phi = 0.25\pi$ and $0.20\pi$. **(b)** The rotation of the $x$-like normal mode
 away from the tweezer $x$ axis, from the eigenvectors of the drift matrix, over $\Phi$ and $\Delta$. The
-black contour, where the rotation is zero, is the cancellation point: $\Phi_\text{c} = 0.248\pi$ at
-$\Delta/2\pi = -450$ kHz and $-1000$ kHz, moving towards the node as the detuning approaches the
+black contour, where the rotation is zero, is the cancellation point: $\Phi_\text{c} = 0.247\pi$ at
+$\Delta/2\pi = -450$ kHz and $0.248\pi$ at $-1000$ kHz, moving towards the node as the detuning approaches the
 mechanical frequencies ($0.256\pi$ at $-300$ kHz, $0.313\pi$ at $-150$ kHz), as the paper anticipates.
 It hardly depends on $\theta$ (within $10^{-3}\pi$ between 20° and 70°), since both couplings carry
 the same factor $\sin\theta\cos\theta$. Every system in the map is linearly stable; the least stable is at the antinode, where the light
@@ -58,16 +58,19 @@ The essential lines:
 
 **The frequency shifts.** The paper also shows that the static field stiffens the mechanical
 frequencies away from the node, opposing the optical spring of the cavity dynamics, and that the two
-frequency shifts cancel at the same point. The figure is drawn without these static shifts
-(`static_cavity_shifts=False`), as first made. `MultiTrap` includes them by default (see
-[static cavity shifts](../concepts/static_cavity_shifts.md)): they move the rotation's cancellation
-point by at most $0.001\pi$, and the net frequency shift of each mode then crosses zero at
-$\Phi = 0.257\pi$ ($x$) and $0.255\pi$ ($y$) for $\Delta/2\pi = -450$ kHz, beside the rotation's
-$0.248\pi$, and at $0.315\pi$ and $0.308\pi$ for $-150$ kHz (rotation $0.3135\pi$ with the shifts, $0.3133\pi$ without), as the paper found.
+frequency shifts cancel at the same point. Since levisim 1.0 the figure includes these static shifts,
+as `MultiTrap` does by default (see [static cavity shifts](../concepts/static_cavity_shifts.md)); it
+was first drawn without them (`static_cavity_shifts=False`). The shifts move the peaks of panel (a) up
+by up to 2.3 kHz towards the antinode and the rotation's cancellation point from $0.248\pi$ to
+$0.247\pi$ at $\Delta/2\pi = -450$ kHz ($0.313\pi$ at $-150$ kHz either way). The net frequency shift
+of each mode crosses zero at $\Phi = 0.256\pi$ ($x$) and $0.255\pi$ ($y$) for $\Delta/2\pi = -450$ kHz,
+beside the rotation's $0.247\pi$, and at $0.315\pi$ and $0.3085\pi$ for $-150$ kHz (rotation
+$0.313\pi$), as the paper found.
 
 :::{figure} ../guide/figures/showcase/prr5_mode_orientations.png
 :width: 100%
 :alt: Cross spectra and the mode rotation map
 
-The static version of the figure, as shown in the README.
+The static version of the figure, as shown in the README, drawn with the static cavity shifts
+(levisim 1.0; until then without them).
 :::
