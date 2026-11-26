@@ -151,7 +151,19 @@ class ModifiedPhysics(FreeSpaceSimulation):
 
 
 @needs_numba
-def test_unsupported_configurations_fall_back_to_numpy():
-    assert ModifiedPhysics(num_samples=100, Δt=Δt, seed=1, backend='numba').backend_used == 'numpy'
-    assert FreeSpaceSimulation(num_samples=100, Δt=Δt, seed=1, backend='numba', rk_loop_debug=True).backend_used == 'numpy'
+def test_explicit_numba_for_unsupported_configurations_raises():
+    from levisim.simulation.backends import UnsupportedBackendError
+    with pytest.raises(UnsupportedBackendError, match='overrides dynamics_vector'):
+        ModifiedPhysics(num_samples=100, Δt=Δt, seed=1, backend='numba')
+    with pytest.raises(UnsupportedBackendError, match='rk_loop_debug'):
+        FreeSpaceSimulation(num_samples=100, Δt=Δt, seed=1, backend='numba', rk_loop_debug=True)
     assert FreeSpaceSimulation(num_samples=100, Δt=Δt, seed=1, backend='numba').backend_used == 'numba'
+
+
+@needs_numba
+def test_auto_falls_back_to_numpy_for_unsupported_configurations():
+    n = AUTO_NUMBA_MIN_STEPS
+    modified = ModifiedPhysics(num_samples=n, Δt=Δt, seed=1, backend='auto')
+    reference = ModifiedPhysics(num_samples=n, Δt=Δt, seed=1, backend='numpy')
+    assert modified.backend_used == 'numpy'
+    np.testing.assert_array_equal(modified.X, reference.X)

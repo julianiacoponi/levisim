@@ -412,3 +412,57 @@ def test_quadrature_system_input_and_default_records():
         CavitySimulation(system, num_samples=4, detection=[PhotonNumber()])
     with pytest.raises(ValueError, match='MultiTrap'):
         CavitySimulation(system, num_samples=4, detection=[Homodyne()])
+
+
+# ----------------------------------------------------------------------------------------------
+# ensemble-averaged spectra (decision 22)
+# ----------------------------------------------------------------------------------------------
+def reference_averaged_psd(x, Δt, num_segments, window, one_sided, zero_mean=True):
+    """The averaged_psd algorithm of levisim 0.1 (rfft of mean-subtracted, windowed segments)"""
+    from levisim.analysis.spectral_density_estimate import SpectralDensityEstimate
+    K, N = x.shape
+    M = N // num_segments
+    w = SpectralDensityEstimate.make_window(window, M)
+    segments = x[:, :M * num_segments].reshape(K, num_segments, M)
+    segments = segments - segments.mean(axis=-1, keepdims=True) if zero_mean else segments
+    S = (np.abs(np.fft.rfft(segments * w, axis=-1))**2).mean(axis=(0, 1)) * Δt / M
+    if one_sided:
+        S[1:] *= 2
+        if M % 2 == 0:
+            S[-1] /= 2
+    return np.fft.rfftfreq(M, Δt), S
+
+
+@pytest.mark.parametrize('window, one_sided, segments', [('hann', False, 8), ('hann', True, 8), (None, False, 6)])
+def test_averaged_psd_is_the_ensemble_spectral_density_estimate(m1x2, window, one_sided, segments):
+    sim = m1x2.simulate(num_samples=3000, seed=8, num_trajectories=4, detection=[Homodyne(), Position('x1')])
+    for label in ('homodyne', 'x1'):
+        f, S = sim.averaged_psd(label, num_segments=segments, window=window, one_sided=one_sided)
+        f_ref, S_ref = reference_averaged_psd(sim.records[label], sim.Δt, segments, window, one_sided)
+        np.testing.assert_array_equal(f, f_ref)
+        # identical up to round-off (the f = 0 bin of a mean-subtracted, unwindowed segment is a round-off zero)
+        np.testing.assert_allclose(S[1:], S_ref[1:], rtol=1e-12)
+        np.testing.assert_allclose(S[0], S_ref[0], rtol=1e-12, atol=1e-12 * np.median(S_ref))
+        # and the same numbers as SpectralDensityEstimate(ensemble=True) on its own frequency grid
+        estimate = SpectralDensityEstimate(sim, (label, label), num_segments=segments, window=window, one_sided=False,
+                                           ensemble=True, subtract_segment_mean=True)
+        # (pair by frequency: for an odd segment length the two-sided freq_range is not monotonic)
+        positive = estimate.freq_range >= 0
+        order = np.argsort(estimate.freq_range[positive])
+        f2, S2 = sim.averaged_psd(label, num_segments=segments, window=window)
+        np.testing.assert_allclose(estimate.freq_range[positive][order], f2[:positive.sum()], rtol=1e-12)
+        np.testing.assert_allclose(estimate.values[positive][order].real, S2[:positive.sum()], rtol=1e-12,
+                                   atol=1e-12 * np.median(S_ref))
+
+
+def test_ensemble_estimate_of_a_cavity_simulation_averages_its_trajectories(m1x2):
+    sim = m1x2.simulate(num_samples=2**12, seed=3, num_trajectories=4)
+    every = SpectralDensityEstimate(sim, ('homodyne', 'x1'), num_segments=4, window='hann', ensemble=True)
+    singles = [SpectralDensityEstimate(sim.trajectory(k), ('homodyne', 'x1'), num_segments=4, window='hann')
+               for k in range(4)]
+    np.testing.assert_allclose(every.values, np.mean([s.values for s in singles], axis=0), rtol=1e-12,
+                               atol=1e-12 * np.abs(every.values).max())
+    some = SpectralDensityEstimate(sim, ('homodyne', 'homodyne'), num_segments=4, ensemble=[0, 2])
+    pair = [SpectralDensityEstimate(sim.trajectory(k), ('homodyne', 'homodyne'), num_segments=4) for k in (0, 2)]
+    np.testing.assert_allclose(some.values, (pair[0].values + pair[1].values) / 2, rtol=1e-12)
+    assert every.fft_per_segment_A.shape[0] == 4 and some.num_ensemble_members == 2

@@ -390,6 +390,15 @@ def test_heun_cross_check_and_seeding():
     assert v_heun == pytest.approx(v_split, rel=0.25)
 
 
+def test_explicit_numba_without_a_compiled_kernel_raises():
+    from levisim.simulation.backends import UnsupportedBackendError
+    kw = {'model': 'nonlinear', 'num_samples': 64, 'Δt': 0.1 * μs, 'seed': 1, 'detection': [Position('x1')]}
+    with pytest.raises(UnsupportedBackendError, match='heun'):
+        CavitySimulation(cold(3), integrator='heun', backend='numba', **kw)
+    # backend='auto' runs the same configuration with NumPy
+    assert CavitySimulation(cold(3), integrator='heun', backend='auto', **kw).backend_used == 'numpy'
+
+
 class SpringStub:
     """A stand-in Interaction (the round-5 interface): a linear spring between particles 1 and 2"""
 

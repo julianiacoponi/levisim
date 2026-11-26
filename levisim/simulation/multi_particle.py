@@ -154,6 +154,7 @@ class MultiParticleFreeSpaceSimulation(StochasticSimulation):
     def compiled_integrate(self, integrator, G, S, X0, time_array):
         """The numba time loop (levisim.simulation.backends.numba_multi_particle), or None"""
         reason = self._compiled_kernel_unsupported_reason(integrator)
+        self.compiled_kernel_unsupported = reason
         if reason:
             logger.debug('MultiParticleFreeSpaceSimulation: NumPy loop instead of numba ({})', reason)
             return None

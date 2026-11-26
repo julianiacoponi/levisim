@@ -78,12 +78,19 @@ class StubInteraction(Interaction):
 
 
 @needs_numba
-def test_numba_falls_back_for_kicks_and_other_interactions():
-    sim = MultiParticleFreeSpaceSimulation(traps=[Trap(), Trap(position=(0, 3*μm, 0))],
-                                           interactions=[StubInteraction()], num_samples=100, backend='numba')
-    assert sim.backend_used == 'numpy'
+def test_numba_raises_and_auto_falls_back_for_kicks_and_other_interactions():
+    from levisim.simulation.backends import (
+        AUTO_NUMBA_MIN_STEPS,
+        UnsupportedBackendError,
+    )
+    with pytest.raises(UnsupportedBackendError, match='interaction'):
+        MultiParticleFreeSpaceSimulation(traps=[Trap(), Trap(position=(0, 3*μm, 0))],
+                                         interactions=[StubInteraction()], num_samples=100, backend='numba')
     kicked = Trap(kicks=[Kick(start=1e-6, duration=1e-6)])
-    sim = MultiParticleFreeSpaceSimulation(traps=[kicked, Trap(position=(0, 3*μm, 0))], num_samples=100, backend='numba')
+    with pytest.raises(UnsupportedBackendError, match='kicks'):
+        MultiParticleFreeSpaceSimulation(traps=[kicked, Trap(position=(0, 3*μm, 0))], num_samples=100, backend='numba')
+    sim = MultiParticleFreeSpaceSimulation(traps=[kicked, Trap(position=(0, 3*μm, 0))],
+                                           num_samples=AUTO_NUMBA_MIN_STEPS, backend='auto')
     assert sim.backend_used == 'numpy'
 
 

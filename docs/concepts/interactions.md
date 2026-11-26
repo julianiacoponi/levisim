@@ -172,8 +172,9 @@ the tweezers.
 
 The time domain evaluates the full, un-linearised force at every step, with the Gaussian envelope
 and the Gouy phase. This is what saturates the non-reciprocal instability on a limit cycle. Only
-the NumPy loop runs it: `MultiParticleFreeSpaceSimulation` with `backend='auto'` falls back from numba,
-and the nonlinear `CavitySimulation` is not compilable with interactions. One force evaluation for
+the NumPy loop runs it: `MultiParticleFreeSpaceSimulation` with `backend='auto'` falls back from numba
+(an explicit `backend='numba'` raises `UnsupportedBackendError`), and the nonlinear `CavitySimulation`
+is not compilable with interactions. One force evaluation for
 two particles takes about 70 μs.
 
 Reproductions: `notebooks/papers/rieser2022_optical_binding.ipynb` (coupling against separation,

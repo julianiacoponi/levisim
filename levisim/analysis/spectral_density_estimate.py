@@ -36,8 +36,19 @@ class SpectralDensityEstimate:
     the radial trace r(t) is a non-linear function of x, y, so its spectrum mixes them (difference and
     sum frequencies Ωx ± Ωy, and near-DC power from 〈r〉 fluctuations) and has no single Lorentzian form.
 
+    Ensembles: the periodograms can also be averaged over independent members of an ensemble
+    (Bartlett's method over members × segments). Either pass a list of sources (e.g. seeded
+    FreeSpaceSimulation runs of the same length and Δt), or a source with trajectories (a
+    CavitySimulation) and `ensemble=True` (every trajectory) or `ensemble=[k0, k1, ...]` (those
+    trajectories). The estimate's values are then the ensemble average, averaging_time is the total
+    averaged time (members × segments × segment time), and the per-segment arrays
+    (fft_per_segment_A/B, SDs_per_segment, covariance matrices) gain a leading ensemble axis of
+    length num_ensemble_members. Without an ensemble nothing changes.
+
     Keyword arguments: window [None => rectangular], see the window property; fit_PSD_kwargs;
-    num_segments_to_average; debug.
+    num_segments_to_average; subtract_segment_mean [False] (subtract each segment's mean before
+    windowing); keep_segments [True] (False skips storing the per-segment arrays, which hold
+    members × samples complex numbers each); fit [True]; debug.
     """
 
     properties = [
@@ -117,15 +128,28 @@ class SpectralDensityEstimate:
         # Hence it's more practical for measurement and simulations
         one_sided=True,
 
+        # None: one source; True (every trajectory of the source) or a sequence of trajectory
+        # indices: an ensemble average (see the class docstring). A list of sources is an ensemble too.
+        ensemble=None,
+
         **kwargs,
     ):
         self.debug = kwargs.get('debug', False)
+        members = self._ensemble_members(source, ensemble)
+        self.is_ensemble = members is not None
+        if members is None:
+            members = [source]
+        else:
+            source = members[0]
         self.source = source
+        self.members = members
+        self.num_ensemble_members = len(members)
         self.one_sided = one_sided
 
         A, B = AB
         self.AB = AB
         self.A, self.B = source.traces[A], source.traces[B]
+        trace_pairs = [(self.A, self.B)] + [(m.traces[A], m.traces[B]) for m in members[1:]]
 
         if A == B:
             self.type = 'PSD'
@@ -138,6 +162,9 @@ class SpectralDensityEstimate:
         # include this to be able to use a subset of the segments
         self.num_segments_to_average = kwargs.get('num_segments_to_average', self.num_segments)
         self.averaging_time = self.num_segments_to_average * self.segment_time
+        if self.is_ensemble:
+            # every member contributes num_segments_to_average periodograms
+            self.averaging_time = self.num_ensemble_members * self.averaging_time
         self.measurement_bandwidth = 1 / self.averaging_time
 
         # NOTE: answer to "figure out best window?": there is no single best one - a window trades
@@ -155,60 +182,79 @@ class SpectralDensityEstimate:
 
         # initialise the arrays to sum each data segment's periodogram
         segment_SDs = np.zeros(self.num_samples_per_segment, dtype=complex)
-
-        # initialise arrays to track each segments FFTs, and times
-        self.fft_per_segment_A = np.zeros([self.num_segments, self.num_samples_per_segment], dtype=complex)
-        self.fft_per_segment_B = np.zeros([self.num_segments, self.num_samples_per_segment], dtype=complex)
-
-        time_array = self.source.time_array
-        self.time_arrays_per_segment = np.zeros([self.num_segments, self.num_samples_per_segment])
+        subtract_segment_mean = kwargs.get('subtract_segment_mean', False)
+        keep_segments = kwargs.get('keep_segments', True)
+        K = self.num_ensemble_members
 
         # the length of SDs_per_segment depends on whether the final spectral density we want
         # is one-sided or two-sided
         final_num_samples_per_segment = self.halfway_index if self.one_sided else self.num_samples_per_segment
-        self.SDs_per_segment = np.zeros([self.num_segments, final_num_samples_per_segment], dtype=complex)
-
-        # keep track of the covariance matrices for each segment
-        # i.e. a 2x2 matrix of [[xx, xy], [yx, yy]] correlations
-        if self.type != 'PSD':
-            self.covariance_matrices_per_segment = np.zeros([self.num_segments, 2, 2])
-            self.norm_covariance_matrices_per_segment = np.zeros([self.num_segments, 2, 2])
-
-        start_index = 0
-        for segment_index in range(self.num_segments_to_average):
-            end_index = (segment_index + 1) * self.num_samples_per_segment
-
-            segment_A = self.A.values[start_index:end_index] * self.window
-            segment_B = self.B.values[start_index:end_index] * self.window
-
+        if keep_segments:
+            # initialise arrays to track each segments FFTs, and times (one row of segments per member)
+            fft_A = np.zeros([K, self.num_segments, self.num_samples_per_segment], dtype=complex)
+            fft_B = np.zeros([K, self.num_segments, self.num_samples_per_segment], dtype=complex)
+            SDs = np.zeros([K, self.num_segments, final_num_samples_per_segment], dtype=complex)
+            time_array = self.source.time_array
+            self.time_arrays_per_segment = np.zeros([self.num_segments, self.num_samples_per_segment])
+            # keep track of the covariance matrices for each segment
+            # i.e. a 2x2 matrix of [[xx, xy], [yx, yy]] correlations
             if self.type != 'PSD':
-                self.covariance_matrices_per_segment[segment_index] = np.cov(np.array([segment_A, segment_B]))
-                self.norm_covariance_matrices_per_segment[segment_index] = np.corrcoef(np.array([segment_A, segment_B]))
+                covariances = np.zeros([K, self.num_segments, 2, 2])
+                norm_covariances = np.zeros([K, self.num_segments, 2, 2])
 
-            # the default for numpy's fft applies the 1/N factor to the inverse transform only
-            # N = num_samples_per_segment
-            segment_fft_A = np.fft.fft(segment_A)  # * Δt
-            segment_fft_B = np.fft.fft(segment_B)  # * Δt
-            # apply the factor of Δt outside the loop, for efficiency
-            # 2010 - Bendat, Piersol - Random Data Analysis and Measurement Procedures - Eq. 11.36,38, p368
+        for member, (trace_A, trace_B) in enumerate(trace_pairs):
+            start_index = 0
+            for segment_index in range(self.num_segments_to_average):
+                end_index = (segment_index + 1) * self.num_samples_per_segment
 
-            # self.fft_per_segment_A.append(segment_fft_A)
-            # self.fft_per_segment_B.append(segment_fft_B)
-            self.fft_per_segment_A[segment_index] = segment_fft_A
-            self.fft_per_segment_B[segment_index] = segment_fft_B
+                segment_A = trace_A.values[start_index:end_index]
+                segment_B = trace_B.values[start_index:end_index]
+                if subtract_segment_mean:
+                    segment_A = segment_A - segment_A.mean()
+                    segment_B = segment_B - segment_B.mean()
+                segment_A = segment_A * self.window
+                segment_B = segment_B * self.window
 
-            segment_SD = np.conj(segment_fft_A) * segment_fft_B
-            segment_SDs += segment_SD
+                if keep_segments and self.type != 'PSD':
+                    covariances[member, segment_index] = np.cov(np.array([segment_A, segment_B]))
+                    norm_covariances[member, segment_index] = np.corrcoef(np.array([segment_A, segment_B]))
 
-            self.time_arrays_per_segment[segment_index] = time_array[start_index:end_index]
-            if self.one_sided:
-                self.SDs_per_segment[segment_index] = 2 * segment_SD[:self.halfway_index]
-                self.SDs_per_segment[segment_index, 0] = segment_SD[0]
-            else:
-                # self.SDs_per_segment.append(segment_SD)
-                self.SDs_per_segment[segment_index] = segment_SD
+                # the default for numpy's fft applies the 1/N factor to the inverse transform only
+                # N = num_samples_per_segment
+                segment_fft_A = np.fft.fft(segment_A)  # * Δt
+                # a PSD transforms the same segment twice: reuse it (np.fft.fft is deterministic)
+                segment_fft_B = segment_fft_A if trace_B is trace_A else np.fft.fft(segment_B)  # * Δt
+                # apply the factor of Δt outside the loop, for efficiency
+                # 2010 - Bendat, Piersol - Random Data Analysis and Measurement Procedures - Eq. 11.36,38, p368
 
-            start_index = end_index
+                segment_SD = np.conj(segment_fft_A) * segment_fft_B
+                segment_SDs += segment_SD
+
+                if keep_segments:
+                    fft_A[member, segment_index] = segment_fft_A
+                    fft_B[member, segment_index] = segment_fft_B
+                    if member == 0:
+                        self.time_arrays_per_segment[segment_index] = time_array[start_index:end_index]
+                    if self.one_sided:
+                        SDs[member, segment_index] = 2 * segment_SD[:self.halfway_index]
+                        SDs[member, segment_index, 0] = segment_SD[0]
+                    else:
+                        SDs[member, segment_index] = segment_SD
+
+                start_index = end_index
+
+        if keep_segments:
+            # without an ensemble the per-segment arrays keep their single-source shapes
+            pick = (lambda a: a) if self.is_ensemble else (lambda a: a[0])
+            self.fft_per_segment_A = pick(fft_A)
+            self.fft_per_segment_B = pick(fft_B)
+            self.SDs_per_segment = pick(SDs)
+            if self.type != 'PSD':
+                self.covariance_matrices_per_segment = pick(covariances)
+                self.norm_covariance_matrices_per_segment = pick(norm_covariances)
+        else:
+            self.fft_per_segment_A = self.fft_per_segment_B = self.SDs_per_segment = None
+            self.time_arrays_per_segment = None
 
         # 2010 - Bendat, Piersol - Random Data Analysis and Measurement Procedures - Eq. 11.98, p386
         # normalisation equivalent to
@@ -240,6 +286,8 @@ class SpectralDensityEstimate:
         # fftfreqs = [0, 1, ..., (m-1)/2, -(m-1)/2, ..., -1] / (m*Δt)   if m is odd
 
         fft_spectrum = two_sided_spectrum = normalisation * segment_SDs
+        # the two-sided values in np.fft.fftfreq order (f = 0 first), before any reordering
+        self.fft_order_values = two_sided_spectrum
 
         # NOTE: Random Data (Bendat, Piersol) bottom of p387 describes how the 0 + Nyquist frequencies suffer from errors and are usually discarded!
         # (the frequencies and values are also available together as the 2D array self.spectrum)
@@ -269,6 +317,31 @@ class SpectralDensityEstimate:
         if self.type == 'PSD' and trap is not None and self.A.axis in trap.Γj and kwargs.get('fit', True):
             fit_PSD_kwargs = kwargs.get('fit_PSD_kwargs', {})
             self.fit_PSD(**fit_PSD_kwargs)
+
+    @staticmethod
+    def _ensemble_members(source, ensemble):
+        """The sources of an ensemble estimate, or None for a single source"""
+        if isinstance(source, (list, tuple)):
+            if ensemble is not None:
+                raise ValueError('pass either a list of sources or ensemble=..., not both')
+            members = list(source)
+        elif ensemble is None or ensemble is False:
+            return None
+        else:
+            if not hasattr(source, 'trajectory') or not hasattr(source, 'num_trajectories'):
+                raise ValueError(
+                    f'ensemble={ensemble!r} needs a source with trajectories (e.g. a CavitySimulation); '
+                    'for independent runs pass a list of sources instead'
+                )
+            indices = range(source.num_trajectories) if ensemble is True else [int(k) for k in ensemble]
+            members = [source.trajectory(k) for k in indices]
+        if not members:
+            raise ValueError('an ensemble needs at least one member')
+        first = members[0]
+        for member in members[1:]:
+            if member.Δt != first.Δt or member.num_samples != first.num_samples:
+                raise ValueError('every member of an ensemble needs the same Δt and num_samples')
+        return members
 
     @staticmethod
     def make_window(window, num_samples):

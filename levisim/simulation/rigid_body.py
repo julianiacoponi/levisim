@@ -131,12 +131,13 @@ class RigidBodySimulation(StochasticSimulation):
             evaluated at the trap centre; scaled with the tweezer intensity modulation)
 
     backend ['auto']: 'numba' compiles the loop for a trap of at most one `Tweezer` plus `Feedback`
-    elements, with the built-in controls but no callables; anything else runs the NumPy loop.
+    elements, with the built-in controls but no callables; anything else runs the NumPy loop with
+    backend='auto' and raises UnsupportedBackendError with backend='numba'.
 
     Traces (self.traces): 'x', 'y', 'z' [m] and 'α', 'β', 'γ' [rad], the rotation vector of the
     orientation relative to the initial one about the lab axes x, y, z (the librational coordinates
     of `MultiTrap`; meaningful for librations, not for a free rotor, whose angle grows without
-    bound). Only the NumPy loop exists (backend='numba' falls back to it).
+    bound).
     """
 
     default_Δt = 0.01*μs
@@ -349,6 +350,7 @@ class RigidBodySimulation(StochasticSimulation):
     def compiled_integrate(self, integrator, G, S, X0, time_array):
         """The numba loop (levisim.simulation.backends.numba_rigid_body), or None when this configuration needs NumPy"""
         reason = self._compiled_kernel_unsupported_reason(integrator)
+        self.compiled_kernel_unsupported = reason or ''
         if reason:
             from levisim.core.logger import logger as _logger
             _logger.debug('RigidBodySimulation runs the NumPy loop: {}', reason)

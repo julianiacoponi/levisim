@@ -110,6 +110,24 @@ shows where the growth saturates.
 | `PhotonNumber(η)` | flux fluctuation $\lvert\bar\alpha_\mathrm{out}\rvert\, h(\theta_\alpha)$, $\theta_\alpha = -\arg\bar\alpha_\mathrm{out}$ | shot-noise units, or photons/s |
 | `Position(label)` | $x = x_\mathrm{zpf}\,(b + b^\dagger)$ | m (or `units='zpf'`) |
 
+Every record is the average over its sample interval by default. `Position(label,
+sampling='instantaneous')` records the position at the sample time $t_k$ instead, as
+`FreeSpaceSimulation` does: no $\mathrm{sinc}^2(f\Delta t)$ response, and everything beyond the
+Nyquist frequency aliases. The instantaneous sample is a copy of the state and draws no random
+numbers, so the other records of a seeded run are unchanged by adding it; `trace_label` names it,
+so one mode can be recorded both ways:
+
+```python
+sim = mtrap.simulate(detection=[Position('x1'), Position('x1', sampling='instantaneous', trace_label='x1_inst')])
+```
+
+For it, `sim.record_spectrum(label, f)` is the exact spectrum of the sampled state,
+$\Delta t\,[M^{-1}Q_{uu}M^{-\dagger}]_{ii}$ with $M = e^{-i\omega\Delta t}I - \Phi_u$, whose integral
+over the Nyquist band is the steady-state variance (a test), and `kind='continuous'` is the
+symmetrised `MultiTrap` spectrum without the $\mathrm{sinc}^2$ factor. With `model='nonlinear'` the
+samples come from the stored states, which are then kept internally during the run (memory
+$\propto$ samples × trajectories × state size).
+
 - Output field: $a_\mathrm{out} = -\sqrt{\kappa}\,a + a_\mathrm{in}$, with quadratures
   $X_\mathrm{out} = a_\mathrm{out} + a_\mathrm{out}^\dagger$ and
   $P_\mathrm{out} = i(a_\mathrm{out} - a_\mathrm{out}^\dagger)$, the convention of
@@ -123,7 +141,9 @@ shows where the growth saturates.
   `SpectralDensityEstimate` (its default) shows it at 2.
 - `sim.averaged_psd` cuts every trajectory into non-overlapping segments, applies a window
   normalised to unit mean square (Hann by default) and averages the periodograms over segments and
-  trajectories; it is two-sided by default. Its relative scatter per bin is
+  trajectories; it is two-sided by default. It is a thin wrapper of
+  `SpectralDensityEstimate(sim, (label, label), ensemble=True, subtract_segment_mean=sim.zero_mean)`,
+  which also gives cross-spectra and the per-segment arrays (see the stochastic-simulations guide). Its relative scatter per bin is
   $1/\sqrt{\text{segments}\times\text{trajectories}}$. Around a peak much narrower than the bin width
   the window biases the comparison, so segments must be long enough to resolve the narrowest mode.
 - `sim.record_spectrum(label, f)` is the exact spectrum of the sampled record, from the discretised
@@ -189,9 +209,21 @@ Every optical record takes:
   phase that is slow against the spectral features averages the spectrum over its distribution:
   with a static Gaussian error of variance $\sigma^2$ per trajectory, the ensemble-averaged spectrum
   is `quadrature_squeezing.phase_noise_averaged(..., σ²)` (a test, with $\sigma = 0.5$ rad and 256
-  trajectories). Only the detected fluctuations are rotated; the term that LO phase noise makes from
-  a static output field, $\propto \lvert\bar\alpha_\mathrm{out}\rvert\,\delta\phi$, is not part of the
-  linearised record.
+  trajectories). By default only the detected fluctuations are rotated; the term that LO phase noise
+  makes from a static output field, $\propto \lvert\bar\alpha_\mathrm{out}\rvert\,\delta\phi$, is not
+  part of the linearised record (see `static_carrier`).
+- `static_carrier` (default `False`; `Homodyne` and `Heterodyne`): adds the static output field
+  $\bar\alpha_\mathrm{out} = -\sqrt{\kappa_j}\,\alpha$ of the port to the record, i.e. the sample
+  average of $2\sqrt{\eta}\,\lvert\bar\alpha_\mathrm{out}\rvert\cos(\theta(t) + \phi_k - \theta_\alpha)$ with
+  $\theta_\alpha = -\arg\bar\alpha_\mathrm{out}$. This is the DC term of a homodyne record (the beat note at
+  $\Omega_\mathrm{het}$ of a heterodyne, averaged exactly over each interval) and, with phase noise
+  $\phi$, its conversion $\approx -2\sqrt{\eta}\,\lvert\bar\alpha_\mathrm{out}\rvert\sin(\theta - \theta_\alpha)\,\phi$
+  into the record. At $\theta = \theta_\alpha + \pi/2$, white phase noise of one-sided PSD $S_\phi$
+  raises the two-sided record PSD by $2\eta\lvert\bar\alpha_\mathrm{out}\rvert^2 S_\phi$ (a test); at the
+  amplitude quadrature $\theta_\alpha$ the conversion is second order. The static field comes from the
+  `MultiTrap` (or the nonlinear equilibrium); for a `QuadratureSystem` pass `α=`. The carrier draws
+  no random numbers, so the fluctuations of a seeded run are unchanged. `sim.records` keep the DC
+  term; traces subtract their mean when `zero_mean=True` (the default).
 - `electronic_noise`: white noise added to the record, as a one-sided PSD in the record's final
   units (the same one-sided convention as `detection_floor`).
 - `volts`: a `VoltageConversion(power, responsivity, transimpedance_gain)`. The record becomes
@@ -211,7 +243,7 @@ SpectralDensityEstimate(experiment, ('homodyne', 'homodyne'), num_segments=8)
 ```
 
 `sim.record_spectrum` includes η, the electronic noise, the detection floor and the conversion to
-volts; it does not include LO phase noise.
+volts; it does not include LO phase noise or the static carrier.
 
 ## The nonlinear model
 
@@ -393,6 +425,36 @@ every number above (seeded; about a minute with numba).
   shot noise at the optimal quadrature of the strongly coupled system of
   `tests/test_quadrature_squeezing.py` (0.915 measured against 0.916 predicted in a longer run), and
   the growth rate of the unstable 2×2 system (within 0.01%).
+
+### Squeezing with the parameters of Pontin et al.
+
+The strongly coupled test system squeezes the output by only about 9%. With the parameters fitted by
+Deplano, Pontin, Ranfagni, Marino and Marin, Nat. Commun. 16, 4215 (2025),
+doi:10.1038/s41467-025-59213-3 (Table 1: $\Omega/2\pi$ = 122.17 and 109.37 kHz, $g/2\pi$ = 14.13 and
+10.37 kHz, heating rates $\Gamma/2\pi$ = 4.03 and 3.05 kHz; $\kappa/2\pi$ = 57 kHz,
+$\Delta/2\pi$ = −111 kHz, $\eta$ = 0.32), the system whose optical squeezing Pontin, Deplano,
+Marino and Marin analyse in Phys. Rev. A 114, 053704 (2026), doi:10.1103/hms3-yb2h, the symmetrised
+homodyne spectrum at the optimal angle $\theta^*$ = −1.5228 rad dips to 0.8707 at 87 kHz (12.9%
+squeezing) for $\eta = 1$, and to 0.9586 for $\eta$ = 0.32. The toy `MultiTrap` is that of
+`notebooks/papers/pontin2026_optical_squeezing.ipynb` (fitted total heating imposed on the gas bath).
+
+![Squeezing of the cavity output with the Pontin parameters](figures/cavity_pontin_squeezing.png)
+
+*Homodyne records at $\theta^*$ of a `CavitySimulation` with the Pontin parameters
+(16 runs × 8 trajectories × $2^{20}$ samples of 0.1 μs; 16384 periodograms, $\Delta f$ = 1.22 kHz)
+against the symmetrised `MultiTrap.homodyne_spectrum`, mixed with vacuum as $\eta S + 1 - \eta$ and
+multiplied by $\mathrm{sinc}^2(f\Delta t)$. Lower panel: relative residual; the grey band is
+±2 standard errors of a plotted point.*
+
+Over 60-170 kHz the mean ratio of simulation to theory is 1.0016 ± 0.0008 ($\eta = 1$) and
+1.0004 ± 0.0008 ($\eta$ = 0.32); within ±5 kHz of the dip it is 0.9993 ± 0.0028 and 0.9963 ± 0.0028.
+At $\Delta t$ = 0.1 μs the $\mathrm{sinc}^2$ form differs from the exact discrete spectrum
+(`record_spectrum`) by at most $9.4\times10^{-4}$. A much coarser $\Delta t$ is not suited to this
+comparison: the sample average does not alias white noise, so the sampled vacuum stays at 1 while
+$\mathrm{sinc}^2(f\Delta t)$ would pull it down (by 5% at 120 kHz for $\Delta t$ = 1 μs); there
+`record_spectrum` is the reference. `python docs/guide/scripts/cavity_pontin_squeezing.py`
+regenerates the figure and these numbers (seeded; about two minutes with numba), and
+`tests/test_cavity_records.py` runs the same comparison at reduced statistics.
 
 ## Performance
 
