@@ -66,3 +66,17 @@ def test_tweezer_force_is_bit_identical_to_the_peak_energy_form():
         assert trap.Ftw(x, y, z) == legacy
         assert (trap.Ftwx(x, y, z), trap.Ftwy(x, y, z), trap.Ftwz(x, y, z)) == legacy
         assert tuple(tweezer.force(r, 0.0, trap.bead)) == legacy
+
+
+# --------------------------------------------------------------------------------------------------
+# decision 36: directed force noise β
+# --------------------------------------------------------------------------------------------------
+def test_directed_noise_default_depends_on_how_the_trap_is_built():
+    paul = PaulTrap.ring(10.0, 2e4 * Hz)
+    particle = Sphere(r=100*nm, charge=500)
+    assert Trap().β == np.sqrt(2)
+    assert Trap(tweezer=Tweezer(), extra_fields=[paul], bead=Bead(charge=500)).β == np.sqrt(2)
+    fields_trap = Trap(fields=[paul], particle=particle)
+    assert fields_trap.β == 0.0 and fields_trap.Sdir == 0.0
+    assert Trap(fields=[Tweezer()]).β == 0.0
+    assert Trap(fields=[paul], particle=particle, β=np.sqrt(2)).β == np.sqrt(2)

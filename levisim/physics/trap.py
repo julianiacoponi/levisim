@@ -96,7 +96,10 @@ class Trap:
 
     This class also allows for:
     - Arbitrary values of feedback damping in x, y, z
-    - Stochastic, directed force noise in x-y plane
+    - Stochastic, directed force noise in the x-y plane, fdir = β·fth at angle ψ (default β = √2 for the
+      tweezer shorthand, the historical value; β = 0 for a trap built with fields=[...])
+    - The finite-size alignment torque of an extended particle (`finite_size_torque`, default on for
+      a non-spherical particle and off for a sphere)
     - Kicks at specified times (step-like impulses) in the x-y plane (to be used in Simulation, or deduced from Experiment)
     - Photon recoil (turned on or off)
     - Overriding the Tweezer potential's natural frequencies
@@ -186,10 +189,12 @@ class Trap:
         # DEFINED PROPERTIES
 
         # ------------------------------------------------------------------------------------------
-        # Scale factor for directed force noise compared to the thermal force noise
+        # Scale factor for directed force noise compared to the thermal force noise, fdir = β·fth
         # [·]
-        # fdir = β.fth
-        self.β = float(kwargs.get('β', np.sqrt(2)))
+        # The tweezer shorthand keeps the historical, experiment-specific β = √2 (which doubles the
+        # x-y force noise); a trap built with fields=[...] (a Paul, magnetic or any other trap) has no
+        # directed noise unless β is given
+        self.β = float(kwargs.get('β', 0.0 if 'fields' in kwargs else np.sqrt(2)))
 
         # ------------------------------------------------------------------------------------------
         # Angle of the directed force noise in the x-y plane

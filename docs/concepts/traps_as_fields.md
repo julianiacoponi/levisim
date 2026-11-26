@@ -29,7 +29,9 @@ hybrid = Trap(fields=[Tweezer(), HarmonicPotential([1e-6, 0, 0]), Gravity()], pa
 {class}`~levisim.physics.fields.elements.PhotonRecoil` element if `photon_recoil=True`, and appends
 the `kicks`. With `fields=` the trap holds exactly the elements given: there is no feedback damping
 unless a {class}`~levisim.physics.fields.elements.Feedback` element is among them, or `Γ_fbx`, `Γ_fby`,
-`Γ_fbz` are passed (which then add one). `trap.Γ_fbx`, `trap.kicks`, `trap.photon_recoil` and
+`Γ_fbz` are passed (which then add one), and no directed force noise unless `β` is passed (the
+shorthand keeps the historical, experiment-specific $\beta = \sqrt2$, which doubles the $x$-$y$ force
+noise; see {class}`~levisim.analysis.spectral_density_theory.SpectralDensityTheory`). `trap.Γ_fbx`, `trap.kicks`, `trap.photon_recoil` and
 `trap.tweezer` read and write the corresponding elements. `trap.fields` is an ordinary list and may be
 edited in place.
 
