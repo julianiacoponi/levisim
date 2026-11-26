@@ -325,7 +325,9 @@ def test_harmonic_only_trap_simulates_with_expected_Ω_and_equipartition():
     Δt = 1e-7
     sim = FreeSpaceSimulation(trap=trap, num_samples=200_000, Δt=Δt, seed=21, backend='auto')
     sim.simulate_dynamics()
-    assert sim.backend_used == 'numpy'
+    # a HarmonicPotential has a compiled force (numba_elements), so 'auto' compiles this long run
+    from levisim.simulation.backends import numba_available
+    assert sim.backend_used == ('numba' if numba_available() else 'numpy')
     for index, axis in enumerate('xyz'):
         x = sim.traces[axis].values
         variance = np.var(x)
@@ -340,11 +342,23 @@ def test_numba_falls_back_to_numpy_for_other_elements():
     from levisim.simulation.backends import numba_available
     if not numba_available():
         pytest.skip('numba is not installed or is disabled')
-    trap = Trap(fields=[Tweezer(), HarmonicPotential(1e-7), Feedback(2*kHz, 2*kHz)])
+    class ConstantPush(ForceElement):
+        """An element without a compiled force"""
+
+        def force(self, r, t, particle):
+            return np.array([1e-18, 0.0, 0.0])
+
+    trap = Trap(fields=[Tweezer(), ConstantPush(), Feedback(2*kHz, 2*kHz)])
     sim = FreeSpaceSimulation(trap=trap, num_samples=200, seed=1, backend='numba')
-    assert 'HarmonicPotential' in sim._compiled_kernel_unsupported_fields()
+    assert 'ConstantPush' in sim._compiled_kernel_unsupported_fields()
     sim.simulate_dynamics()
     assert sim.backend_used == 'numpy'
+    # a tweezer plus a HarmonicPotential compiles (numba_elements) and matches its NumPy run
+    with_harmonic = Trap(fields=[Tweezer(), HarmonicPotential(1e-7), Feedback(2*kHz, 2*kHz)])
+    runs = {backend: FreeSpaceSimulation(trap=with_harmonic, num_samples=2000, seed=4, backend=backend)
+            for backend in ('numba', 'numpy')}
+    assert runs['numba'].backend_used == 'numba'
+    assert np.allclose(runs['numba'].x.values, runs['numpy'].x.values, rtol=1e-9, atol=1e-18)
     # the standard set, spelled as explicit fields, still compiles and matches its NumPy run
     explicit = Trap(fields=[Tweezer(), Feedback(2.1*kHz, 2.5*kHz), Gravity()], photon_recoil=True)
     runs = {}

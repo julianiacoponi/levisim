@@ -129,10 +129,22 @@ $$
 
 This is the order of the single-tweezer code, so every seeded trace of an existing configuration is
 unchanged. `gravity=True` adds a `Gravity` element (a trap may instead hold one in its fields, but not
-both). The compiled numba kernel covers the set it always did: one tweezer (or `override_Ω_dict`),
-feedback, kicks, the tweezer's photon recoil and gravity. A trap with any other element runs the
-NumPy loop, and says so in a debug message. A generic compiled path would need each element to
-supply a numba-compilable force function and a packed parameter array.
+both). The compiled numba kernel covers one tweezer (or `override_Ω_dict`), or any sum of the
+'field' elements that have a compiled force (`levisim.simulation.backends.numba_elements`): the
+trap's tweezer, `PaulTrap`, `MagneticTrap` (with `LocalFieldExpansion`, `MultipoleField`,
+`CurrentLoop`, `CuboidMagnet` sources and their `FieldSum`/`CoilPair`), `HarmonicPotential` and
+`UniformElectricField`; plus feedback, `EddyCurrentDamping`, kicks, the tweezer's photon recoil,
+gravity, and the extra white noise of elements that add it (a `PaulTrap`'s electrode noise). The
+elements are packed once per run into flat arrays (an element program) that the compiled drift
+reads, and each compiled force repeats the expressions of the element's NumPy `force`; the tests
+compare them to ≲ 10⁻¹⁴ relative (≲ 3 × 10⁻¹¹ for a current loop near a field zero, whose Jacobian is a
+central difference). A trap with any other element (a `CallableField` source, an element subclass,
+`MeissnerImagePlane`) runs the NumPy loop, and says so in a debug message.
+
+In the NumPy loop the element lookup is resolved once per run (`FreeSpaceSimulation.force_dispatch`,
+built by the `prepare_numpy_loop` hook): which forces are summed, the damping rates and gravity are
+fixed when the loop starts, so edits to `trap.fields` made while it runs are ignored until the next
+run. A direct call of `dynamics_vector` outside a run always sees the trap as it is.
 
 ## Adding a new kind of trap
 

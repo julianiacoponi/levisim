@@ -134,8 +134,8 @@ print(trap.magnetic_trap_report_str(r_guess=(0, 0, 0), scan_range=100*μm))
 
 `FreeSpaceSimulation` integrates the full nonlinear force of every element, so a magnetic trap, a
 magneto-gravitational trap and a hybrid magneto-optical trap (`fields=[Tweezer(...), MagneticTrap(...),
-Gravity(...)]`) all run with the NumPy loop (the compiled numba kernel covers tweezer traps only;
-`backend='auto'` falls back). Start the particle at its equilibrium (`X0`) and set `linearisation_point`
+Gravity(...)]`) all have a compiled numba kernel (`backend='auto'` uses it for runs of $2^{15}$
+steps or more; `CallableField` sources run the NumPy loop). Start the particle at its equilibrium (`X0`) and set `linearisation_point`
 there, so that `Trap.Ωj` and the theory spectra are those of the equilibrium. For the graphite sphere at
 0.1 mbar the simulated PSD peaks at 37.91, 37.95 and 175.37 Hz against 37.99, 37.99 and 175.07 Hz from
 the stiffness (40 000 steps of 0.2 ms; the tests check the same for a quadrupole with gravity to 2 %).

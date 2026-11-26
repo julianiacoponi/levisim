@@ -179,10 +179,12 @@ the tweezers.
   Eq. (8)) is not modelled. Each particle's recoil heating stays independent.
 
 The time domain evaluates the full, un-linearised force at every step, with the Gaussian envelope
-and the Gouy phase. This is what saturates the non-reciprocal instability on a limit cycle. Only
-the NumPy loop runs it: `MultiParticleFreeSpaceSimulation` with `backend='auto'` falls back from numba,
-and the nonlinear `CavitySimulation` is not compilable with interactions. One force evaluation for
-two particles takes about 70 μs.
+and the Gouy phase. This is what saturates the non-reciprocal instability on a limit cycle. Both
+`MultiParticleFreeSpaceSimulation` and the nonlinear `CavitySimulation` have compiled kernels for it
+(`levisim.simulation.backends.numba_binding`, both orders, both field models, any tweezer
+polarisation, at most one `OpticalBinding` per simulation). They evaluate the expressions of
+`OpticalBinding.forces`, with the pairs and polarisabilities packed once per run, and agree with it
+to ≲ 10⁻¹³ relative. One force evaluation for two particles takes about 70 μs in NumPy.
 
 Reproductions: `notebooks/papers/rieser2022_optical_binding.ipynb` (coupling against separation,
 optical phase and polarisation) and `notebooks/papers/reisenbauer2024_nonreciprocal_binding.ipynb`
@@ -228,9 +230,11 @@ $g_{12} = g_{21}$). All seven calculation methods support these couplings
 its own trap physics (the equations of `FreeSpaceSimulation`), plus the pair forces at
 $R_n = $ `trap.position` + $(x_n, y_n, z_n)$. The noises of different particles are independent. One
 particle without interactions reproduces `FreeSpaceSimulation` bit for bit. The numba kernel covers
-single-tweezer traps (or `override_Ω_dict`) with feedback, photon recoil and gravity, and the
-power-law interactions. It accumulates each pair's force in local scalars and writes it once to both
-particles. Other configurations run the NumPy reference loop.
+the traps that `FreeSpaceSimulation`'s kernel covers (see
+[Traps as sums of fields](traps_as_fields.md)) without kicks, the power-law interactions and one
+`OpticalBinding`. It accumulates each power-law pair's force in local scalars and writes it once to
+both particles. Other configurations run the NumPy reference loop. The nonlinear `CavitySimulation`
+kernel evaluates the same interactions at the laboratory positions `trap_positions` + $r$.
 
 Validation (`tests/test_multi_particle_simulation.py`): two particles of 20 e each, 4 μm apart along
 the tweezer $y$ axis, both with $\Omega_y/2\pi$ = 100 kHz. The stiffness blocks at the equilibrium

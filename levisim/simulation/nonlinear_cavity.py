@@ -245,7 +245,7 @@ class NonlinearCavityModel:
                 P[n, _REC:_REC + 3] = [0.5 * np.imag(tw.effective_polarisability(trap.bead)), tw.k, 1.0]
             else:
                 self.generic_elements[n].extend(recoils)
-            if self.generic_elements[n]:
+            if not self._compilable_elements(self.generic_elements[n]):
                 self.compilable = False
 
             drive = trap.drive_tweezer
@@ -255,7 +255,7 @@ class NonlinearCavityModel:
                 np.sin(drive.θ), np.cos(drive.θ), drive.k, trap.bead.Φ, drive.wx0, drive.wy0, drive.zR,
                 Ed / ħ, 2 * Ed, np.cos(φ), np.sin(φ), cavity_mode_polarisability(trap) * self.E0**2 / ħ, cavity_mode_polarisability(trap) * self.E0**2,
             ]
-        if self.interactions:
+        if self.interactions and not self._compilable_interactions():
             self.compilable = False
         self.parameters = P
         self.zpf = P[:, _ZPF].copy()
@@ -339,6 +339,55 @@ class NonlinearCavityModel:
         else:
             self.cavities = {'cavity': ports[cavity.detected_port]}
             self.ports = {'cavity': ports}
+
+    @staticmethod
+    def _compilable_elements(elements):
+        """
+        Whether the numba kernel can evaluate these generic elements: static elements with a compiled
+        force (`numba_elements`: MagneticTrap, UniformElectricField), not a time-dependent PaulTrap
+        """
+        from levisim.physics.fields.electric import UniformElectricField
+        from levisim.physics.fields.magnetic import MagneticTrap
+        return all(type(element) in (MagneticTrap, UniformElectricField) for element in elements)
+
+    def _compilable_interactions(self):
+        """Whether the numba kernel can evaluate the interactions (power laws and one OpticalBinding)"""
+        from levisim.physics.interactions.central import PowerLawPairInteraction
+        from levisim.physics.interactions.optical_binding import OpticalBinding
+        bindings = 0
+        for interaction in self.interactions:
+            if type(interaction) is OpticalBinding:
+                bindings += 1
+            elif not isinstance(interaction, PowerLawPairInteraction) or (
+                    type(interaction).forces is not PowerLawPairInteraction.forces):
+                return False
+        return bindings <= 1
+
+    def compiled_extra_arguments(self):
+        """
+        The arrays of the generic elements and interactions that the numba kernel reads (built once):
+        (ranges, rows, sources, data) of the element program, the trap positions, the power-law pair
+        rows [j, k, C, s, n] and the OpticalBinding (flag, meta, real, cplx)
+        """
+        cached = self.__dict__.get('_compiled_extra')
+        if cached is not None:
+            return cached
+        from levisim.simulation.backends.numba_elements import encode_elements
+        from levisim.simulation.backends.numba_multi_particle import (
+            binding_arguments,
+            pair_terms,
+        )
+        program = encode_elements(self.traps, self.generic_elements, allow_time_dependent=False)
+        if self.interactions:
+            terms = pair_terms(self)
+            binding = binding_arguments(self.interactions, self.particles)
+        else:
+            terms = np.zeros((0, 5))
+            binding = binding_arguments([], self.particles)
+        extra = (program.ranges, *program.arrays, np.ascontiguousarray(self.trap_positions, dtype=np.float64),
+                 np.ascontiguousarray(terms, dtype=np.float64), *binding)
+        self.__dict__['_compiled_extra'] = extra
+        return extra
 
     # ------------------------------------------------------------------------------------------
     # the drift

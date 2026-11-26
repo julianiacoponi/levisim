@@ -56,9 +56,11 @@ class FreeSpaceSimulation(StochasticSimulation):
         (a trap with a PaulTrap needs Δt ≤ 1/(20 f_rf), else a UserWarning; its electrode noise is
             added as extra white force noise, see field_noise_modes)
         backend ['auto']: 'auto', 'numpy' or 'numba' (compiled loop, `pip install levisim[fast]`),
-            see StochasticSimulation; every option above has a compiled kernel, for a trap made of
-            one tweezer plus feedback, kicks, photon recoil and gravity (or override_Ω_dict); traps
-            with other force elements run the NumPy loop
+            see StochasticSimulation; every option above has a compiled kernel, for a trap whose
+            'field' elements are any sum of its tweezer, PaulTraps, MagneticTraps (polynomial,
+            current-loop, cuboid or summed sources), HarmonicPotentials and UniformElectricFields
+            (or override_Ω_dict), plus feedback, eddy-current damping, kicks, photon recoil and
+            gravity; traps with other force elements run the NumPy loop
         save, save_dir, save_description, save_fmt: optional pickling of the instance
 
     The forces are those of the trap's force elements (`Trap.fields`), added in a fixed order
@@ -247,32 +249,34 @@ class FreeSpaceSimulation(StochasticSimulation):
             return f'no compiled kernel for {integrator!r}'
         if self.rk_loop_debug:
             return 'rk_loop_debug logs every step'
-        if np.shape(G) != (6, 4) or len(X0) != 6:
+        if np.ndim(G) != 2 or np.shape(G)[0] != 6 or np.shape(G)[1] < 4 or len(X0) != 6:
             return 'unexpected state or noise dimensions'
         return ''
 
     def _compiled_kernel_unsupported_fields(self):
         """
-        Why the trap's force elements are outside the compiled kernel's fixed set ('' if inside)
+        Why the trap's force elements are outside the compiled kernel's set ('' if inside)
 
-        The kernel knows one Gaussian-beam tweezer (or override_Ω_dict in its place), any Feedback
-        elements (through Γx, Γy, Γz), kicks, one PhotonRecoil of that tweezer, and gravity. A generic
-        compiled path would need each element to provide a numba-compilable force with its parameters
-        packed into an array (see the PR notes of the force-element refactor).
+        The kernel knows one Gaussian-beam tweezer (or override_Ω_dict in its place), any sum of the
+        'field' elements with a compiled force (the trap's tweezer, PaulTrap, MagneticTrap with
+        polynomial, current-loop, cuboid or summed sources, HarmonicPotential and
+        UniformElectricField, see `levisim.simulation.backends.numba_elements`), any Feedback and
+        EddyCurrentDamping elements (through Γx, Γy, Γz), kicks, one PhotonRecoil of the trap
+        tweezer, and gravity.
         """
         from levisim.physics.fields.elements import Feedback, Gravity, PhotonRecoil
+        from levisim.physics.fields.magnetic import EddyCurrentDamping
         from levisim.physics.kick import Kick
-        from levisim.physics.tweezer import Tweezer
         trap = self.trap
-        field_elements = trap.fields_in_group('field')
-        single_tweezer = len(field_elements) == 1 and isinstance(field_elements[0], Tweezer)
-        if not trap.override_Ω_dict and not single_tweezer:
-            names = ', '.join(element.label for element in field_elements) or 'none'
-            return f'no compiled kernel for the field elements [{names}] (only one Tweezer)'
+        if not trap.override_Ω_dict and not trap._element_plan['single_tweezer']:
+            from levisim.simulation.backends.numba_elements import unsupported_reason
+            reason = unsupported_reason([trap], [trap.fields_in_group('field')])
+            if reason:
+                return reason
         for element in trap.fields:
             if element.simulation_group == 'field':
                 continue
-            if type(element) not in (Feedback, Kick, PhotonRecoil, Gravity):
+            if type(element) not in (Feedback, Kick, PhotonRecoil, Gravity, EddyCurrentDamping):
                 return f'no compiled kernel for the {element.label} element'
         recoils = trap.fields_of_type(PhotonRecoil)
         if recoils and (len(recoils) > 1 or recoils[0].tweezer is not trap.tweezer):

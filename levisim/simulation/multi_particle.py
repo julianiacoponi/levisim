@@ -42,10 +42,12 @@ class MultiParticleFreeSpaceSimulation(StochasticSimulation):
         gravity [False], gravity_direction [(-1, 0, 0)]: the weight of every particle, as in
             FreeSpaceSimulation
         store_momenta [False]: also store the momentum traces 'px1', ...
-        backend ['auto']: the numba kernel covers traps of one Tweezer (or override_Ω_dict) with
-            feedback, photon recoil and gravity, but no kicks, and interactions that are power laws
-            (`PowerLawPairInteraction`: Coulomb, NewtonianGravity, Casimir); anything else runs the
-            NumPy loop
+        backend ['auto']: the numba kernel covers the traps that FreeSpaceSimulation's kernel
+            covers (one Tweezer or override_Ω_dict, or any sum of the compiled 'field' elements:
+            tweezer, PaulTrap, MagneticTrap, HarmonicPotential, UniformElectricField; feedback,
+            photon recoil and gravity), but no kicks, and interactions that are power laws
+            (`PowerLawPairInteraction`: Coulomb, NewtonianGravity, Casimir) plus at most one
+            `OpticalBinding`; anything else runs the NumPy loop
 
     Traces are labelled like MultiTrap's dimensions: 'x1', 'y1', 'z1', 'x2', ... (self.traces).
     """
@@ -175,6 +177,7 @@ class MultiParticleFreeSpaceSimulation(StochasticSimulation):
     def _compiled_kernel_unsupported_reason(self, integrator):
         """Why the compiled kernel cannot reproduce this configuration ('' if it can)"""
         from levisim.physics.interactions.central import PowerLawPairInteraction
+        from levisim.physics.interactions.optical_binding import OpticalBinding
         cls = type(self)
         for name in ('drift', 'noise_matrix', 'noise_spectral_densities', 'initial_state', 'interaction_forces', 'positions'):
             if getattr(cls, name) is not getattr(MultiParticleFreeSpaceSimulation, name):
@@ -185,11 +188,17 @@ class MultiParticleFreeSpaceSimulation(StochasticSimulation):
             reason = single._compiled_kernel_unsupported_reason(integrator, single.noise_matrix(), single.X0)
             if reason:
                 return f'trap {n + 1}: {reason}'
+        bindings = 0
         for interaction in self.interactions:
+            if type(interaction) is OpticalBinding:
+                bindings += 1
+                continue
             if not isinstance(interaction, PowerLawPairInteraction):
                 return f'no compiled kernel for the {interaction.label} interaction'
             if type(interaction).forces is not PowerLawPairInteraction.forces:
                 return f'{interaction.label} overrides forces'
+        if bindings > 1:
+            return 'the compiled kernel supports one OpticalBinding'
         return ''
 
     # ------------------------------------------------------------------------------------------

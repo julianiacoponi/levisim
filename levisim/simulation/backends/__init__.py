@@ -4,8 +4,12 @@ levisim.simulation.backends
 Optional compiled backends of the stochastic time loops
 
 The NumPy loops of `levisim.simulation.integrators` are the reference. With numba installed
-(`pip install levisim[fast]`), `numba_free_space` provides compiled loops for `FreeSpaceSimulation`
-that consume exactly the same random numbers, so trajectories agree with NumPy to round-off.
+(`pip install levisim[fast]`), compiled loops consume exactly the same random numbers, so
+trajectories agree with NumPy to round-off: `numba_free_space` (FreeSpaceSimulation),
+`numba_multi_particle` (MultiParticleFreeSpaceSimulation), `numba_linear` and `numba_nonlinear`
+(CavitySimulation), `numba_rigid_body` (RigidBodySimulation). They share the compiled forces of
+`numba_elements` (PaulTrap, MagneticTrap and its field sources, HarmonicPotential,
+UniformElectricField) and `numba_binding` (OpticalBinding).
 
 This module is imported by every simulation but does not import numba itself: numba is imported
 only when a compiled loop is actually used, so `import levisim` stays fast without or with numba.

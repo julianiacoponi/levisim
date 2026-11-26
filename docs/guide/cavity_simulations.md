@@ -408,7 +408,10 @@ system).
 
 The nonlinear model has its own compiled kernel (`levisim.simulation.backends.numba_nonlinear`),
 which runs the same split step on the same random numbers as the NumPy loop (agreement to
-7 × 10⁻¹⁵ relative). Per sample (one step, `substeps=1`), on the same machine under shared load
+7 × 10⁻¹⁵ relative). It also evaluates the pair interactions (Coulomb, NewtonianGravity, Casimir and
+one OpticalBinding) and the static elements with a compiled force (`MagneticTrap`,
+`UniformElectricField`); a `PaulTrap`, whose force depends on time, or other elements and
+interactions run the NumPy loop. Per sample (one step, `substeps=1`), on the same machine under shared load
 (three runs; individual entries varied by up to 10× between runs, so the ranges are indicative only):
 
 | particles (state dimension) | trajectories | NumPy | numba |
