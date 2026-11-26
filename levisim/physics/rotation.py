@@ -293,7 +293,7 @@ def finite_size_potential(stiffness, second_moment):
     (`second_moment` is S/m). In the generalised Rayleigh–Gans picture the potential energy density
     follows the intensity, so the particle's own extent samples the trap curvature: the longer axis
     turns towards the weaker confinement (Kamba et al., Nat. Commun. 14, 7943 (2023), Eq. (3);
-    Seberson and Robicheaux, Phys. Rev. A 102, 033505 (2020))
+    Seberson and Robicheaux, Phys. Rev. Research 2, 033437 (2020))
     [J]
     """
     return 0.5 * float(np.trace(np.asarray(stiffness, dtype=float) @ np.asarray(second_moment, dtype=float)))
