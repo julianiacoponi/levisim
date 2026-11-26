@@ -175,6 +175,17 @@ birefringent material, such as `VATERITE`, enters through its permittivity tenso
 particle's body frame, in the matrix form above. The radiation reaction is applied to the whole
 tensor, $\boldsymbol\alpha_\text{eff} = \boldsymbol\alpha(\mathbb 1 - i k^3\boldsymbol\alpha/6\pi\varepsilon_0)^{-1}$.
 
+```{warning}
+**Approximate polarisabilities.** `Cylinder`, `Rod` and `Disk` use the depolarisation factors of the
+*spheroid with the same aspect ratio*, and `Dumbbell` uses *two coupled point dipoles*. Neither is the
+exact quasi-static polarisability of that shape, and the dumbbell's point-dipole model underestimates
+the anisotropy of touching or nearly touching spheres. When the polarisability matters quantitatively
+(trap frequencies, librational stiffness, torques), compute the tensor with a T-matrix,
+discrete-dipole or finite-element code and pass it to
+{class}`~levisim.physics.tabulated.TabulatedParticle`. Spheres, spheroids and ellipsoids are exact in
+the quasi-static limit.
+```
+
 Two shapes need an approximation. A finite cylinder is not uniformly polarised, so `Cylinder`,
 `Rod` and `Disk` use the depolarisation factors of the spheroid with the same aspect ratio
 $\ell/2R$, with the cylinder's own volume; this becomes exact for the infinitely long rod,
