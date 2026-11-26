@@ -82,11 +82,17 @@ __all__ = [
 
 MODELS = ('linear', 'nonlinear')
 
-# backend='auto' compiles the time loop only up to this state dimension n. Measured (8-core arm64,
-# one trajectory, one homodyne record, per step): n = 4: NumPy 3.6 μs, numba 0.35 μs; n = 34: 10.0
-# vs 4.5 μs; n = 66: 16.4 vs 8.8 μs; n = 130: 31.9 vs 31.6 μs. Beyond that the per-step cost is the
-# BLAS products (the noise L·N(0, 1) and Φ·u), and NumPy's are faster than the compiled loop.
-AUTO_NUMBA_MAX_STATE = 128
+# backend='auto' compiles the linear model's time loop up to this state dimension n. Re-measured on
+# a quiet 8-core arm64 machine (benchmarks/auto_backend_thresholds.py; shelf cavity, k beads with 3
+# axes, median of 3 fresh processes, μs per step): one trajectory n = 13: NumPy 1.65, numba 0.34;
+# n = 76: 4.24 vs 2.50; n = 148: 9.75 vs 7.65; n = 292: 39.0 vs 34.4; n = 364: 70.2 vs 63.3. Eight
+# trajectories n = 148: 37.8 vs 39.3 (within the spread); n = 292: 162 vs 140; n = 436: 456 vs 374.
+# numba was never slower beyond the spread, so the cap sits at the largest n measured with both
+# one and eight trajectories (the earlier cap of 128 came from a loaded machine)
+AUTO_NUMBA_MAX_STATE = 384
+# the nonlinear model keeps the earlier cap: at n = 386 the two backends were within the
+# run-to-run spread of a shared machine, and it was not re-measured
+AUTO_NUMBA_MAX_STATE_NONLINEAR = 128
 
 # keyword arguments read by StochasticSimulation and by CavitySimulation
 _BASE_KWARGS = {
@@ -669,7 +675,7 @@ class CavitySimulation(StochasticSimulation):
         if self.integrator_name == 'split':
             self.discretise_split_step()
             use_numba = resolve_backend(self.backend, N * M) == 'numba'
-            if use_numba and self.backend == 'auto' and n > AUTO_NUMBA_MAX_STATE:
+            if use_numba and self.backend == 'auto' and n > AUTO_NUMBA_MAX_STATE_NONLINEAR:
                 # the threshold of the linear model, kept for consistency: above it the dense linear flow
                 # dominates the step. Measured for the nonlinear model at n = 386 (64 particles) the two
                 # backends were within the run-to-run spread of a shared machine (NumPy 690-750 μs,

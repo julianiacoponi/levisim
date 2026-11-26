@@ -41,8 +41,12 @@ __all__ = [
 BACKENDS = ('auto', 'numpy', 'numba')
 
 # 'auto' uses numba only for runs of at least this many steps: below it, loading the cached
-# kernels costs about as much as the NumPy loop itself (see the stochastic simulations guide)
-AUTO_NUMBA_MIN_STEPS = 2**15
+# kernels costs more than the NumPy loop itself. Re-measured on a quiet 8-core arm64 machine
+# (benchmarks/auto_backend_thresholds.py; default Trap, fresh process, median of 3): loading the
+# kernels costs 0.31 s once per process; the first run takes NumPy 0.197 s vs numba 0.316 s at 2¹³
+# steps and 0.408 s vs 0.310 s at 2¹⁴ (break-even ≈ 1.2 × 10⁴ steps). Later runs in the same process
+# are 30-65× faster with numba at every length
+AUTO_NUMBA_MIN_STEPS = 2**14
 
 
 class UnsupportedBackendError(ValueError):
