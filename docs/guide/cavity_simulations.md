@@ -45,7 +45,7 @@ the symmetrised `MultiTrap.homodyne_spectrum`. (b) Positions $x_1$, $y_1$ agains
 `position_power_spectrum`, scaled by $x_\mathrm{zpf}^2$. (c) Heterodyne record at
 $\Omega_\mathrm{het}/2\pi = 1$ MHz: the two mechanical sidebands of each mode have different weights
 (20.33 and 6.891 for $x_1$). (d) The unstable 2×2 system started at zero: the fitted growth rate is
-2677.8 s⁻¹ against `max_growth_rate` = 2677.5 s⁻¹.*
+2676.9 s⁻¹ against `max_growth_rate` = 2676.7 s⁻¹.*
 
 ## The linear model
 
@@ -298,25 +298,29 @@ to $1.5\times10^{-13}$ of its largest entry for 1×2, 2×2, 1×3, 2×3 and 3×2:
 the frequency-domain theory are the same physics at linear order.
 
 Off the node they differ, because `MultiTrap` linearises at the trap centre while the scattering
-force moves the particle. For one 60.1 nm bead at $\Phi = \pi/4$ in the shelf cavity the
+force moves the particle. (At the trap centre itself they agree off the node too, to round-off,
+since `MultiTrap` includes the tweezer phases of the static field, the dispersive terms, the cavity
+envelope and Re α_eff by default: [static cavity field](../concepts/static_cavity_shifts.md). The
+differences below are those of the linearisation point alone; `MultiTrap.from_nonlinear_equilibrium`
+builds a MultiTrap from the Jacobian at the true equilibrium.) For one 60.1 nm bead at $\Phi = \pi/4$ in the shelf cavity the
 equilibrium is $(-2.8, -3.8, 34.5)$ nm, consistent with the ~33 nm estimate of
-`static_cavity_force`; the static field there is $|\alpha| = 1401$ (`MultiTrap`: 1359) with its
+`static_cavity_force`; the static field there is $|\alpha| = 1400$ (`MultiTrap`: 1363) with its
 phase rotated by 11°, through the scattering phase $\psi(z_{\mathrm{eq}})$. The table below
 (`docs/guide/tables/cavity_nonlinear_off_node.csv`) compares the linearisation at the true
 equilibrium with `MultiTrap`'s:
 
 | system | $r_{\mathrm{eq}}$ [nm] | drift-matrix difference | mode frequency shifts [kHz] | max growth rate [s⁻¹], `MultiTrap` → equilibrium (all three axes) |
 |---|---|---|---|---|
-| 1×2, Φ = 45° | (−2.8, −3.8, 34.5) | 1.4% | +0.093, +0.078 | −1639 → −1564 (−1522) |
-| 1×3, Φ = 45° | (−2.8, −3.8, 34.5) | 3.5% | −0.011, +0.093, +0.078 | −1597 → −1522 |
-| 1×3, Φ = 30° | (−2.4, −3.2, 50.5) | 6.0% | −0.023, +0.037, +0.036 | −713 → −669 |
-| 2×2, Φ = 45°, 52°, φ₂ = 0° | (−5.4, −7.2, 67.2); (−6.3, −7.7, 63.6) | 2.8% | +0.375, +0.159, +0.281, +0.227 | −365 → −387 (−35) |
-| 2×2, Φ = 45°, 52°, φ₂ = 90° | (−3.6, −4.8, 112.1); (−6.2, −7.5, −8.6) | 4.3% | −1.095, +0.570, +0.178, −0.593 | −404 → −903 (**+323**) |
-| 3×2, Φ = 45°, 52°, 59°, φₙ = 0° | z ≈ 87–96 | 4.0% | +0.26 to +0.91 | −386 → −434 (−59) |
+| 1×2, Φ = 45° | (−2.8, −3.8, 34.5) | 1.4% | +0.107, +0.090 | −1677 → −1564 (−1522) |
+| 1×3, Φ = 45° | (−2.8, −3.8, 34.5) | 3.6% | −0.011, +0.107, +0.090 | −1634 → −1522 |
+| 1×3, Φ = 30° | (−2.4, −3.2, 50.5) | 6.0% | −0.023, +0.042, +0.042 | −737 → −669 |
+| 2×2, Φ = 45°, 52°, φ₂ = 0° | (−5.4, −7.2, 67.2); (−6.3, −7.7, 63.6) | 2.8% | +0.427, +0.157, +0.313, +0.232 | −363 → −387 (−35) |
+| 2×2, Φ = 45°, 52°, φ₂ = 90° | (−3.6, −4.8, 112.1); (−6.2, −7.5, −8.6) | 4.3% | +0.393, +1.099, +0.719, +0.751 | −1082 → −903 (**+323**) |
+| 3×2, Φ = 45°, 52°, 59°, φₙ = 0° | z ≈ 87–96 | 4.0% | +0.27 to +1.04 | −379 → −434 (−59) |
 
-The mode frequencies move by 0.01–1.1 kHz and the optical damping by up to a factor of 2. The
+The mode frequencies move by 0.01–1.1 kHz and the optical damping by up to 40 %. The
 largest effect is in the last column: `MultiTrap` with two axes per particle leaves out z, which
-off the node is coupled to the light ($g_z \propto \cos\Phi$). With every axis included, the
+off the node is coupled to the light ($g_z \propto \cos\Phi$; `MultiTrap` warns about it). With every axis included, the
 2×2 system at $\phi_2 = 90°$, which `MultiTrap` (2 axes) reports as stable, is *unstable*
 (+323 s⁻¹). That is a statement about the choice of modelled axes as much as about the
 linearisation point, and the nonlinear simulation, which always has all three axes, shows it.
@@ -363,8 +367,8 @@ scales with the amplitude, a factor 10 per 100× in temperature (0.0146 at 3 K, 
 ![Growth and saturation of the unstable 2×2 system](figures/cavity_nonlinear_growth.png)
 
 The default 2×2 system (tweezer phases 0° and 90°) is linearly unstable, max_growth_rate =
-2677.5 s⁻¹. Started at the equilibrium, the x and y energy grows at the fitted rate
-2677.6 ± 20.5 s⁻¹ (4 trajectories) until about 4.3 ms, where y reaches 400–460 nm, a phase
+2676.7 s⁻¹. Started at the equilibrium, the x and y energy grows at the fitted rate
+2676.8 ± 20.6 s⁻¹ (4 trajectories) until about 4.3 ms, where y reaches 400–460 nm, a phase
 $k\,\mathbf{d}\cdot r \approx 1.7$–1.9 rad along the standing wave (panel a). What limits it is
 the standing wave: with the coherent-scattering and cavity terms linearised, every trajectory
 leaves the trap; with them kept and only the tweezer made harmonic, the growth still stops, at a
