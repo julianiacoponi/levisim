@@ -50,7 +50,7 @@ class Integrator:
         """Standard deviations applied to the standard normals of one step [units of √S·√Hz or √S/√s]"""
         raise NotImplementedError
 
-    def integrate(self, drift, G, S, X0, time_array, Δt, noise_chunks, *, debug=False, trace_steps=False):
+    def integrate(self, drift, G, S, X0, time_array, Δt, noise_chunks, *, debug=False, trace_steps=False, project=None):
         """
         Integrates dX = drift(t, X) dt + G dW from X0 over the time points in time_array
 
@@ -65,6 +65,9 @@ class Integrator:
             noise_chunks: generator function (num_steps, num_stages, num_noises) ->
                 (start_index, standard normals of shape (n, num_stages, num_noises))
             debug, trace_steps: extra DEBUG / per-step TRACE logging
+            project: optional callable X -> X applied to the state after every full step (a
+                projection onto a constraint manifold, e.g. renormalising the quaternion of a
+                rigid body); None (the default) leaves the steps untouched
 
         Returns X of shape (len(time_array) + 1, len(X0)), with X[0] = X0.
         """
@@ -114,7 +117,7 @@ class KasdinRK4(Integrator):
         """
         return np.sqrt(np.outer(self.q, S) / Δt)
 
-    def integrate(self, drift, G, S, X0, time_array, Δt, noise_chunks, *, debug=False, trace_steps=False):
+    def integrate(self, drift, G, S, X0, time_array, Δt, noise_chunks, *, debug=False, trace_steps=False, project=None):
         num_steps = len(time_array)
         X = _allocate(X0, num_steps)
         a21, a31, a32, a41, a42, a43 = self.a21, self.a31, self.a32, self.a41, self.a42, self.a43
@@ -158,6 +161,8 @@ class KasdinRK4(Integrator):
 
                 # solution
                 X[n + 1] = X[n] + α1*K1 + α2*K2 + α3*K3 + α4*K4
+                if project is not None:
+                    X[n + 1] = project(X[n + 1])
 
                 if trace_steps:
                     logger.trace(
@@ -190,7 +195,7 @@ class Heun(Integrator):
         """σ_k = √(S_k Δt): standard deviations of the increments ΔW_k of one step [√S·√s]"""
         return np.sqrt(Δt * np.asarray(S))
 
-    def integrate(self, drift, G, S, X0, time_array, Δt, noise_chunks, *, debug=False, trace_steps=False):
+    def integrate(self, drift, G, S, X0, time_array, Δt, noise_chunks, *, debug=False, trace_steps=False, project=None):
         num_steps = len(time_array)
         X = _allocate(X0, num_steps)
         σ = self.noise_std(S, Δt)
@@ -202,6 +207,8 @@ class Heun(Integrator):
                 K1 = drift(t, X[n])*Δt + dP[k]
                 K2 = drift(t + Δt, X[n] + K1)*Δt + dP[k]
                 X[n + 1] = X[n] + 0.5 * (K1 + K2)
+                if project is not None:
+                    X[n + 1] = project(X[n + 1])
                 if trace_steps:
                     logger.trace('Heun loop #{}: dP={}, K1={}, K2={}, X={}', n + 1, dP[k], K1, K2, X[n + 1])
         return X

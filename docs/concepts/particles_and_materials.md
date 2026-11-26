@@ -180,8 +180,8 @@ frame. `particle.rotation_matrix` is the corresponding $\mathbf R$, so that
 `lab_inertia_tensor` returns $\mathbf R\mathbf I\mathbf R^\mathsf{T}$. The helpers
 `axis_angle_quaternion` and `body_axis_to_quaternion` (in {mod}`levisim.physics.particle`) build
 orientations; for example, `body_axis_to_quaternion((0, 1, 0))` points a spheroid's symmetry axis
-along the tweezer polarisation. The orientation is fixed: rotational dynamics come in a later
-release.
+along the tweezer polarisation. The orientation is the reference of the rotational dynamics and
+librations described in [Rotation and libration](rotation.md).
 
 Every levisim tweezer propagates along $z$ and is polarised along the lab $y$ axis. For a fixed
 orientation, the time-averaged dipole energy in the field $E\hat{\mathbf e}$ is

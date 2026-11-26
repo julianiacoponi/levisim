@@ -31,6 +31,7 @@ concepts/static_cavity_shifts
 concepts/interactions
 concepts/particles_and_materials
 concepts/traps_as_fields
+concepts/rotation
 guide/index
 notebooks
 ```

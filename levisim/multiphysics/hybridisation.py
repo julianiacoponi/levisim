@@ -3,29 +3,29 @@ Power-series expansion of the hybridisation matrix H = D⁻¹ in terms of the hy
 """
 
 import time
-
 from collections import namedtuple
 from itertools import permutations
 
-from levisim.core.logger import logger
-from levisim.core.wrappers import timer, profiler, progress_bar
+import numpy as np
 
+from levisim.core.logger import logger
+from levisim.core.wrappers import profiler, progress_bar, timer
 
 __all__ = [
+    'AXIS_NAMES',
     'HybridisationTerm',
-    'term_string',
-    'term_latex',
-
-    'generate_subscripts_and_labels',
-    'symmetric_group_with_min_fixed_points',
-    'generate_deranged_terms',
-    'generate_determinant_and_adjugate_terms',
+    'axes_per_trap_from',
     'generate_all_hybridisation_functions',
+    'generate_deranged_terms',
     'generate_determinant_and_adjugate_by_order',
-
-    'truncate_power_series',
+    'generate_determinant_and_adjugate_terms',
+    'generate_subscripts_and_labels',
     'sieve_power_series',
     'sieve_power_series_for_sequence',
+    'symmetric_group_with_min_fixed_points',
+    'term_latex',
+    'term_string',
+    'truncate_power_series',
 ]
 
 
@@ -140,6 +140,30 @@ def alphabetic_subscript(index):
     return subscript
 
 
+# the axis names a dimension label may start with: x, y, z and the librations α, β, γ (small
+# rotations about the lab x, y, z axes, levisim.physics.rotation)
+AXIS_NAMES = ('x', 'y', 'z', 'α', 'β', 'γ')
+
+
+def axes_per_trap_from(axes):
+    """
+    The tuple of axis names of each trap from `MultiTrap`'s Cartesian_axes_per_trap: an integer n
+    gives the first n of ('x', 'y', 'z') as always; a tuple (or string) of names from AXIS_NAMES is
+    checked (no repeats) and kept in its order, e.g. ('x', 'y', 'z', 'α', 'γ')
+    """
+    if isinstance(axes, (int, np.integer)) and not isinstance(axes, bool):
+        if not 1 <= int(axes) <= 3:
+            raise ValueError(f'Cartesian_axes_per_trap must be 1, 2 or 3 (or a tuple of axis names), not {axes}')
+        return tuple('xyz'[:int(axes)])
+    names = tuple(axes)
+    unknown = [name for name in names if name not in AXIS_NAMES]
+    if not names or unknown or len(set(names)) != len(names):
+        raise ValueError(
+            f'Cartesian_axes_per_trap={axes!r}: give an integer 1-3 or distinct axis names from {AXIS_NAMES}'
+        )
+    return names
+
+
 def generate_subscripts_and_labels(num_traps, Cartesian_axes_per_trap):
     """
     Generates::
@@ -179,14 +203,18 @@ def generate_subscripts_and_labels(num_traps, Cartesian_axes_per_trap):
         2 = 1 particle, xy (1x2)
 
         1 = 1 particle, x (1x1)
+
+    Cartesian_axes_per_trap may also be a tuple of axis names (`axes_per_trap_from`), e.g.
+    ('x', 'y', 'z', 'α', 'γ') gives the labels ['x1', 'y1', 'z1', 'α1', 'γ1', 'x2', ...].
     """
-    n = num_traps * Cartesian_axes_per_trap
+    axes = axes_per_trap_from(Cartesian_axes_per_trap)
+    n = num_traps * len(axes)
     subscripts = [alphabetic_subscript(index) for index in range(n)]
 
     labels = []
     for trap_index in range(1, num_traps + 1):
-        for Cartesian_index in range(Cartesian_axes_per_trap):
-            label = str('xyz'[Cartesian_index]) + str(trap_index)
+        for axis in axes:
+            label = str(axis) + str(trap_index)
             labels.append(label)
 
     logger.debug('Generated labels {} for the {}D = {}×{} system', labels, n, num_traps, Cartesian_axes_per_trap)

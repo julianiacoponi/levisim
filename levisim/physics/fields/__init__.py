@@ -57,6 +57,10 @@ from levisim.physics.fields.magnetic_sources import (
     MultipoleField,
     real_solid_harmonic,
 )
+from levisim.physics.fields.superconducting import (
+    MeissnerImagePlane,
+    meissner_levitation_height,
+)
 
 __all__ = [
     'SIMULATION_GROUPS',
@@ -74,6 +78,7 @@ __all__ = [
     'LocalFieldExpansion',
     'MagneticFieldSource',
     'MagneticTrap',
+    'MeissnerImagePlane',
     'MultipoleField',
     'PaulTrap',
     'PhotonRecoil',
@@ -85,6 +90,7 @@ __all__ = [
     'mathieu_first_region_stable',
     'mathieu_floquet_multiplier',
     'mathieu_secular_beta',
+    'meissner_levitation_height',
     'real_solid_harmonic',
 ]
 
