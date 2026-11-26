@@ -36,8 +36,17 @@ Both need Python 3.10 or newer and install the runtime dependencies too. Optiona
 (numba, compiled simulation loops), `elk`
 (ship logs to Elasticsearch, see [Logging](guide/logging.md)), `notify` (desktop notifications
 from long test runs), `video` (OpenCV, for the image-comparison helpers), `notebooks` (JupyterLab
-and what the notebooks import), `docs` (Sphinx, to build these pages) and `dev` (pytest and ruff),
-e.g. `pip install 'levisim[elk]'` or, from a clone, `pip install '.[dev]'`.
+and what the notebooks import), `mie` (miepython, exact Mie theory for spheres, see
+[Particles and materials](concepts/particles_and_materials.md)), `docs` (Sphinx, to build these pages)
+and `dev` (pytest and ruff), e.g. `pip install 'levisim[elk]'` or, from a clone, `pip install '.[dev]'`.
+
+```{note}
+The `mie` extra requires `miepython>=3`, which itself depends on numba and matplotlib, so
+`pip install "levisim[mie]"` also installs numba even without the `fast` extra (matplotlib is
+already a levisim dependency). With numba installed, the simulations' default `backend='auto'`
+uses the compiled time loops, whose results agree with the NumPy reference loop to round-off, not
+bit for bit. Pass `backend='numpy'` (or set `LEVISIM_DISABLE_NUMBA=1`) to keep the reference loop.
+```
 
 `levisim.__version__` says which version is installed; `CHANGELOG.md` in the repository lists what
 changed in each.

@@ -335,7 +335,8 @@ an error.
 ## Beyond the dipole limit: Mie theory
 
 The dipole model holds while $kr \ll 1$. {mod}`levisim.physics.mie`, an optional backend
-(`pip install "levisim[mie]"`, which uses `miepython`, MIT licence), evaluates the exact Mie
+(`pip install "levisim[mie]"`, which uses `miepython`, MIT licence; miepython ≥ 3 also pulls in
+numba and matplotlib, see [Getting started](../getting_started.md)), evaluates the exact Mie
 solution for a sphere. It returns the extinction and scattering cross sections and the
 dipole-equivalent polarisability $\alpha_\text{Mie} = 6\pi i\varepsilon_0 a_1/k^3$ from the
 electric-dipole coefficient $a_1$. That polarisability includes the radiation reaction exactly.
