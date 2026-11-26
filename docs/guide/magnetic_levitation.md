@@ -99,10 +99,40 @@ every static element of the trap (the magnetic field, gravity, a tweezer, ...) a
   magnetic force on the vertical line through the equilibrium (± `scan_range`) over the weight;
 - `stiffness` (all static elements) and `magnetic_stiffness`; `Ω_axes` $= \sqrt{K_{jj}/m_n}$; the normal
   modes `Ω_normal_modes`, `normal_modes`; `stable`; `coupling_stiffness`, the off-diagonal part;
-- `trap_depth`: the lowest barrier along rays from the equilibrium in the ± normal-mode and ± vertical
-  directions, an upper bound on the true saddle-point barrier, flagged `trap_depth_is_lower_bound`
-  when the barrier lies beyond `scan_range`;
+- `trap_depth`: the escape barrier from a saddle-point search (below), flagged
+  `trap_depth_is_lower_bound` when the barrier lies beyond `scan_range`, with `saddle_point` and
+  `trap_depth_direction`; `trap_depth_rays`, the lowest barrier along rays from the equilibrium in the
+  ± normal-mode and ± vertical directions, is kept as an upper bound (`trap_depth_method='rays'`
+  makes it the `trap_depth` and skips the search);
 - `eddy_damping_rates` for a conducting particle (below).
+
+### The trap depth
+
+The barrier for escape is the energy of the lowest saddle point between the equilibrium and the outside
+of the trap; it can lie off any line through the equilibrium. `find_escape_saddle(trap, r_eq,
+scan_range, grid_points=41)` (used by the report) finds it in two steps:
+
+1. The static energy $U$ of all static elements (`static_energy`: the elements' `potential`, vectorised
+   for `MagneticTrap`, `Gravity` and `HarmonicPotential`) is evaluated on a grid of `grid_points`³
+   nodes in the cube of half-width `scan_range` centred on the equilibrium. The barrier on the grid is
+   the lowest level $U^*$ at which the connected region $\{U \le U^*\}$ around the equilibrium reaches a
+   face of the cube (the minimax energy over grid paths out of the cube), found by bisection over the
+   node energies with `scipy.ndimage.label`; the node at that level is the grid saddle.
+2. Newton's method on the analytic stiffness, $\mathbf{r} \leftarrow \mathbf{r} + K^{-1}\mathbf{F}$, refines it
+   to the stationary point, which is accepted if it has exactly one negative stiffness eigenvalue (an
+   index-1 saddle). The barrier is then $U(\mathbf{r}_\mathrm{s}) - U(\mathbf{r}_\mathrm{eq})$, independent
+   of the grid.
+
+If the minimax path is highest on a face, the energy still rises there and the barrier is a lower
+bound. Every path out of the trap, the rays included, crosses an energy at least as high as the saddle,
+so `trap_depth` ≤ `trap_depth_rays` up to the grid and ray resolutions. The tests check the search
+against a well with a closed-form saddle off the rays (exact to 10⁻¹²; the lowest ray there is 1.59
+times higher) and on a ray (agreeing with the ray estimate to 10⁻⁴), and a levitated bismuth sphere
+with a saddle against independent finite differences of the energy. For the fitted three-multipole
+field of the Slezak et al. (2018) notebook the energy still rises along the weak axial direction at
+75, 150 and 300 μm, so both methods give lower bounds there (1674.7 K·$k_B$ at 75 μm). A search costs
+about half a second for a multipole field (41³ nodes), more for fields evaluated point by point; pass
+`trap_depth_method='rays'` inside fits that only need the frequencies.
 
 ### Example: a graphite or bismuth microsphere between two magnets
 
