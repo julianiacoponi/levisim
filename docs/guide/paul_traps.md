@@ -93,7 +93,15 @@ i.e. the curvature of the pseudopotential $U_\mathrm{sec} = Q^2|\nabla\phi_\math
 `MultiTrap` frequencies and the gravitational sag $g/\Omega_j^2$ (`Trap.find_equilibrium`, which uses
 the time-averaged force of every element with `is_time_dependent`) come from it.
 
-The lowest order is the default for a reason beyond simplicity: it is additive. In a hybrid trap the
+In `MultiTrap` (default `paul_exact_frequencies=True`) a trap with one `PaulTrap` among its fields
+takes the exact (Floquet) frequencies of the hybrid trap instead: the diagonal stiffness of every
+other element, of the static cavity field and of the particle's own block of the interactions is
+folded into $a_j$, and $\Omega_j = \beta_j\Omega_\mathrm{rf}/2$ with $\beta_j$ from the monodromy
+(`MultiTrap.paul_floquet_Ωj` keeps them without the cavity and interaction terms). An axis outside the
+first stability region raises a `ValueError`; `paul_exact_frequencies=False` gives the lowest-order
+frequencies of levisim ≤ 0.1.
+
+The lowest order is the default of `stiffness` for a reason beyond simplicity: it is additive. In a hybrid trap the
 lowest-order Mathieu result with the tweezer's stiffness folded into $a_j$ ($a_j \to a_j +
 4K_{\mathrm{tw},jj}/(m_n\Omega_\mathrm{rf}^2)$) is exactly $\sqrt{(k_j + K_{\mathrm{tw},jj})/m_n}$,
 whereas $\beta$ at higher order is not additive in $a$. `secular_order='exact'` makes `stiffness`
@@ -139,7 +147,7 @@ to a trap; with a Paul trap it displaces the particle by $QE_j/k_j$.
 ![Simulated spectrum of a ring trap under gravity](figures/paul_trap_spectrum.png)
 
 The figure is a simulated ring trap ($q_x$ = 0.3, $q_z$ = −0.6, $f_\mathrm{rf}$ = 10 kHz, a 100 nm silica sphere
-with 500 e, gravity along $-x$, $10^{-9}$ mbar, 40 steps per rf period). The secular peaks are at 1080.3 and
+with 500 e, gravity along $-x$, $10^{-9}$ mbar, 40 steps per rf period). The secular peaks are at 1080.4 and
 2311.2 Hz, the Floquet values to 0.1 Hz (the pseudopotential gives 1060.7 and 2121.3 Hz). The micromotion
 sidebands sit at $f_\mathrm{rf} \mp \Omega_j/2\pi$, with relative amplitudes $q/((\beta \mp 2)^2 - a)$ from
 the Floquet recursion (25 % above the textbook $q/4$ for the lower sideband at $q$ = 0.3), and the line at
@@ -180,10 +188,12 @@ estimate: real fields are anharmonic near the electrodes, and the pseudopotentia
 - presets: $a$ and $q$ of the ring and linear traps, the axial frequency of the linear trap, radial
   defocusing; Laplace and neutral-particle errors; the force, its rf average, the pseudopotential
   stiffness and the sign of the charge;
-- `Trap` and `MultiTrap`: the secular stiffness gives $\Omega_j$; in a hybrid trap stiffnesses add and
-  `paul_trap_report` folds them into $a$; a `MultiTrap` built with `extra_fields` has
-  $\Omega_j = \sqrt{(k_\mathrm{tw} + k_\mathrm{ps})/m_n}$, and the simulated motion of the same trap
-  oscillates at the exact frequencies to $10^{-3}$ (at the lowest-order ones within their 0.9 % error);
+- `Trap` and `MultiTrap`: the secular stiffness gives `Trap.Ωj`; in a hybrid trap stiffnesses add and
+  `paul_trap_report` folds them into $a$; a `MultiTrap` built with `extra_fields` has the exact (Floquet)
+  hybrid frequencies, equal to an independent Hill-determinant solution of Mathieu's equation to
+  $10^{-8}$ at $|q_x|$ = 0.2 and 0.45, and the simulated motion of the same trap oscillates at them to
+  $10^{-3}$ (with `paul_exact_frequencies=False`, $\sqrt{(k_\mathrm{tw} + k_\mathrm{ps})/m_n}$, 0.9 % low
+  on $x$ at $|q_x|$ = 0.2 and 4.6 % at 0.45 in that hybrid trap);
 - time domain: simulated secular frequencies within $10^{-3}$ of Floquet; sidebands at
   $f_\mathrm{rf} \mp \Omega$ with the Floquet amplitudes; growth at the Floquet rate beyond the boundary
   ($q$ = 0.95) and bounded motion at $q$ = 0.85; the sag and its micromotion on the exact periodic orbit;
@@ -195,9 +205,8 @@ estimate: real fields are anharmonic near the electrodes, and the pseudopotentia
 
 - The trap axes are the lab axes (no rotated quadrupole), and the fields are ideal quadrupoles:
   no higher multipoles, no axial rf component in the linear trap.
-- The secular stiffness in `MultiTrap` is lowest order; for $|q| \gtrsim 0.3$ use `paul_trap_report`
-  for the frequencies. Electrode noise is white and additive; rf amplitude noise (parametric heating)
-  is not modelled.
-- `Trap.Utw` and `Trap.U_depth` are the peak dipole energy, twice the cycle-averaged potential whose
-  gradient is the tweezer force; for a Gibbs density of a hybrid trap use `Utw/2` (as the Conangla
-  notebook does).
+- `Trap.Ωj` (and so `FreeSpaceSimulation`'s `override_Ω_dict`-free theory spectra) uses the lowest-order
+  secular stiffness; `MultiTrap` uses the exact (Floquet) frequencies, per axis, with only the diagonal
+  stiffness of the other elements folded into $a_j$; off-diagonal stiffness enters as a coupling.
+  A trap with two Paul traps falls back to the summed lowest-order stiffness. Electrode noise is white
+  and additive; rf amplitude noise (parametric heating) is not modelled.

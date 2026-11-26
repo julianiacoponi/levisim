@@ -214,6 +214,17 @@ class MultiTrapBase:
         #     a relative change of |Δ|/ωtw ~ 6e-10)
         # toy parameters have no standing wave or static cavity field, so there both are off
         self.cavity_wavenumber = bool(kwargs.get('cavity_wavenumber', False))
+        # corrections of the physical model from fields other than the tweezer (Trap.fields):
+        #   - intra_trap_couplings: the off-diagonal stiffness of each trap's combined fields
+        #     (Trap.intra_trap_coupling_stiffness, e.g. a tweezer plus a field whose axes are rotated
+        #     from it) couples the axes of its particle in `mechanical_coupling_matrix` (default True;
+        #     zero for a plain tweezer trap, so its couplings are unchanged)
+        #   - paul_exact_frequencies: a trap with a PaulTrap among its fields takes the exact
+        #     (Floquet) secular frequencies of the hybrid trap instead of the lowest-order secular
+        #     stiffness (default True; False for the pseudopotential frequencies of Trap.Ωj), see
+        #     `setup_static_cavity_shifts`
+        self.intra_trap_couplings = bool(kwargs.get('intra_trap_couplings', True))
+        self.paul_exact_frequencies = bool(kwargs.get('paul_exact_frequencies', True))
         static_cavity_shifts = kwargs.get('static_cavity_shifts')
         if self.toy_params:
             if self.cavity_wavenumber or static_cavity_shifts:
@@ -711,6 +722,13 @@ class MultiTrapBase:
 
         Direct couplings between any two dimensions, including those of different beads, are added:
 
+            - physical parameters with `intra_trap_couplings` (default True): the off-diagonal
+              stiffness of each trap's combined fields, K_jk of `Trap.intra_trap_coupling_stiffness`
+              (zero for a plain tweezer trap; not zero for e.g. a tweezer plus a harmonic or
+              magnetic field whose principal axes are rotated from the tweezer's), between the
+              modelled axes of its particle, as g_jk = -K_jk·x_zpf,j·x_zpf,k / ħ (below), with the
+              dimensions' zero-point fluctuations
+
             - physical parameters with `interactions`: every off-diagonal entry of the interactions'
               stiffness blocks K[n, m] (setup_interactions) between modelled axes, as ::
 
@@ -739,6 +757,19 @@ class MultiTrapBase:
                     continue
                 axes = ''.join(sorted(dim_j.axis + dim_k.axis))
                 couplings[jj, kk] = getattr(dim_j, f'g{axes}')
+
+        if not self.toy_params and getattr(self, 'intra_trap_couplings', False):
+            # the off-diagonal stiffness of each trap's own fields (Trap.intra_trap_coupling_stiffness),
+            # converted at the dimensions' zero-point fluctuations like the interactions below
+            axis_index = {'x': 0, 'y': 1, 'z': 2}
+            for jj, dim_j in enumerate(dims):
+                for kk, dim_k in enumerate(dims):
+                    if (jj == kk or dim_j.trap_index != dim_k.trap_index
+                            or dim_j.axis not in axis_index or dim_k.axis not in axis_index):
+                        continue
+                    K_jk = dim_j.trap.intra_trap_coupling_stiffness[axis_index[dim_j.axis], axis_index[dim_k.axis]]
+                    if K_jk != 0:
+                        couplings[jj, kk] += hessian_to_coupling_rate(K_jk, dim_j.zpf, dim_k.zpf)
 
         if self.toy_params and self.toy_params.get('g_direct'):
             for pair, rates in self.toy_params['g_direct'].items():
@@ -1148,13 +1179,29 @@ class MultiTrapBase:
         trap's own frequencies), unless MultiTrap(interaction_frequency_shifts=False) says that
         they were measured with the interaction present.
 
-        Raises ValueError if a modelled dimension is statically unstable (Ωtw² + K/m ≤ 0).
+        A trap with one `PaulTrap` among its fields (a hybrid Paul-optical trap) takes, with
+        `paul_exact_frequencies=True` (the default), the exact (Floquet) secular frequencies of the
+        hybrid trap instead of Ωjn,tw·√(1 + Kjj/(m·Ωjn,tw²)): the diagonal stiffness of all its other
+        elements, the static cavity Hessian and its own block of the interactions are folded into the
+        Mathieu a_j (`PaulTrap.mathieu_parameters`), and Ωjn = β_j·Ω_rf/2 with β_j the characteristic
+        exponent from the Floquet monodromy (`mathieu_characteristic_exponent`). The lowest-order
+        secular stiffness of `Trap.Ωj` underestimates the Floquet frequency of a Paul trap alone (a = 0)
+        by 0.8% at ``|q|`` = 0.2, 1.8% at ``|q|`` = 0.3 and 3.3% at ``|q|`` = 0.4, and by more in a hybrid trap,
+        whose other elements raise a. The frequencies of such traps without the static terms are kept in
+        `self.paul_floquet_Ωj` [2π·Hz], and the trap indices in `self.floquet_paul_traps`. A trap
+        given override_Ω_dict, or with more than one PaulTrap (whose rf drives need not be
+        commensurate), keeps the stiffness formula (the latter with a WARNING).
+
+        Raises ValueError if a modelled dimension is statically unstable (Ωtw² + K/m ≤ 0), or outside
+        the first Mathieu stability region with exact Paul-trap frequencies.
         """
         α = (self.cavity.A0 + 1j * self.cavity.P0) / 2
         kc = self.cavity.k if self.cavity_wavenumber else None
         modelled_axes = ''.join(axis for axis in self.axes_per_trap if axis in 'xyz')
         self.static_cavity_hessians = {}
         self.static_shifted_Ωj = {}
+        self.paul_floquet_Ωj = {}
+        self.floquet_paul_traps = set()
         for trap in self.traps:
             n = trap.trap_index
             if self.static_cavity_shifts:
@@ -1168,6 +1215,10 @@ class MultiTrapBase:
             K_interaction = None
             if self.interactions and self.interaction_frequency_shifts:
                 K_interaction = self.interaction_stiffness_blocks[n - 1, n - 1]
+            paul = self._floquet_paul_trap(trap)
+            if paul is not None:
+                self.static_shifted_Ωj[n] = self._paul_floquet_frequencies(trap, paul, K, K_interaction, modelled_axes)
+                continue
             shifted = {}
             for ii, axis in enumerate('xyz'):
                 Ω_tw = trap.Ωj[axis]
@@ -1199,6 +1250,61 @@ class MultiTrapBase:
                     for trap in self.traps for axis in modelled_axes
                 ),
             )
+
+    def _floquet_paul_trap(self, trap):
+        """
+        The `PaulTrap` whose exact (Floquet) hybrid frequencies this trap takes (see
+        `setup_static_cavity_shifts`), or None: with paul_exact_frequencies off, override_Ω_dict
+        given, no Paul trap, or more than one (logged)
+        """
+        if not self.paul_exact_frequencies or trap.override_Ω_dict:
+            return None
+        from levisim.physics.fields.electric import PaulTrap
+        paul_traps = trap.fields_of_type(PaulTrap)
+        if len(paul_traps) > 1:
+            logger.warning(
+                '{}: trap {} has {} PaulTraps; their exact (Floquet) frequencies are not computed, the'
+                ' lowest-order secular stiffness is used', self, trap.trap_index, len(paul_traps),
+            )
+            return None
+        return paul_traps[0] if paul_traps else None
+
+    def _paul_floquet_frequencies(self, trap, paul, K_cavity, K_interaction, modelled_axes):
+        """
+        Exact (Floquet) secular frequencies {'x': Ωx, 'y': Ωy, 'z': Ωz} of a hybrid trap: the
+        diagonal stiffness of the trap's other elements, of the static cavity field (K_cavity) and of
+        the interactions (K_interaction, or None) folded into the Mathieu a_j of `paul`; also records
+        those without the cavity and interaction terms in `self.paul_floquet_Ωj`
+        [2π·Hz]
+        """
+        n = trap.trap_index
+        K_others = sum(
+            (K_element for element, K_element in trap.stiffness_contributions if element is not paul),
+            np.zeros((3, 3)),
+        )
+        K_static = np.diag(K_others) + np.diag(K_cavity)
+        if K_interaction is not None:
+            K_static = K_static + np.diag(K_interaction)
+        bare = paul.secular_frequencies(trap.bead, 'exact', extra_stiffness=np.diag(K_others))
+        self.paul_floquet_Ωj[n] = {axis: float(bare[ii]) for ii, axis in enumerate('xyz')}
+        exact = paul.secular_frequencies(trap.bead, 'exact', extra_stiffness=K_static)
+        for ii, axis in enumerate('xyz'):
+            if axis in modelled_axes and not np.isfinite(exact[ii]):
+                a, q = paul.mathieu_parameters(trap.bead, extra_stiffness=K_static)
+                msg = (
+                    f'{axis}{n} of the hybrid Paul trap is outside the first Mathieu stability region'
+                    f' (a = {a[ii]:.4g}, q = {q[ii]:.4g}), so it has no secular frequency'
+                    ' (paul_exact_frequencies=False gives the lowest-order stiffness instead)'
+                )
+                logger.error(msg)
+                raise ValueError(msg)
+        self.floquet_paul_traps.add(n)
+        logger.debug(
+            '{}: exact (Floquet) secular frequencies of the hybrid Paul trap {}: {} (lowest-order: {})', self, n,
+            ', '.join(f'Ω{axis}/2π = {exact[ii] / kHz:.6g} kHz' for ii, axis in enumerate('xyz')),
+            ', '.join(f'{trap.Ωj[axis] / kHz:.6g} kHz' for axis in 'xyz'),
+        )
+        return {axis: float(exact[ii]) for ii, axis in enumerate('xyz')}
 
     def setup_librations(self):
         """

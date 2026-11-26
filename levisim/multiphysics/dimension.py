@@ -438,13 +438,15 @@ class Dimension:
         """
         The frequency of this bead's oscillator along `axis`: the tweezer frequency `Trap.Ωj`,
         shifted by the static cavity field when `MultiTrap(static_cavity_shifts=True)`, and by the
-        particle's own block of the interactions' stiffness with `MultiTrap(interactions=[...])` (see
-        `MultiTrap.setup_static_cavity_shifts`)
+        particle's own block of the interactions' stiffness with `MultiTrap(interactions=[...])`; for
+        a hybrid Paul trap the exact (Floquet) secular frequency with
+        `MultiTrap(paul_exact_frequencies=True)` (see `MultiTrap.setup_static_cavity_shifts`)
         [2π·Hz]
         """
         if axis in ('α', 'β', 'γ'):
             return self.multitrap.librational_Ω[self.trap_index][axis]
-        if getattr(self.multitrap, 'static_cavity_shifts', False) or getattr(self.multitrap, 'interactions', None):
+        if (getattr(self.multitrap, 'static_cavity_shifts', False) or getattr(self.multitrap, 'interactions', None)
+                or self.trap_index in getattr(self.multitrap, 'floquet_paul_traps', ())):
             return self.multitrap.static_shifted_Ωj[self.trap_index][axis]
         return self.trap.Ωj[axis]
 
@@ -452,13 +454,17 @@ class Dimension:
     def static_cavity_shift(self):
         """
         The static cavity shift of this dimension's frequency, Ω - Ωtw (zero for toy parameters
-        or with static_cavity_shifts=False)
+        or with static_cavity_shifts=False); for a hybrid Paul trap with exact frequencies Ωtw is the
+        trap's exact (Floquet) frequency without the static cavity field (`MultiTrap.paul_floquet_Ωj`)
         [2π·Hz]
         """
         if self.multitrap.toy_params:
             return 0.0
         if self.is_libration:
             return self.Ω - self.trap.Ωθ[self.axis]
+        floquet = getattr(self.multitrap, 'paul_floquet_Ωj', {})
+        if self.trap_index in floquet:
+            return self.Ω - floquet[self.trap_index][self.axis]
         return self.Ω - self.trap.Ωj[self.axis]
 
     def zero_point_fluctuation(self, axis):

@@ -29,7 +29,9 @@ hybrid = Trap(fields=[Tweezer(), HarmonicPotential([1e-6, 0, 0]), Gravity()], pa
 {class}`~levisim.physics.fields.elements.PhotonRecoil` element if `photon_recoil=True`, and appends
 the `kicks`. With `fields=` the trap holds exactly the elements given: there is no feedback damping
 unless a {class}`~levisim.physics.fields.elements.Feedback` element is among them, or `Γ_fbx`, `Γ_fby`,
-`Γ_fbz` are passed (which then add one). `trap.Γ_fbx`, `trap.kicks`, `trap.photon_recoil` and
+`Γ_fbz` are passed (which then add one), and no directed force noise unless `β` is passed (the
+shorthand keeps the historical, experiment-specific $\beta = \sqrt2$, which doubles the $x$-$y$ force
+noise; see {class}`~levisim.analysis.spectral_density_theory.SpectralDensityTheory`). `trap.Γ_fbx`, `trap.kicks`, `trap.photon_recoil` and
 `trap.tweezer` read and write the corresponding elements. `trap.fields` is an ordinary list and may be
 edited in place.
 
@@ -98,9 +100,12 @@ $$
 `Trap.intra_trap_coupling_matrix` is that $3\times3$ matrix (zero diagonal) and
 `Trap.intra_trap_couplings` the dict `{'xy': gxy, 'yx': gyx, ...}`, where `jk` is the rate at which
 axis $k$ drives axis $j$. For a tweezer plus a harmonic potential of stiffness
-(1, 0.5, 0) μN/m rotated by 0.3 rad about $z$, $g_{xy}/2\pi$ = -5.93 kHz. `MultiTrap` does not read
-these couplings yet; a later change can write them into its mechanical coupling matrix, which already
-has a slot for every pair of axes of one particle.
+(1, 0.5, 0) μN/m rotated by 0.3 rad about $z$, $g_{xy}/2\pi$ = -5.93 kHz. `MultiTrap` adds the same
+conversion of $K_{jk}$, at its dimensions' (possibly shifted) zero-point fluctuations, to its
+`mechanical_coupling_matrix` for every pair of modelled axes of one particle, so a hybrid trap with
+misaligned axes has the normal modes of its full Hessian: the eigenfrequencies $\sqrt{\lambda_i/m_n}$ of
+$K$ (tested against central differences of the summed force). For a plain tweezer trap $K$ is diagonal
+and nothing is added; `MultiTrap(intra_trap_couplings=False)` leaves the couplings out.
 
 Gravity has no stiffness, but it moves the equilibrium: for a harmonic trap the sag along each axis
 is $g\,\hat d_j/\Omega_j^2$, about 10 pm along $x$ for the default tweezer
@@ -115,6 +120,14 @@ optical element, the first element with `is_optical` (`Trap.tweezer`). A trap wi
 elements. A particle held by a non-optical trap scatters no light into a cavity unless a
 `cavity_drive_tweezer` is given. The mechanical quantities, $\Omega_j$, $\Gamma_j$, $A$, $T_\mathrm{eff}$,
 the zero-point fluctuations and the theory spectra, work for every trap.
+
+`Utw` (and `Tweezer.potential`) is the cycle-averaged dipole energy
+$-\tfrac14\mathrm{Re}(\alpha_\mathrm{eff})\lvert E\rvert^2$, whose gradient is the force `Ftw` and
+whose curvature at the focus is `kx`, `ky`, `kz`; `U_depth` $= \tfrac14\mathrm{Re}(\alpha_\mathrm{eff})E_0^2$
+and so `v_escape`, `p_escape` follow from it. Up to levisim 0.1 these used the peak energy
+$-\tfrac12\mathrm{Re}(\alpha_\mathrm{eff})\lvert E\rvert^2$, twice the potential of the force
+(`U_depth` was 2×, `v_escape` and `p_escape` √2× too large); the forces, frequencies and spectra are
+unchanged, bit for bit.
 
 ## In the simulation
 
@@ -142,7 +155,8 @@ A new trap is a new element. Two non-optical ones are in place:
   time-dependent `force`, $Q\,\mathbf{E}_\mathrm{rf}(\mathbf{r})\cos\Omega_\mathrm{rf}t$ plus the static
   part, so the time-domain simulation shows the micromotion and the Mathieu stability boundary. Its
   `stiffness` returns the secular (pseudopotential) stiffness, to lowest order in the Mathieu
-  parameters, which is what `MultiTrap` and $\Omega_j$ use, and `Trap.static_force` takes its
+  parameters, which is what $\Omega_j$ uses (`MultiTrap` takes the exact Floquet frequencies of the
+  hybrid trap instead, see the guide), and `Trap.static_force` takes its
   time-averaged `secular_force` (elements declare this with `is_time_dependent`). Its `noise` is the
   electrode voltage noise as a force noise $Q\,E_\mathrm{noise}$, which `FreeSpaceSimulation` adds.
 - The **magnetic trap** (`MagneticTrap`, see the guide [Magnetic levitation](../guide/magnetic_levitation.md))

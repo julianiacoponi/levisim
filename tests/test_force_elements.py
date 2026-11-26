@@ -233,7 +233,9 @@ def test_property_setters_edit_the_fields():
 def test_explicit_fields_equal_the_shorthand():
     tweezer, bead = Tweezer(), Bead(r=70*nm)
     short = Trap(tweezer=tweezer, bead=bead, Γ_fbx=3*kHz, Γ_fby=1*kHz, Γ_fbz=0.5*kHz, photon_recoil=True)
-    explicit = Trap(fields=[tweezer, Feedback(3*kHz, 1*kHz, 0.5*kHz), PhotonRecoil(tweezer)], particle=bead)
+    # (β: the shorthand's directed noise β = √2, which an explicit fields= trap does not have by default)
+    explicit = Trap(fields=[tweezer, Feedback(3*kHz, 1*kHz, 0.5*kHz), PhotonRecoil(tweezer)], particle=bead,
+                    β=np.sqrt(2))
     for name in ('kx', 'ky', 'kz', 'Ωx', 'Ωy', 'Ωz', 'Γx', 'Γy', 'Γz', 'U_depth', 'z_eq'):
         assert getattr(short, name) == getattr(explicit, name), name
     traces = []
@@ -302,7 +304,7 @@ def test_gravity_sag_is_g_over_Ω_squared():
 def test_gravity_keyword_equals_gravity_element():
     sims = [
         FreeSpaceSimulation(trap=Trap(), gravity=True, num_samples=1500, seed=2, backend='numpy'),
-        FreeSpaceSimulation(trap=Trap(fields=[Tweezer(), Feedback(2.1*kHz, 2.5*kHz), Gravity()]),
+        FreeSpaceSimulation(trap=Trap(fields=[Tweezer(), Feedback(2.1*kHz, 2.5*kHz), Gravity()], β=np.sqrt(2)),
                             num_samples=1500, seed=2, backend='numpy'),
     ]
     for sim in sims:
