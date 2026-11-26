@@ -33,7 +33,9 @@ jobs:
       - name: Install levisim and the notebook runner
         run: |
           python -m pip install --upgrade pip
-          pip install -e .
+          # with the [fast] extra: the time limits in notebooks/smoke_list.txt are measured with numba
+          # (the NumPy reference path is covered by the test workflow, which installs no numba)
+          pip install -e ".[fast]"
           pip install nbclient nbformat ipykernel
           python -m ipykernel install --user --name python3
 

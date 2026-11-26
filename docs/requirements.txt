@@ -15,3 +15,6 @@ matplotlib
 sympy
 loguru
 tqdm
+# the compiled kernels (levisim.simulation.backends.numba_*) import numba at module level, and autosummary
+# imports every module: without it the warnings-as-errors build fails
+numba>=0.59
