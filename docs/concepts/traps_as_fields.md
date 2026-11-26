@@ -61,6 +61,8 @@ linearised frequency domain, and a test can compare the two.
 | `Kick` | $F_0(\cos\theta, \sin\theta, 0)$ while active | 0 | - |
 | `PaulTrap(V_rf, Ω_rf, r0, U_dc, geometry, ...)` | full rf + dc quadrupole force $-Q[c^\mathrm{dc}_j + c^\mathrm{rf}_j\cos\Omega_\mathrm{rf}t](r_j - c_j)$ | secular (pseudopotential) stiffness | electrode voltage noise $Q\,E_\mathrm{noise}$ |
 | `UniformElectricField(E)` | $Q\mathbf{E}$ | 0 | - |
+| `MagneticTrap(source)` | $(V/\mu_0) J^\mathsf{T}\chi_\mathrm{eff}\mathbf{B}$ from $U = -(V/2\mu_0)\mathbf{B}\cdot\chi_\mathrm{eff}\mathbf{B}$ | analytic, from $\mathbf{B}$, $J$ and $\partial^2\mathbf{B}$ | - |
+| `EddyCurrentDamping(source, position)` | $-\Gamma_j p_j$, $\Gamma = \sigma R^2 J^\mathsf{T}J/10\rho$ | 0 | thermal, $2k_BT\gamma$ |
 
 The tweezer's `noise` is the force spectral density
 $S_j = \frac{\pi\hbar}{15\varepsilon_0}\left(\frac{\mathrm{Re}(\alpha_\mathrm{eff}) E_0}{2\pi}\right)^2 k^5 c_j$,
@@ -134,7 +136,7 @@ supply a numba-compilable force function and a packed parameter array.
 
 ## Adding a new kind of trap
 
-A new trap is a new element. The first non-optical one is in place, and one more is planned:
+A new trap is a new element. Two non-optical ones are in place:
 
 - The **Paul trap** (`PaulTrap`, see the guide [Paul and hybrid traps](../guide/paul_traps.md)) has a
   time-dependent `force`, $Q\,\mathbf{E}_\mathrm{rf}(\mathbf{r})\cos\Omega_\mathrm{rf}t$ plus the static
@@ -143,9 +145,11 @@ A new trap is a new element. The first non-optical one is in place, and one more
   parameters, which is what `MultiTrap` and $\Omega_j$ use, and `Trap.static_force` takes its
   time-averaged `secular_force` (elements declare this with `is_time_dependent`). Its `noise` is the
   electrode voltage noise as a force noise $Q\,E_\mathrm{noise}$, which `FreeSpaceSimulation` adds.
-- A **magnetic trap** for a diamagnetic particle is conservative, with
-  `potential` $U = -\chi V\lvert\mathbf{B}\rvert^2/2\mu_0$; its `force` is $-\nabla U$ and its
-  `stiffness` the Hessian of $U$, from a local expansion of the field or by finite differences.
+- The **magnetic trap** (`MagneticTrap`, see the guide [Magnetic levitation](../guide/magnetic_levitation.md))
+  for a diamagnetic particle is conservative, with `potential` $U = -(V/2\mu_0)\mathbf{B}\cdot\chi_\mathrm{eff}\mathbf{B}$
+  (shape-corrected, tensor χ in the body frame); its `force` is $-\nabla U$ and its `stiffness` the
+  Hessian of $U$, analytic in the derivatives of the field of a `MagneticFieldSource` (local expansion,
+  multipoles, current loops, coil pairs, magnet blocks or a user callable).
 
 Combined with `Gravity`, and with each other or a `Tweezer`, they form hybrid traps without any change
 to `Trap`: its frequencies come from the summed stiffness, its couplings from the off-diagonal part.

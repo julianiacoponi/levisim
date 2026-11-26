@@ -123,7 +123,8 @@ def test_material_is_immutable_and_replace_derives_a_copy():
 
 
 def test_magnetic_flags():
-    assert not FUSED_SILICA.is_magnetic and not FUSED_SILICA.is_diamagnetic
+    assert not LEVISIM_DEFAULT_SILICA.is_magnetic and not LEVISIM_DEFAULT_SILICA.is_diamagnetic
+    assert FUSED_SILICA.is_diamagnetic and not FUSED_SILICA.is_magnetically_anisotropic
     assert BISMUTH.is_magnetic and BISMUTH.is_diamagnetic and not BISMUTH.is_magnetically_anisotropic
     assert PYROLYTIC_GRAPHITE.is_diamagnetic and PYROLYTIC_GRAPHITE.is_magnetically_anisotropic
     assert NDFEB.is_magnetic and not NDFEB.is_diamagnetic and NDFEB.is_conductor
