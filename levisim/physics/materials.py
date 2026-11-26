@@ -326,8 +326,7 @@ _NdFeB_resistivity = 1.4e-6
 # Recoil permeability of sintered NdFeB, μ_rec ≈ 1.05: Constantinides and Gulick, "NdFeB for High
 # Temperature Motor Applications", Arnold Magnetic Technologies, SMMA Fall Technical Conference (2004),
 # https://www.arnoldmagnetics.com/wp-content/uploads/2017/10/NdFeB-for-high-temperature-motor-applications.pdf
-# ("Typical values of Recoil Permeability are about 1.05 for sintered Ferrite, SmCo and NdFeB"); also
-# Kwon et al., Rare Metals (2020), doi:10.1007/s12598-019-01336-w (≈ 1.05, fully magnetised).
+# ("Typical values of Recoil Permeability are about 1.05 for sintered Ferrite, SmCo and NdFeB").
 # The recoil slope is measured along the easy axis: M = M_r + (μ_rec - 1) H there.
 NDFEB_RECOIL_PERMEABILITY = 1.05
 
@@ -351,8 +350,7 @@ _ARNOLD_NEO = 'Arnold Magnetic Technologies, Neodymium-Iron-Boron Magnet Catalog
     'https://www.arnoldmagnetics.com/wp-content/uploads/2019/06/Arnold-Neo-Catalog.pdf'
 _RECOIL_SOURCE = (
     'Constantinides and Gulick, NdFeB for High Temperature Motor Applications (Arnold Magnetic Technologies, '
-    'SMMA 2004), https://www.arnoldmagnetics.com/wp-content/uploads/2017/10/NdFeB-for-high-temperature-motor-applications.pdf; '
-    'Kwon et al., Rare Metals (2020), doi:10.1007/s12598-019-01336-w'
+    'SMMA 2004), https://www.arnoldmagnetics.com/wp-content/uploads/2017/10/NdFeB-for-high-temperature-motor-applications.pdf'
 )
 
 NDFEB = Material(

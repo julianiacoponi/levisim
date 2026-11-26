@@ -71,7 +71,7 @@ those of the earlier two-wavelength library. A table of your own is
 
 The magnetic and electrical data have cited sources too. `NDFEB` (the 1984 sintered specimen of
 Sagawa et al.) carries the recoil susceptibility $\mu_\text{rec} - 1 = 0.05$ along its easy axis
-(`NDFEB_RECOIL_PERMEABILITY`, from Arnold Magnetic Technologies and Kwon et al. 2020); the
+(`NDFEB_RECOIL_PERMEABILITY`, from Arnold Magnetic Technologies); the
 transverse susceptibility is not included. `ndfeb_grade('N42')` builds a commercial grade from the
 typical remanence of the Arnold catalogue (`NDFEB_GRADES`, N35 to N55, $B_r$ = 1.21-1.49 T), with
 its density and its resistivity along (150 μΩ·cm) and across (130 μΩ·cm) the easy axis;
