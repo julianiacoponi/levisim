@@ -34,6 +34,10 @@ from levisim.physics.fields.elements import (
     HarmonicPotential,
     PhotonRecoil,
 )
+from levisim.physics.fields.superconducting import (
+    MeissnerImagePlane,
+    meissner_levitation_height,
+)
 
 __all__ = [
     'SIMULATION_GROUPS',
@@ -42,6 +46,7 @@ __all__ = [
     'Gravity',
     'HarmonicPotential',
     'Kick',
+    'MeissnerImagePlane',
     'PaulTrap',
     'PhotonRecoil',
     'Tweezer',
@@ -50,6 +55,7 @@ __all__ = [
     'mathieu_first_region_stable',
     'mathieu_floquet_multiplier',
     'mathieu_secular_beta',
+    'meissner_levitation_height',
 ]
 
 

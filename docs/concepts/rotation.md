@@ -90,6 +90,17 @@ Kamba et al., Nat. Commun. **14**, 7943 (2023), Eq. (3). It is opt-in, `Trap(fin
 (then also the default of `RigidBodySimulation`), so the point-dipole torques are unchanged by default;
 `Trap` uses $m\Omega_j^2$ from `override_Ω_dict` when that gives x, y and z.
 
+### Permanent magnets above a superconductor
+
+`MeissnerImagePlane` (`levisim.physics.fields`) is an infinite ideal superconducting plane acting on a
+particle's permanent moment μ (`Particle.magnetic_moment`, from a material's remanent magnetisation)
+through its image dipole, $U = \mu_0(|\mu|^2 + (\mu\cdot\hat n)^2)/(64\pi h^3)$: it repels the magnet
+and turns μ parallel to the surface. With `Gravity` the magnet floats at
+$h_0^4 = 3\mu_0\mu^2/(64\pi m g)$ (`meissner_levitation_height`) with $\Omega_z^2 = 4g/h_0$ and a tilt
+stiffness $\tfrac23 m g h_0$ (Vinante et al., Phys. Rev. Applied **13**, 064027 (2020)). A
+superconducting sphere in a source field needs no new element: it is a χ = −1 material in the
+stage-1 `MagneticTrap`, whose demagnetising correction gives χ_eff = −3/2.
+
 ## Time domain: `RigidBodySimulation`
 
 ```python

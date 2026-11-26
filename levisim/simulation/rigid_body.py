@@ -308,7 +308,10 @@ class RigidBodySimulation(StochasticSimulation):
         if self.other_elements:
             orientation = q / np.sqrt(q @ q)
             for element in self.other_elements:
-                F = F + np.asarray(element.force(r, t, self.particle), dtype=float)
+                if getattr(element, 'orientation_dependent_force', False):
+                    F = F + np.asarray(element.force(r, t, self.particle, orientation=orientation), dtype=float)
+                else:
+                    F = F + np.asarray(element.force(r, t, self.particle), dtype=float)
                 τ = np.asarray(element.torque(r, t, self.particle, orientation=orientation), dtype=float)
                 if np.any(τ):
                     τ_b = τ_b + R.T @ τ
