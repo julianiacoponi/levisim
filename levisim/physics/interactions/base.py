@@ -22,8 +22,19 @@ __all__ = [
     'Interaction',
     'PairInteraction',
     'as_positions',
+    'attach_interaction_traps',
     'particle_radius',
 ]
+
+
+def attach_interaction_traps(interaction, traps):
+    """
+    Give an interaction the host's Traps (`Interaction.attach_traps`), if it takes them; objects that
+    only implement `forces` and `stiffness_blocks` are left alone
+    """
+    attach = getattr(interaction, 'attach_traps', None)
+    if attach is not None:
+        attach(traps)
 
 
 def as_positions(positions, num_particles=None):
@@ -96,6 +107,14 @@ class Interaction:
             if max(j, k) >= num_particles:
                 raise ValueError(f'pair ({j}, {k}) refers to a particle beyond the {num_particles} given')
         return list(self.pairs)
+
+    def attach_traps(self, traps):
+        """
+        Called by every host (MultiTrap, MultiParticleFreeSpaceSimulation, the nonlinear
+        CavitySimulation) with its Traps, in the order of the particles, before the first `forces`.
+        Interactions that need more than the particles (e.g. `OpticalBinding`, which needs the tweezers
+        and their foci) keep them; the default does nothing.
+        """
 
     def forces(self, positions, particles, t=0.0):
         """

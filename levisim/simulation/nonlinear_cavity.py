@@ -81,6 +81,7 @@ from levisim.physics.fields.elements import (
     HarmonicPotential,
     PhotonRecoil,
 )
+from levisim.physics.interactions.base import attach_interaction_traps
 from levisim.physics.tweezer import Tweezer
 
 __all__ = [
@@ -158,6 +159,8 @@ class NonlinearCavityModel:
         self.traps = list(mtrap.traps)
         self.particles = [trap.bead for trap in self.traps]
         self.num_particles = N = len(self.traps)
+        for interaction in self.interactions:
+            attach_interaction_traps(interaction, self.traps)
         self.n = 2 + 6 * N
         self.labels = ['cavity'] + [f'{axis}{n + 1}' for n in range(N) for axis in 'xyz']
         if trap_positions is None:

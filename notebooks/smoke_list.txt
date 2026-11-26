@@ -32,6 +32,8 @@ papers/conangla2020_hybrid_paul_optical.ipynb          600   # [55-110 s]
 papers/dania2024_paul_trap_ultrahigh_q.ipynb           300   # [32-38 s]
 papers/penny2023_sympathetic_cooling.ipynb               300   # [12 s with numba]
 papers/krisnanda2020_gravity_entanglement.ipynb          180   # [15 s]
+papers/rieser2022_optical_binding.ipynb                  180   # [6-8 s]
+papers/reisenbauer2024_nonreciprocal_binding.ipynb      900   # [380-450 s, NumPy time loop]
 
 # archive (outputs stripped)
 archive/animations/3x2_truncated_heatmap.ipynb                     180   # [6 s]
