@@ -37,7 +37,7 @@ Records
 Detection realism (optical records): efficiency η (vacuum admixture), local-oscillator phase noise
 (`PhaseNoise`), an electronic noise floor, and conversion to volts (`VoltageConversion`). Homodyne
 and heterodyne records can also carry the static output carrier (`static_carrier=True`): the DC
-term 2√η·|ᾱ_out|·cos(θ − θ_α) and, with phase noise, its conversion into the record.
+term 2√η·abs(ᾱ_out)·cos(θ − θ_α) and, with phase noise, its conversion into the record.
 """
 
 from dataclasses import dataclass
