@@ -73,6 +73,11 @@ def _standing_wave_wavenumber(trap, kc):
     return trap.drive_tweezer.k if kc is None else float(kc)
 
 
+def _split_position(r):
+    r = np.asarray(r, dtype=float)
+    return r[..., 0], r[..., 1], r[..., 2]
+
+
 def optical_potential(r, trap, cavity_E0, α, terms=_TERMS, cavity_waist=None, kc=None):
     """
     Dipole potential of one bead in its tweezer and a static cavity field, at displacement r
