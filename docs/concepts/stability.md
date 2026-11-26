@@ -186,7 +186,7 @@ The four mechanical normal modes of the default 2×2 system (shelf gas and cavit
 complex plane, as the second tweezer's phase $\phi_2$ runs from 0° to 90° (colour); 90° to 180° retrace
 the same paths back. Right: the two hybridised $y$ modes near 135 kHz. The narrow (nearly dark) $y$
 mode crosses into the unstable half-plane at $\phi_2 \approx 54.4°$ and reaches
-$\mathrm{Re}\,\lambda = +2678$ s⁻¹ at 90°, at 134.92 kHz, while the broad (bright) $y$ mode is damped
+$\mathrm{Re}\,\lambda = +2677$ s⁻¹ at 90°, at 134.92 kHz, while the broad (bright) $y$ mode is damped
 more strongly.
 ```
 

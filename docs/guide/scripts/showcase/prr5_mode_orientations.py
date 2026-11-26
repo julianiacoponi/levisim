@@ -15,13 +15,15 @@ modes keep their unperturbed orientation and the x-y cross spectrum S_xy vanishe
     (b) rotation of the x-like normal mode away from the tweezer x axis, over Φ and the detuning Δ,
         from the eigenvectors of the drift matrix; the black contour is the cancellation point
 
-The figure is drawn with static_cavity_shifts=False, the model this showcase was first made with.
-`MultiTrap` now also includes the static coherent-scattering shift of the mechanical frequencies (on
-by default; see `MultiTrap.setup_static_cavity_shifts`). It moves the cancellation point by at most
-0.001π, and with it the net frequency shift of both modes (static stiffening minus optical spring)
-crosses zero at Φ = 0.257π (x) and 0.255π (y) for Δ/2π = -450 kHz, beside the rotation's 0.248π,
-and at 0.315π and 0.308π for -150 kHz (rotation, with the shifts: 0.3135π; without: 0.3133π): the paper's coincidence of the two
-cancellations.
+The figure is drawn with levisim's defaults, which include the static coherent-scattering shifts of
+the mechanical frequencies (`MultiTrap.setup_static_cavity_shifts`) and the static-field
+corrections of levisim 1.0 (tweezer phases, the dispersive coupling and pull of the cavity's own
+standing wave, the cavity mode envelope, Re α_eff): the physics of the paper. Until levisim 1.0 it was
+drawn with static_cavity_shifts=False, as first made. With the shifts the S_xy peaks move up by up to
+2.3 kHz towards the antinode, and the cancellation point of the rotation moves from 0.248π to 0.247π
+at Δ/2π = -450 kHz (0.313π at -150 kHz either way); the net frequency shift of both modes (static
+stiffening minus optical spring) crosses zero at Φ = 0.256π (x) and 0.255π (y) for Δ/2π = -450 kHz,
+and at 0.315π and 0.3085π for -150 kHz: the paper's coincidence of the two cancellations.
 """
 import sys
 from pathlib import Path
@@ -50,7 +52,7 @@ def one_particle(Φ, Δ=DEFAULT_cavity_kwargs['Δ'], ω_range=np.arange(125, 165
         cavity_kwargs=dict(DEFAULT_cavity_kwargs, Δ=Δ),   # L = 0.96 cm, finesse 40 000
         beads=[Bead(Φ=Φ)],
         ω_range=ω_range,
-        static_cavity_shifts=False,                       # reproduces the published figure without them
+        # levisim's defaults: the static cavity shifts and the static-field corrections of 1.0 on
     )
 
 

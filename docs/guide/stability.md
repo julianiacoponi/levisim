@@ -32,7 +32,7 @@ from levisim.core.units import kHz
 mtrap = MultiTrap(num_traps=2, Cartesian_axes_per_trap=2,
                   gas_kwargs=DEFAULT_gas_kwargs, cavity_kwargs=DEFAULT_cavity_kwargs)
 mtrap.is_stable                                           # False
-[(Ω / kHz, rate) for Ω, rate in mtrap.unstable_modes]    # [(134.92..., 2677.5...)]
+[(Ω / kHz, rate) for Ω, rate in mtrap.unstable_modes]    # [(134.92..., 2676.7...)]
 ```
 
 `steady_state_covariance` raises for an unstable system. A parameter sweep should record

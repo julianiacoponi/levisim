@@ -27,6 +27,7 @@ from levisim.multiphysics.utils.shelf import (
 from levisim.physics.bead import Bead
 from levisim.physics.coherent_scattering import (
     cavity_axis,
+    cavity_mode_polarisability,
     optical_potential,
     static_cavity_force,
     static_cavity_hessian,
@@ -77,8 +78,11 @@ def fd_hessian(f, h):
     return H
 
 
-def potential(trap, mtrap, α, *terms):
-    return lambda r: optical_potential(r, trap, mtrap.cavity.E0, α, terms=terms)
+def potential(trap, mtrap, α, *terms, cavity_waist='mtrap'):
+    # the cavity mode envelope as MultiTrap(cavity_envelope=True) includes it (cavity_waist=None: a
+    # plane standing wave)
+    waist = mtrap.cavity.waist if cavity_waist == 'mtrap' else cavity_waist
+    return lambda r: optical_potential(r, trap, mtrap.cavity.E0, α, terms=terms, cavity_waist=waist)
 
 
 def steps(trap):
@@ -105,31 +109,49 @@ def test_finite_differences_of_the_potential_reproduce_every_coupling(Φ_deg, θ
 
     H_CS = fd_hessian(potential(trap, mtrap, α, 'coherent_scattering'), h)
     H_cav = fd_hessian(potential(trap, mtrap, α, 'cavity'), h)
-    K = static_cavity_hessian(trap, mtrap.cavity.E0, α)
+    # the coherent-scattering Hessian of a plane standing wave: its off-diagonal part is gxy, gxz,
+    # gyz; the envelope's off-diagonal part is in K (added to gxy with the static shifts)
+    H_CS_plane = fd_hessian(potential(trap, mtrap, α, 'coherent_scattering', cavity_waist=None), h)
+    K = static_cavity_hessian(trap, mtrap.cavity.E0, α, cavity_waist=mtrap.cavity.waist)
     to_g = {ax: -zpf[ax[0]] * zpf[ax[1]] / ħ for ax in ('xy', 'xz', 'yz')}
     g_scale = max(abs(dims['x'].mech_mech_coupling(ax)) for ax in ('xy', 'xz', 'yz'))
     for (i, j, ax) in [(0, 1, 'xy'), (0, 2, 'xz'), (1, 2, 'yz')]:
         expected = dims['x'].mech_mech_coupling(ax)
-        fd = H_CS[i, j] * to_g[ax] + (H_cav[i, j] * to_g[ax] if shifts else 0.0)
+        fd = (H_CS[i, j] + H_cav[i, j]) * to_g[ax] if shifts else H_CS_plane[i, j] * to_g[ax]
         assert_close(fd, expected, g_scale)
         assert getattr(dims['x'], f'g{ax}') == expected
 
-    # light-mechanics couplings: U_CS is linear in α, so α = 1/2 and i/2 pick out A and P
-    grad_A = fd_gradient(potential(trap, mtrap, 0.5, 'coherent_scattering'), h)
-    grad_P = fd_gradient(potential(trap, mtrap, 0.5j, 'coherent_scattering'), h)
+    # light-mechanics couplings: H/ħ ∋ -q·(G·a† + G*·a) = -q·(Re G·δA + Im G·δP) with α = ᾱ + (δA + iδP)/2.
+    # U_CS is linear and U_cav quadratic in α, so central differences in α are exact;
+    # U_CS gives the coherent-scattering coupling g·e^{iΦ_CS} and U_cav the dispersive coupling
+    # (Dimension.dispersive_G, MultiTrap(cavity_dispersive_coupling=True), along the cavity axis)
+    def grad(α_, *terms):
+        return fd_gradient(potential(trap, mtrap, α_, *terms), h)
+    grad_A = grad(0.5, 'coherent_scattering')
+    grad_P = grad(0.5j, 'coherent_scattering')
+    cav_A = (grad(α + 0.5, 'cavity') - grad(α - 0.5, 'cavity')) / 2   # δA = ±1
+    cav_P = (grad(α + 0.5j, 'cavity') - grad(α - 0.5j, 'cavity')) / 2
     g_light_scale = max(abs(dims[axis].g) for axis in 'xyz')
-    assert_close(-grad_A[0] * zpf['x'] / ħ, dims['x'].g, g_light_scale)
-    assert_close(-grad_A[1] * zpf['y'] / ħ, dims['y'].g, g_light_scale)
-    assert_close(-grad_P[2] * zpf['z'] / ħ, dims['z'].g, g_light_scale)
+    for i, axis in enumerate('xyz'):
+        G_CS = dims[axis].G - dims[axis].dispersive_G
+        assert_close(-grad_A[i] * zpf[axis] / ħ, G_CS.real, g_light_scale)
+        assert_close(-grad_P[i] * zpf[axis] / ħ, G_CS.imag, g_light_scale)
+        assert_close(-cav_A[i] * zpf[axis] / ħ, np.real(dims[axis].dispersive_G), g_light_scale)
+        assert_close(-cav_P[i] * zpf[axis] / ħ, np.imag(dims[axis].dispersive_G), g_light_scale)
+    for axis in 'xyz':  # g and φ_coupling still describe G
+        G = dims[axis].g * np.exp(1j * mtrap.tweezer_phase_sign_convention * dims[axis].φ_coupling)
+        assert abs(G - dims[axis].G) <= 1e-14 * abs(dims[axis].G)
     assert_close(grad_P[0], 0.0, max(abs(grad_A)))  # x, y do not couple to P, z not to A
     assert_close(grad_A[2], 0.0, max(abs(grad_A)))
+    assert dims['z'].dispersive_G == 0
+    assert abs(dims['x'].dispersive_G) > 1e-5 * abs(dims['x'].G)  # off the node it is a real (~1e-3) correction
 
     # the new static terms: the diagonal of U_CS and the whole of U_cav
     K_scale = np.max(np.abs(np.diag(H_CS)))
     for i in range(3):
         assert_close(H_CS[i, i] + H_cav[i, i], K[i, i], K_scale)
     for i, j in [(0, 1), (0, 2), (1, 2)]:
-        assert_close(H_cav[i, j], K[i, j], K_scale)
+        assert_close(H_cav[i, j] + H_CS[i, j] - H_CS_plane[i, j], K[i, j], K_scale)
         assert K[i, j] == K[j, i]
 
     # the tweezer stiffness is Trap.kj (a check of the |E|² normalisation)
@@ -149,7 +171,7 @@ def test_the_cavity_hessian_is_along_the_cavity_axis_and_follows_cos_2Φ():
         trap, α = mtrap.traps[0], static_α(mtrap)
         K_cav = static_cavity_hessian(trap, mtrap.cavity.E0, α) - np.diag(np.diag(static_cavity_hessian(trap, mtrap.cavity.E0, α)))
         d = cavity_axis(trap.drive_tweezer.θ)
-        expected = 2 * trap.bead.α * mtrap.cavity.E0**2 * abs(α)**2 * trap.drive_tweezer.k**2 * np.cos(2*Φ) * np.outer(d, d)
+        expected = 2 * cavity_mode_polarisability(trap) * mtrap.cavity.E0**2 * abs(α)**2 * trap.drive_tweezer.k**2 * np.cos(2*Φ) * np.outer(d, d)
         np.testing.assert_allclose(K_cav, expected - np.diag(np.diag(expected)), rtol=1e-12, atol=0)
 
 
@@ -227,15 +249,31 @@ def test_the_dispersive_term_adds_an_x_y_coupling():
 
 
 def test_magnitude_for_one_bead_at_a_quarter_wave_in_the_default_cavity():
-    """|α|² ≈ 1.85 × 10⁶ photons; δΩ/2π ≈ +1.04, +1.17, +6.71 kHz on 156.3, 135.8, 35.1 kHz"""
-    mtrap = MultiTrap(num_traps=1, Cartesian_axes_per_trap=3, beads=[Bead(r=60.1*nm, Φ=π/4)],
-                      cavity_kwargs=DEFAULT_cavity_kwargs, gas_kwargs=DEFAULT_gas_kwargs, ω_range=ω_RANGE)
-    assert abs(static_α(mtrap))**2 == pytest.approx(1.847e6, rel=1e-3)
+    """
+    |α|² ≈ 1.86 × 10⁶ photons; δΩ/2π ≈ +1.05, +1.17, +6.72 kHz on 156.3, 135.8, 35.1 kHz. The bead
+    pulls the cavity by δ·cos²Φ/2π = +1.69 kHz (δ = α_pol·E0²/ħ), which raises |α|² by 0.6 % at
+    Δ/2π = -450 kHz; without the pull and with the static polarisability (levisim 0.1.1) the
+    numbers were 1.847 × 10⁶ and +1.045, +1.167, +6.707 kHz.
+    """
+    def build_one(**kwargs):
+        return MultiTrap(num_traps=1, Cartesian_axes_per_trap=3, beads=[Bead(r=60.1*nm, Φ=π/4)],
+                         cavity_kwargs=DEFAULT_cavity_kwargs, gas_kwargs=DEFAULT_gas_kwargs, ω_range=ω_RANGE, **kwargs)
+    mtrap = build_one()
+    assert mtrap.cavity.dispersive_shift / (2*π) == pytest.approx(1686.4, rel=1e-4)
+    assert abs(static_α(mtrap))**2 == pytest.approx(1.8585e6, rel=1e-4)
     shifts = {axis: mtrap.dimensions[f'{axis}1'].static_cavity_shift / kHz for axis in 'xyz'}
+    assert shifts == pytest.approx({'x': 1.0472, 'y': 1.1697, 'z': 6.7220}, rel=2e-4)
+    old = build_one(cavity_dispersive_coupling=False, cavity_effective_polarisability=False)
+    assert old.cavity.dispersive_shift == 0.0
+    assert abs(static_α(old))**2 == pytest.approx(1.847e6, rel=1e-3)
+    shifts = {axis: old.dimensions[f'{axis}1'].static_cavity_shift / kHz for axis in 'xyz'}
     assert shifts == pytest.approx({'x': 1.045, 'y': 1.167, 'z': 6.707}, rel=2e-3)
-    # at Φ = π/4 the dispersive term vanishes (cos 2Φ = 0): only the coherent-scattering diagonal
+    # at Φ = π/4 the dispersive term vanishes (cos 2Φ = 0): only the coherent-scattering diagonal,
+    # plus the curvature of the cavity mode envelope (~2/(k·w)² ~ 10⁻⁵, with an x-y entry)
     K = mtrap.static_cavity_hessians[1]
-    assert abs(K[0, 1]) < 1e-12 * abs(K[0, 0])
+    assert 1e-6 * abs(K[0, 0]) < abs(K[0, 1]) < 1e-4 * abs(K[0, 0])
+    K_plane = build_one(cavity_envelope=False).static_cavity_hessians[1]
+    assert abs(K_plane[0, 1]) < 1e-12 * abs(K_plane[0, 0])
 
 
 def test_toy_parameters_are_unaffected_and_warn_if_asked():

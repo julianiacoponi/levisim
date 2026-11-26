@@ -10,7 +10,7 @@ from levisim.core.units import (
     degrees,
     kHz,
 )
-from levisim.physics.coherent_scattering import hessian_to_coupling_rate
+from levisim.physics.coherent_scattering import cavity_mode_polarisability, hessian_to_coupling_rate
 
 __all__ = [
     'Dimension',
@@ -191,6 +191,8 @@ class Dimension:
         # ------------------------------------------------------------------------------------------
         # Linear coupling of (x, y, z)-motion to the cavity light quadratures with tweezer phase included
         # [2π·Hz]
+        # the phase of G beyond Φjn_CS + φ that the dispersive coupling below adds (see φ_coupling)
+        self.coupling_phase_offset = 0.0
         if not self.φ and round(sign * Φjn_CS / (π/2)) * (π/2) == sign * Φjn_CS:
             # NOTE: exact cos and sin of Φjn_CS = 0 or ±π/2, since np.cos(π/2) = 6.1e-17 would leave a
             # spurious amplitude-quadrature coupling of z (these are the values sympy gave, which was
@@ -199,6 +201,33 @@ class Dimension:
             self.G = self.g * (cos_Φ + 1j * sin_Φ)
         else:
             self.G = self.g * np.exp(sign * 1j * self.φ_coupling)
+
+        # the dynamical coupling of the cavity's own standing-wave potential along the cavity axis
+        # (MultiTrap(cavity_dispersive_coupling=True), see dispersive_light_mech_coupling): it adds to
+        # G with the phase of the static field, so g and the phase of G (coupling_phase_offset) are
+        # updated to keep G = g·exp(i·φ_coupling). A term below the double-precision resolution of G
+        # (e.g. at the node, where it is ∝ sin 2Φ·cos Φ ~ 10⁻³³) is not added, so that G stays
+        # bit-identical there.
+        self.dispersive_G = self.dispersive_light_mech_coupling
+        if self.dispersive_G != 0 and abs(self.dispersive_G) > np.finfo(float).eps * abs(self.G):
+            G_total = self.G + self.dispersive_G
+            if self.g != 0:
+                ratio = G_total / self.G
+                self.g = self.g * abs(ratio)
+                self.coupling_phase_offset = float(np.angle(ratio))
+            else:
+                self.g = abs(G_total)
+                self.coupling_phase_offset = float(np.angle(G_total)) - float(Φjn_CS + self.φ)
+            self.G = G_total
+
+        # MultiTrap.from_nonlinear_equilibrium: the coupling of the linearisation at the equilibrium
+        equilibrium = getattr(self.multitrap, 'equilibrium_linearisation', None)
+        if equilibrium:
+            G_eq = complex(equilibrium['G'][self.label])
+            self.dispersive_G = 0.0
+            self.g = abs(G_eq)
+            self.coupling_phase_offset = float(np.angle(G_eq)) - float(Φjn_CS + self.φ) if G_eq != 0 else -float(Φjn_CS + self.φ)
+            self.G = G_eq
 
         # NOTE: "+1" convention is what the majority of my code's derivation implies: G = g·exp(iφ)
         # i.e. positive phase to the creation operator when using a coupling Hamiltonian
@@ -227,7 +256,7 @@ class Dimension:
         # strong-coupling correction O(|G|²/κ²). Two limits of the derived quantities below: they
         # ignore the backaction floor n_min = A₊/(A₋ - A₊) (so the cooled phonon number is an
         # underestimate near the ground state), and they are per dimension, with no hybridisation.
-        Δ, κ = self.multitrap.cavity.Δ, self.multitrap.cavity.κ
+        Δ, κ = self.multitrap.cavity.Δ_eff, self.multitrap.cavity.κ
         Cp = 1 / ((Δ + self.Ω)**2 + (κ/2)**2)
         Cm = 1 / ((Δ - self.Ω)**2 + (κ/2)**2)
         self.cooling_rate = κ * np.abs(self.G)**2 * (Cp - Cm)
@@ -341,7 +370,41 @@ class Dimension:
         # (G = g·exp(-iφ)) convention of PRR 8 is equivalent to relabelling φ → -φ (PRR 8's tweezer
         # phase is Φ_j = -φ_j), i.e. it is a choice of input parameters, not of the equations.
         Φjn_CS = self.linearised_coherent_scattering_coupling_phase
-        return self.multitrap.tweezer_phase_sign_convention * float(Φjn_CS + self.φ)
+        # coupling_phase_offset: the phase the cavity's dispersive coupling adds (0 without it)
+        return self.multitrap.tweezer_phase_sign_convention * float(Φjn_CS + self.φ + getattr(self, 'coupling_phase_offset', 0.0))
+
+    @property
+    def dispersive_light_mech_coupling(self):
+        """
+        The light-mechanical coupling of the cavity's own standing-wave potential
+        ``U_cav = -α_pol·E0²·|α|²·cos²(kc·d·r + Φ)``, which MultiTrap(cavity_dispersive_coupling=True)
+        adds to `G`. Its term linear in both the displacement and the cavity fluctuation a,
+        α_pol·E0²·kc·sin 2Φ·(d·r)·(ᾱ·a† + ᾱ*·a), is -ħ·q·(G_disp·a† + G_disp*·a) with ::
+
+            G_disp = -δ·kc·sin 2Φ·d_j·x_zpf,j·ᾱ,   δ = α_pol·E0²/ħ,   d = (sin θ, cos θ, 0)
+
+        (ᾱ the static field in the cavity frame, α_pol `cavity_mode_polarisability`): zero along z, at
+        the node and at the antinode. For a libration it is (E0²/ħ)·cos²Φ·∂_j c·θ_zpf,j·ᾱ with
+        c = e_c·α(θ)·e_c (`librational_expansion`). Typically ~10⁻³ of g off the node. Zero for toy
+        parameters or with cavity_dispersive_coupling=False.
+        [2π·Hz]
+        """
+        if self.multitrap.toy_params or not getattr(self.multitrap, 'cavity_dispersive_coupling', False):
+            return 0.0
+        cavity = self.multitrap.cavity
+        ᾱ = complex(cavity.αR, cavity.αI)
+        if ᾱ == 0:
+            return 0.0
+        if self.is_libration:
+            from levisim.physics.rotation import LIBRATION_AXIS_INDEX
+            c_j = self.multitrap.librational_dispersive_couplings[self.trap_index][LIBRATION_AXIS_INDEX[self.axis]]
+            return complex(c_j * self.zero_point_fluctuation(self.axis) * ᾱ)
+        if self.axis == 'z':
+            return 0.0
+        θtw = self.trap.drive_tweezer.θ
+        d_j = np.sin(θtw) if self.axis == 'x' else np.cos(θtw)
+        δ = cavity_mode_polarisability(self.trap, self.multitrap.cavity_effective_polarisability) * cavity.E0**2 / ħ
+        return complex(-δ * self.standing_wave_k * np.sin(2 * self.trap.bead.Φ) * d_j * self.zero_point_fluctuation(self.axis) * ᾱ)
 
     @property
     def light_mech_coupling(self):
@@ -395,7 +458,10 @@ class Dimension:
         kz = (k - 1 / self.trap.drive_tweezer.zR)
         Φ = self.trap.bead.Φ
 
-        A0, P0 = self.multitrap.cavity.A0, self.multitrap.cavity.P0
+        # the static field in the frame of this bead's tweezer, αn = α·e^{-iφn} with
+        # MultiTrap(static_cavity_phases=True), else the cavity-frame α
+        αn = self.multitrap.static_bead_frame_amplitudes[self.trap_index]
+        A0, P0 = 2 * αn.real, 2 * αn.imag
         ωdsinθ = self.trap.ωd * np.sin(θtw)
 
         # all have negative signs
@@ -446,7 +512,8 @@ class Dimension:
         if axis in ('α', 'β', 'γ'):
             return self.multitrap.librational_Ω[self.trap_index][axis]
         if (getattr(self.multitrap, 'static_cavity_shifts', False) or getattr(self.multitrap, 'interactions', None)
-                or self.trap_index in getattr(self.multitrap, 'floquet_paul_traps', ())):
+                or self.trap_index in getattr(self.multitrap, 'floquet_paul_traps', ())
+                or getattr(self.multitrap, 'equilibrium_linearisation', None)):
             return self.multitrap.static_shifted_Ωj[self.trap_index][axis]
         return self.trap.Ωj[axis]
 

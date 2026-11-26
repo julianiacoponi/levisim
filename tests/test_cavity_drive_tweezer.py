@@ -14,6 +14,7 @@ import pytest
 from levisim.core.logger import logger
 from levisim.core.units import degrees, kHz, mW, nm, μm, mbar
 from levisim.multiphysics.multitrap import MultiTrap
+from levisim.physics import coherent_scattering as cs
 from levisim.physics.bead import Bead
 from levisim.physics.trap import Trap
 from levisim.physics.tweezer import Tweezer
@@ -65,7 +66,9 @@ def test_explicit_own_tweezer_with_unit_ratio_is_bit_identical():
 
 
 def test_coupling_ratio_follows_ζ_position_and_zero_point_motion():
-    mtrap = pair(ζ=0.35, φ2=0.0)
+    # (the coherent-scattering couplings alone: without the dispersive coupling of the cavity's own
+    # standing wave, which does not scale with ζ)
+    mtrap = pair(ζ=0.35, φ2=0.0, cavity_dispersive_coupling=False)
     d = mtrap.dimensions
     for axis in 'xy':
         expected = 0.35 * np.sin(BEADS[1].Φ) / np.sin(BEADS[0].Φ) * np.sqrt(Ω1[axis] / Ω2[axis])
@@ -73,11 +76,13 @@ def test_coupling_ratio_follows_ζ_position_and_zero_point_motion():
     # both beads couple with the 1064 nm wavenumber and the 1064 nm tweezer's θ = 45°
     assert d['x1'].g / d['y1'].g == pytest.approx(np.sqrt(Ω1['y'] / Ω1['x']), rel=1e-12)
     assert d['x2'].g / d['y2'].g == pytest.approx(np.sqrt(Ω2['y'] / Ω2['x']), rel=1e-12)
-    assert mtrap.traps[1].ωd == pytest.approx(0.35 * mtrap.traps[0].ωd * BEADS[1].α / BEADS[0].α, rel=1e-12)
+    # Re α_eff at the drive's (1064 nm) wavenumber for both beads
+    α_drive = [cs.drive_polarisability(trap) for trap in mtrap.traps]
+    assert mtrap.traps[1].ωd == pytest.approx(0.35 * mtrap.traps[0].ωd * α_drive[1] / α_drive[0], rel=1e-12)
 
 
 def test_the_phase_is_the_trapping_tweezers_φ():
-    mtrap = pair(ζ=0.35, φ2=172*degrees)
+    mtrap = pair(ζ=0.35, φ2=172*degrees, cavity_dispersive_coupling=False)
     G_x1, G_x2 = mtrap.dimensions['x1'].G, mtrap.dimensions['x2'].G
     assert np.angle(G_x2 / G_x1) == pytest.approx(172*degrees, abs=1e-12)
 
@@ -99,7 +104,14 @@ def test_a_976_nm_tweezer_without_a_drive_tweezer_warns(warnings_logged):
 def test_zero_ratio_decouples_the_bead():
     mtrap = pair(ζ=0.0, axes=3)
     for label in ('x2', 'y2', 'z2'):
-        assert mtrap.dimensions[label].G == 0
+        # no coherent scattering; the bead still feels the cavity's own standing wave (the dispersive
+        # coupling, along the cavity axis), unless it is left out
+        dim = mtrap.dimensions[label]
+        assert dim.G - dim.dispersive_G == 0
+        assert (dim.dispersive_G != 0) == (label != 'z2')
+    off = pair(ζ=0.0, axes=3, cavity_dispersive_coupling=False)
+    for label in ('x2', 'y2', 'z2'):
+        assert off.dimensions[label].G == 0
 
 
 @pytest.mark.parametrize('ratio', [-0.1, np.nan, np.inf])
