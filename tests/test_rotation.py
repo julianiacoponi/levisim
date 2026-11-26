@@ -387,7 +387,9 @@ def test_static_libration_terms_against_finite_differences():
     exp = cs.librational_expansion(trap, E0c, α_c)
     K_θθ = exp['K_θθ_CS'] + exp['K_θθ_cav']
     K_rθ = exp['K_rθ_CS'] + exp['K_rθ_cav']
-    assert np.allclose(H[3:, 3:], K_θθ, rtol=1e-5, atol=1e-6 * np.max(np.abs(K_θθ)))
+    # the small off-diagonal entry (~0.15 of the largest) carries finite-difference noise of ~6e-6 of the
+    # largest entry, which differs between platforms (and numpy versions)
+    assert np.allclose(H[3:, 3:], K_θθ, rtol=1e-4, atol=1e-5 * np.max(np.abs(K_θθ)))
     assert np.allclose(H[:3, 3:], K_rθ, rtol=1e-5, atol=1e-6 * np.max(np.abs(K_rθ)))
 
 
