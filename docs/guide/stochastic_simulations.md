@@ -239,7 +239,28 @@ forces act, and binds the tweezer's constants, once per run (`FreeSpaceSimulatio
 which made it 30-42% faster per step than the first force-element release (default `Trap`, $2^{15}$
 steps, best of three under shared load: `vector_4` 38.6 → 25.5 μs, `vector_2` 15.9 → 9.2 μs) with
 bit-identical trajectories. Edits to `trap.fields`, or to the tweezer's parameters, made while a
-NumPy loop runs are therefore ignored until the next run. A single free-space bead has
+NumPy loop runs are therefore ignored until the next run.
+
+The compiled kernels also cover traps built from other force elements (`PaulTrap`, `MagneticTrap`
+with polynomial, current-loop, cuboid or summed sources, `HarmonicPotential`,
+`UniformElectricField`), optical binding and the pair interactions; see
+[Traps as sums of fields](../concepts/traps_as_fields.md) and
+[Interactions](../concepts/interactions.md). Per step, set-up subtracted (Apple arm64, shared machine,
+best of three for numba, one run for NumPy; `vector_4`):
+
+| configuration | NumPy | numba |
+|---|---|---|
+| ring `PaulTrap` | 51 μs | 1.2 μs |
+| tweezer + `PaulTrap` (hybrid) | 65 μs | 1.2 μs |
+| `MagneticTrap` (quadrupole `LocalFieldExpansion`) + `Gravity` | 124 μs | 2.2 μs |
+| tweezer + `MagneticTrap` (`CurrentLoop` + `CuboidMagnet`) | 1530 μs | 8.4 μs |
+| two particles, `OpticalBinding()` (`MultiParticleFreeSpaceSimulation`) | 470 μs | 6.6 μs |
+| two particles, `OpticalBinding(order='self_consistent')` | 740 μs | 12 μs |
+| nonlinear `CavitySimulation`, two particles, `Coulomb` (per sample) | 710 μs | 3.9 μs |
+| nonlinear `CavitySimulation`, two particles, `OpticalBinding` (per sample) | 1030 μs | 8.1 μs |
+
+The Reisenbauer et al. (2024) reproduction, whose limit-cycle runs use `OpticalBinding`, went from
+about 680 s to 12.5 s with `backend='auto'`, with every printed number unchanged. A single free-space bead has
 nothing to thread over, so these kernels are serial; `levisim.simulation.backends.choose_threading`
 holds the policy that multi-particle and ensemble kernels will use (threads over independent setups,
 or over particles for large systems).

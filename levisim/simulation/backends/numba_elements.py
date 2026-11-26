@@ -426,9 +426,6 @@ def field_force(t, x, y, z, start, end, rows, sources, data, out):
     Fx = 0.0
     Fy = 0.0
     Fz = 0.0
-    r = np.empty(3)
-    B = np.empty(3)
-    J = np.empty((3, 3))
     for e in range(start, end):
         code = rows[e, 0]
         o = rows[e, 1]
@@ -451,6 +448,9 @@ def field_force(t, x, y, z, start, end, rows, sources, data, out):
             Fy = Fy + -Q * (data[o + 2] + data[o + 5] * c) * (y - data[o + 10])
             Fz = Fz + -Q * (data[o + 3] + data[o + 6] * c) * (z - data[o + 11])
         elif code == MAGNETIC:
+            r = np.empty(3)
+            B = np.empty(3)
+            J = np.empty((3, 3))
             r[0] = x
             r[1] = y
             r[2] = z
