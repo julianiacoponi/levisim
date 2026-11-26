@@ -549,7 +549,7 @@ def test_finite_size_torque_against_finite_differences_and_kamba_eq3():
 
 
 def test_finite_size_torque_in_trap_and_rigid_body():
-    pytest.importorskip('numba')
+    from levisim.simulation.backends import numba_available
     particle = Spheroid(a=70*nm, b=50*nm, orientation=body_axis_to_quaternion((0, 1, 0)))
     plain = Trap(tweezer=Tweezer(), particle=particle, gas=Gas(P=1 * mbar))
     extended = Trap(tweezer=Tweezer(), particle=particle, gas=Gas(P=1 * mbar), finite_size_torque=True)
@@ -557,10 +557,11 @@ def test_finite_size_torque_in_trap_and_rigid_body():
     assert plain.Ωθ['α'] == pytest.approx(plain.Ωθ['γ'], rel=1e-12)
     assert extended.Ωθ['α'] < plain.Ωθ['α'] < extended.Ωθ['γ']
     common = {'trap': extended, 'num_samples': 3000, 'Δt': 2e-9, 'seed': 4, 'recoil': True, 'ω0': (1e5, 2e4, -1e5)}
-    numba_run = RigidBodySimulation(backend='numba', **common)
-    numpy_run = RigidBodySimulation(backend='numpy', **common)
-    assert numba_run.backend_used == 'numba'
-    assert np.allclose(numba_run.X, numpy_run.X, rtol=1e-9, atol=1e-12 * np.abs(numpy_run.X).max(axis=0))
+    if numba_available():
+        numba_run = RigidBodySimulation(backend='numba', **common)
+        numpy_run = RigidBodySimulation(backend='numpy', **common)
+        assert numba_run.backend_used == 'numba'
+        assert np.allclose(numba_run.X, numpy_run.X, rtol=1e-9, atol=1e-12 * np.abs(numpy_run.X).max(axis=0))
     # the time-domain libration frequencies follow the extended trap
     sim = RigidBodySimulation(trap=extended, num_samples=20000, Δt=2e-9, gas_damping=False, ω0=(1e3, 0, 0))
     θ = sim.lab_directions((0, 0, 1))[:, 2]
