@@ -18,11 +18,12 @@ units,
   $\varepsilon' + i\varepsilon''$ with $\varepsilon'' > 0$ for an absorbing material, a $3\times3$
   tensor in the body frame for a birefringent crystal, a function $\varepsilon_r(\lambda)$ of the
   vacuum wavelength, the name of a dispersion model (`'Malitson'`, the Sellmeier formula for fused
-  silica), or a table of values at given wavelengths;
+  silica), a table of values at given wavelengths, or a full table of $n$ and $\kappa$ against
+  the wavelength (`RefractiveIndexTable`), interpolated linearly at any wavelength inside it;
 - the magnetic volume susceptibility $\chi_m$ (dimensionless, negative for a diamagnet), a scalar
   or a body-frame tensor;
 - a remanent magnetisation $M_r$ [A/m] for a permanent magnet, and an electrical conductivity
-  $\sigma$ [S/m].
+  $\sigma$ [S/m], a scalar or a body-frame tensor (`conductivity_tensor`).
 
 `material.εr(λ)` returns the permittivity at a vacuum wavelength, `material.n(λ)` the refractive
 index $n = \sqrt{\varepsilon_r}$ (complex if absorbing, three principal indices if anisotropic), and
@@ -49,21 +50,51 @@ the sample, `material.notes` says so.
 |---|---|---|---|
 | `LEVISIM_DEFAULT_SILICA` | 1850 | $\varepsilon_r = 1.98$ | - |
 | `FUSED_SILICA` | 2201 | Malitson (1965) Sellmeier, 0.21-3.71 μm | - |
-| `SILICON` | 2330 | complex at 1064 nm, real at 1550 nm | - |
-| `DIAMOND` | 3515 | 1064 and 1550 nm | - |
+| `SILICON` | 2330 | $n, \kappa$ table, 0.25-14 μm (Green 2008; Li 1980) | - |
+| `DIAMOND` | 3515 | $n, \kappa$ table, 0.035-10 μm (Phillip and Taft 1964) | - |
 | `VATERITE` | 2540 | uniaxial tensor, $n_o = 1.55$, $n_e = 1.65$ | - |
-| `GOLD` | 19320 | complex at 1064 and 1550 nm | - |
-| `PYROLYTIC_GRAPHITE` | 2200 | - | anisotropic diamagnet |
-| `BISMUTH` | 9747 | - | diamagnet, $\chi_m = -1.7 \times 10^{-4}$ |
-| `NDFEB` | 7400 | - | $B_r = 1.23$ T, conductive |
+| `GOLD` | 19320 | $n, \kappa$ table, 0.3-24.9 μm (Olmon et al. 2012, evaporated) | - |
+| `PYROLYTIC_GRAPHITE` | 2200 | - | anisotropic diamagnet; $\sigma$ = 2 × 10<sup>5</sup> S/m in plane, 200 S/m along $c$ |
+| `BISMUTH` | 9747 | - | diamagnet, $\chi_m = -1.7 \times 10^{-4}$; $\sigma$ = 8.7 × 10<sup>5</sup> S/m |
+| `NDFEB` | 7400 | - | $B_r = 1.23$ T, $\mu_\text{rec} = 1.05$ (easy axis), conductive |
+
+`SILICON`, `DIAMOND` and `GOLD` carry the complete $n, \kappa$ tables of their sources, shipped in
+`levisim/physics/optical_data` as CSV files whose headers give the citation. The numbers were copied
+from the refractiveindex.info database (public domain, CC0), which reproduces each source's table.
+$n$ and $\kappa$ are interpolated separately and linearly in $\lambda$, and
+$\varepsilon_r = (n + i\kappa)^2$; a wavelength outside the table raises an error (there is no
+extrapolation), and `material.wavelength_range` gives the limits. The silicon table joins Green
+(2008, 300 K, with band-to-band $\kappa$) below 1.45 μm to Li (1980, 293 K, $\kappa = 0$) above it;
+at the join the two differ by $5 \times 10^{-4}$ in $n$. At 1064 and 1550 nm the values are exactly
+those of the earlier two-wavelength library. A table of your own is
+`RefractiveIndexTable(λ, n, κ, source=...)` or `RefractiveIndexTable.from_csv(path)`.
+
+The magnetic and electrical data have cited sources too. `NDFEB` (the 1984 sintered specimen of
+Sagawa et al.) carries the recoil susceptibility $\mu_\text{rec} - 1 = 0.05$ along its easy axis
+(`NDFEB_RECOIL_PERMEABILITY`, from Arnold Magnetic Technologies); the
+transverse susceptibility is not included. `ndfeb_grade('N42')` builds a commercial grade from the
+typical remanence of the Arnold catalogue (`NDFEB_GRADES`, N35 to N55, $B_r$ = 1.21-1.49 T), with
+its density and its resistivity along (150 μΩ·cm) and across (130 μΩ·cm) the easy axis;
+`recoil_susceptibility=False` sets $\chi_m = 0$. Bismuth has $\sigma = 8.7 \times 10^5$ S/m, the
+value Xiong et al., Communications Physics 8, 80 (2025) use for a levitated bismuth sphere.
+Pyrolytic graphite conducts anisotropically, $2 \times 10^5$ S/m in the sheets and 200 S/m along
+the $c$ axis (body $z$), as tabulated by Chen et al., arXiv:2208.10393, from Pappis and Blum (1961).
+Conductivities depend strongly on the sample: particles sintered or built from powder conduct far
+less than the bulk.
 
 `LEVISIM_DEFAULT_SILICA` is the material of `Bead()`. Its density is the supplier's value for the
 porous silica spheres used in the experiments, and $\varepsilon_r = 1.98$ is the value used in
 earlier simulations, whose origin is not recorded. The two are not mutually consistent under the
 Lorentz-Lorenz relation for a porous material, $(\varepsilon_r - 1)/(\varepsilon_r + 2) \propto \rho$,
 with bulk fused silica as the reference: $\varepsilon_r = 1.98$ corresponds to
-2018 kg/m³, and $\rho = 1850$ kg/m³ to $\varepsilon_r = 1.875$. They are kept unchanged so that
-no existing number moves.
+2018 kg/m³, and $\rho = 1850$ kg/m³ to $\varepsilon_r = 1.875$.
+
+```{note}
+The inconsistency is known and deliberate: both values are kept for continuity with the published
+and thesis numbers computed with them, so that no existing result moves. For a self-consistent porous
+silica, derive a material with a Lorentz-Lorenz pair, e.g.
+`FUSED_SILICA.replace(name='porous silica', ρ=1850.0, permittivity=1.875)` (εr at 1064 nm).
+```
 
 ## Particles
 
@@ -144,6 +175,17 @@ birefringent material, such as `VATERITE`, enters through its permittivity tenso
 particle's body frame, in the matrix form above. The radiation reaction is applied to the whole
 tensor, $\boldsymbol\alpha_\text{eff} = \boldsymbol\alpha(\mathbb 1 - i k^3\boldsymbol\alpha/6\pi\varepsilon_0)^{-1}$.
 
+```{warning}
+**Approximate polarisabilities.** `Cylinder`, `Rod` and `Disk` use the depolarisation factors of the
+*spheroid with the same aspect ratio*, and `Dumbbell` uses *two coupled point dipoles*. Neither is the
+exact quasi-static polarisability of that shape, and the dumbbell's point-dipole model underestimates
+the anisotropy of touching or nearly touching spheres. When the polarisability matters quantitatively
+(trap frequencies, librational stiffness, torques), compute the tensor with a T-matrix,
+discrete-dipole or finite-element code and pass it to
+{class}`~levisim.physics.tabulated.TabulatedParticle`. Spheres, spheroids and ellipsoids are exact in
+the quasi-static limit.
+```
+
 Two shapes need an approximation. A finite cylinder is not uniformly polarised, so `Cylinder`,
 `Rod` and `Disk` use the depolarisation factors of the spheroid with the same aspect ratio
 $\ell/2R$, with the cylinder's own volume; this becomes exact for the infinitely long rod,
@@ -190,8 +232,13 @@ because the components of the induced dipole perpendicular to $\hat{\mathbf e}$ 
 `Trap` therefore uses $\alpha_\text{eff} = \hat{\mathbf y}\cdot\mathbf R\boldsymbol\alpha_\text{eff}\mathbf R^\mathsf{T}\cdot\hat{\mathbf y}$,
 and its stiffness, trap frequencies, potential, forces, scattering cross section and equilibrium
 offset follow from that projection. A sphere of an isotropic material keeps the original scalar
-arithmetic, and its numbers are unchanged. `particle.α` is the projected static polarisability,
-which `MultiTrap` uses for the coherent-scattering drive.
+arithmetic, and its numbers are unchanged. Every particle has the same polarisability API:
+`particle.α` is the scalar projected static polarisability
+$\hat{\mathbf y}\cdot\mathbf R\boldsymbol\alpha\mathbf R^\mathsf{T}\cdot\hat{\mathbf y}$, which
+`MultiTrap` uses for the coherent-scattering drive, and `particle.α_tensor` is the $3\times3$
+static tensor $\boldsymbol\alpha$ in the body frame. For a sphere of an isotropic material `α` is the
+Clausius-Mossotti scalar and `α_tensor` is $\alpha\,\mathbb 1$; for a birefringent sphere (e.g.
+`VATERITE`) `α` is the projection, as for the other shapes.
 
 The photon-recoil noise is generalised in the same way. The induced dipole
 $\mathbf p \propto \boldsymbol\alpha_\text{eff}\hat{\mathbf y}$ need not lie along the polarisation.
@@ -227,7 +274,19 @@ where $\mathbf r$ is the surface point relative to the centre of mass, $\mathbf 
 normal, $\hat{\mathbf r}\mathbf a = \mathbf r\times\mathbf a$, and $n_g = P/k_B T$ the gas number
 density. The diffusion matrix, their Eq. (41), satisfies
 $\mathbf D = k_B T\,\boldsymbol\Gamma\,\mathrm{diag}(m_n\mathbb 1, \mathbf I)$ for $\gamma_s = 1$.
-Spheres and cylinders use the closed forms of Table I of the paper. Ellipsoids, spheroids and
+For a sphere it integrates in closed form, for any $\gamma_s$,
+
+$$
+\mathbf D_\text{cm} = k_BT\,n_g\sqrt{\frac{m_g k_B T}{2\pi}}\,\frac{4\pi}{3}R^2\,(c_2 + 3c_3)\,\mathbb 1,
+\qquad
+\mathbf D_\text{rot} = k_BT\,n_g\sqrt{\frac{m_g k_B T}{2\pi}}\,\frac{8\pi}{3}R^4\,c_3\,\mathbb 1,
+$$
+
+with $c_2 = 4 - (7 - \gamma_s^2)\alpha_c/2 + \pi\alpha_c\gamma_s/2$ and
+$c_3 = (1 + \gamma_s^2)\alpha_c/2$; `Sphere` uses it for $\gamma_s \ne 1$ and the original
+$k_BT\,m_n\boldsymbol\Gamma_\text{cm}$, $k_BT\,\boldsymbol\Gamma_\text{rot}\mathbf I$ arithmetic at
+$\gamma_s = 1$. The tests check it against the surface integral of an `Ellipsoid` with equal axes,
+to $10^{-12}$. Spheres and cylinders use the closed forms of Table I of the paper. Ellipsoids, spheroids and
 dumbbells use these surface integrals, evaluated once on a Gauss quadrature and cached
 ({mod}`levisim.physics.gas_damping`). The tests check the numerical integrals against Table I for
 the sphere and the cylinder, to $10^{-12}$, for several values of $\alpha_c$ and $\gamma_s$.
@@ -263,7 +322,12 @@ The inputs are validated on construction:
   positive semi-definite, with levisim's $e^{-i\omega t}$ convention);
 - the damping tensors must have real, non-negative eigenvalues.
 
-Damping tensors given as arrays hold for the accommodation they were computed with. They are scaled
+Damping tensors given as arrays hold for the accommodation they were computed with. For a surface
+temperature ratio $\gamma_s \ne 1$ the momentum diffusion does not follow from the damping, so it is
+an input too (`translational_diffusion`, `rotational_diffusion`: arrays scaled to another gas by
+$D \propto P\sqrt{m_g T}$, or callables); `from_particle` tabulates it whenever $\gamma_s \ne 1$.
+Without it, the diffusion is $k_BT\,\boldsymbol\Gamma\,\mathrm{diag}(m_n, \mathbf I)$, exact for
+$\gamma_s = 1$, and other $\gamma_s$ raise an error. They are scaled
 to another gas by the free-molecular law $\Gamma \propto P\sqrt{m_g/T}$. A tabulated polarisability
 is interpolated linearly between wavelengths, and requesting a wavelength outside the table raises
 an error.
@@ -271,7 +335,8 @@ an error.
 ## Beyond the dipole limit: Mie theory
 
 The dipole model holds while $kr \ll 1$. {mod}`levisim.physics.mie`, an optional backend
-(`pip install "levisim[mie]"`, which uses `miepython`, MIT licence), evaluates the exact Mie
+(`pip install "levisim[mie]"`, which uses `miepython`, MIT licence; miepython ≥ 3 also pulls in
+numba and matplotlib, see [Getting started](../getting_started.md)), evaluates the exact Mie
 solution for a sphere. It returns the extinction and scattering cross sections and the
 dipole-equivalent polarisability $\alpha_\text{Mie} = 6\pi i\varepsilon_0 a_1/k^3$ from the
 electric-dipole coefficient $a_1$. That polarisability includes the radiation reaction exactly.

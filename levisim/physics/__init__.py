@@ -32,6 +32,7 @@ __all__ = [
     'Particle',
     'PaulTrap',
     'PhotonRecoil',
+    'RefractiveIndexTable',
     'Rod',
     'Sphere',
     'Spheroid',
@@ -67,7 +68,7 @@ from levisim.physics.interactions import (
     OpticalBinding,
 )
 from levisim.physics.kick import Kick
-from levisim.physics.material import Material
+from levisim.physics.material import Material, RefractiveIndexTable
 from levisim.physics.particle import Particle, Sphere
 from levisim.physics.shapes import Cylinder, Disk, Dumbbell, Ellipsoid, Rod, Spheroid
 from levisim.physics.tabulated import TabulatedParticle

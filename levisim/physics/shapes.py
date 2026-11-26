@@ -20,13 +20,16 @@ Landau and Lifshitz, Electrodynamics of Continuous Media, §4), with depolarisat
 
 For a scalar εr, α_i = ε0 V (εr - 1)/(1 + L_i(εr - 1)); a 3×3 εr (a birefringent material, its
 principal axes given in the particle's body frame) enters through the matrix form. At L_i = 1/3
-this is Clausius-Mossotti, `Sphere.α`. The radiation reaction α_eff = α (𝟙 - i k³α/(6πε0))⁻¹ is
+this is Clausius-Mossotti, `Sphere.α_tensor`. The radiation reaction α_eff = α (𝟙 - i k³α/(6πε0))⁻¹ is
 applied to the whole tensor (`Particle.polarisability_tensor(radiation_reaction=True)`).
 
-Cylinders (rods, disks) have no closed-form polarisability: levisim uses the depolarisation factors
-of the spheroid with the same aspect ratio ℓ/(2R), with the cylinder's own volume (an approximation
-that becomes exact for the infinitely long rod, L = (1/2, 1/2, 0), and the infinitely thin disk,
-L = (0, 0, 1)). A dumbbell is two coupled point dipoles (see `Dumbbell`).
+APPROXIMATION (Cylinder, Rod, Disk, Dumbbell). Cylinders (rods, disks) have no closed-form
+polarisability: levisim uses the depolarisation factors of the spheroid with the same aspect ratio
+ℓ/(2R), with the cylinder's own volume (an approximation that becomes exact for the infinitely long
+rod, L = (1/2, 1/2, 0), and the infinitely thin disk, L = (0, 0, 1)). A dumbbell is two coupled
+point dipoles (see `Dumbbell`), which underestimates the anisotropy of touching spheres (the higher
+multipoles near the contact are left out). For quantitative work on these shapes, compute the
+polarisability tensor with a T-matrix, DDA or FEM code and use `TabulatedParticle`.
 
 GAS DAMPING. Martinetz, Hornberger and Stickler, Phys. Rev. E 97, 052112 (2018),
 doi:10.1103/PhysRevE.97.052112, for a mixture of specular and diffuse reflection (accommodation
@@ -715,8 +718,8 @@ class Dumbbell(_Shape):
 
     so α = p_1 + p_2 per unit field; for equal scalar α_s, α_∥ = 2α_s/(1 - 2α_s/(4πε0 d³)) and
     α_⊥ = 2α_s/(1 + α_s/(4πε0 d³)). Approximations: point dipoles (the higher multipoles induced near
-    the contact of touching spheres are left out, which underestimates the anisotropy), no
-    retardation across the dumbbell (k d ≪ 1). The radiation reaction is applied to the total
+    the contact of touching spheres are left out, which underestimates the anisotropy; for exact
+    values use `TabulatedParticle`), no retardation across the dumbbell (k d ≪ 1). The radiation reaction is applied to the total
     tensor. The gas damping integrates Eq. (40) of Martinetz et al. (2018) over both sphere
     surfaces, neglecting that each sphere shadows part of the other from the gas (exact for
     separations ≫ r); unequal spheres have rotranslational coupling (`rotranslational_friction_matrix`).
