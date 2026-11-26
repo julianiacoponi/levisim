@@ -32,6 +32,7 @@ from levisim.physics.materials import BISMUTH, FUSED_SILICA, NDFEB, PYROLYTIC_GR
 from levisim.physics.particle import axis_angle_quaternion
 from levisim.physics.shapes import Spheroid
 from levisim.simulation import FreeSpaceSimulation
+from levisim.simulation.backends import resolve_backend
 
 RNG = np.random.default_rng(12)
 
@@ -457,7 +458,8 @@ def test_simulated_psd_peaks_match_stiffness_with_gravity():
     X0 = np.r_[trap.linearisation_point, 0, 0, 0]
     sim = FreeSpaceSimulation(trap=trap, num_samples=30_000, Δt=10e-6, X0=X0, seed=3, backend='auto')
     sim.simulate_dynamics()
-    assert sim.backend_used == 'numpy'
+    # NumPy below AUTO_NUMBA_MIN_STEPS (or without numba); the compiled MagneticTrap kernel above it
+    assert sim.backend_used == resolve_backend('auto', 30_000)
     expected = np.array([trap.Ωx, trap.Ωy, trap.Ωz]) / Hz
     np.testing.assert_allclose(_peak_frequencies(sim), expected, rtol=0.02)
 
