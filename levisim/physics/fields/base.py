@@ -14,6 +14,10 @@ linearisation point):
 - ``noise(particle)``: the (two-sided) force spectral density the element adds, a 3×3 matrix [N²/Hz]
 - ``damping_rates(particle)``: linear velocity damping rates (Γx, Γy, Γz), F = -Γ·p [2π·Hz]
 - ``is_optical``: whether the element is a light field that polarises the particle
+- ``is_time_dependent``, ``secular_force(r, particle)``: for an explicitly time-dependent element
+  (a `PaulTrap`), the time-averaged force that static quantities (`Trap.find_equilibrium`) use
+- ``max_time_step(particle)``: the largest time step that resolves the element in a time-domain
+  simulation (None if it sets no limit)
 """
 
 import numpy as np
@@ -58,10 +62,17 @@ class ForceElement:
     - is_conservative [False]: True if `force` = -∇`potential`
     - simulation_group ['field']: the slot in which `FreeSpaceSimulation` adds the force, one of
       'field', 'damping', 'kick', 'recoil', 'gravity' (see SIMULATION_GROUPS)
+    - is_time_dependent [False]: True if `force` depends explicitly on t beyond switching on and off
+      (a `PaulTrap`); `Trap.static_force` then uses the time-averaged `secular_force`
+    - noise_in_simulation [False]: True if `FreeSpaceSimulation` adds the element's `noise` as extra
+      white force noise (the tweezer's recoil noise is not added, as before; a `PaulTrap`'s electrode
+      noise is)
     """
 
     is_optical = False
     is_conservative = False
+    is_time_dependent = False
+    noise_in_simulation = False
     simulation_group = 'field'
 
     @property
@@ -83,6 +94,23 @@ class ForceElement:
         [N]
         """
         raise NotImplementedError(f'{type(self).__name__} does not implement force(r, t, particle)')
+
+    def secular_force(self, r, particle):
+        """
+        Time-averaged force at r, used for static quantities such as `Trap.find_equilibrium`
+        [N]
+
+        For an element that is not time dependent this is force(r, 0, particle).
+        """
+        return self.force(r, 0.0, particle)
+
+    def max_time_step(self, particle=None):
+        """
+        Largest time step of a time-domain simulation that resolves this element, or None
+        [s]
+
+        None by default: a static element sets no limit.
+        """
 
     def torque(self, r, t, particle, orientation=None):
         """
