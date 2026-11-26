@@ -101,7 +101,15 @@ $$
 E_\mathrm{tw}(s) = E_0 e^{i\phi}\,\hat e\;\frac{\exp\!\left(ikz - \dfrac{x^2/w_{x0}^2 + y^2/w_{y0}^2}{1 + iz/z_R}\right)}{1 + iz/z_R},
 $$
 
-at the displacement $s$ from the focus, with $\phi$ = `Tweezer.φ`. On the axis its phase is
+at the displacement $s$ from the focus, with $\phi$ = `Tweezer.φ` and $\hat e$ the tweezer's own
+polarisation, `Tweezer.polarisation`: linear along $y$ by default, or any linear, circular or
+elliptical Jones vector in the $x$-$y$ plane (`Tweezer(polarisation=...)`,
+`Tweezer.elliptical_polarisation`). A polarisation scan therefore needs no rotated geometry: a
+tweezer polarised at $\Theta$ from $y$ gives the forces of the $y$-polarised calculation in the
+geometry turned by $-\Theta$ about the beam axis, turned back (tested to $10^{-12}$ for round
+beams). For circular or elliptical light the complex $\hat e$ enters both the induced dipoles and
+the tweezer-gradient term. `OpticalBinding(polarisation='y')` takes every tweezer as polarised
+along $y$ regardless, as levisim did before tweezers had a polarisation. On the axis its phase is
 $kz - \arctan(z/z_R) + \phi$, the phase of the coherent-scattering model. The phase gradient at the
 focus is therefore $k' = k - 1/z_R$, not $k$. `tweezer_field='plane_wave'` uses $E_0e^{i\phi}\hat e\,e^{ikz}$
 instead, for comparison with plane-wave theory.

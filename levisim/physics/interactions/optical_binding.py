@@ -39,7 +39,9 @@ non-reciprocal (`is_conservative = is_reciprocal = False`), and its stiffness bl
 reciprocal and an anti-reciprocal part (`coupling_decomposition`).
 
 Tweezer fields. Each tweezer is levisim's paraxial elliptical Gaussian beam, propagating along +z
-and polarised along the tweezer's `polarisation` (lab y), with the complex amplitude ::
+with the tweezer's own polarisation ê = `Tweezer.polarisation` (linear along lab y by default; any
+linear, circular or elliptical Jones vector in the x-y plane given with `Tweezer(polarisation=...)`),
+with the complex amplitude ::
 
     E_tw(s) = E0·e^{iφ}·ê · exp(i k z) · exp(-(x²/wx0² + y²/wy0²)/(1 + i z/zR)) / (1 + i z/zR)
 
@@ -78,6 +80,7 @@ __all__ = [
     'dipole_green_tensor',
     'dipole_green_tensor_derivatives',
     'tweezer_field',
+    'tweezer_polarisation',
 ]
 
 COULOMB_FACTOR = 1 / (4 * π * ε0)
@@ -211,7 +214,19 @@ def dipole_field(r, r_dipole, p, k):
 # --------------------------------------------------------------------------------------------------
 # TWEEZER FIELD
 # --------------------------------------------------------------------------------------------------
-def tweezer_field(tweezer, s, order=2, model='gaussian'):
+def tweezer_polarisation(tweezer):
+    """
+    The tweezer's unit polarisation (Jones) vector in the lab frame, `Tweezer.polarisation`: a real
+    array for linear light (lab y by default), a complex one for circular or elliptical light
+    [·]
+    """
+    e = np.asarray(getattr(tweezer, 'polarisation', (0.0, 1.0, 0.0)))
+    if np.iscomplexobj(e) and np.any(np.imag(e)):
+        return e.astype(complex)
+    return np.real(e).astype(float)
+
+
+def tweezer_field(tweezer, s, order=2, model='gaussian', polarisation=None):
     """
     Complex field of a Tweezer at the displacement s from its focus, and its derivatives ::
 
@@ -221,13 +236,17 @@ def tweezer_field(tweezer, s, order=2, model='gaussian'):
 
         E = E0·e^{iφ}·ê·exp(S),   S = i k z - ln(1 + iz/zR) - (x²/wx0² + y²/wy0²)/(1 + iz/zR)
 
-    whose modulus is `Tweezer.E_field_amplitude`; model='plane_wave': S = i k z.
+    whose modulus is `Tweezer.E_field_amplitude`; model='plane_wave': S = i k z. The polarisation ê is
+    the tweezer's Jones vector (`Tweezer.polarisation`): real for linear light (lab y by default), so
+    the arithmetic of the default tweezer is unchanged, and complex for circular or elliptical light;
+    `polarisation` (a 3-vector) replaces it.
     s: shape (3,) [m]
     [V/m, V/m², V/m³]
     """
     x, y, z = (float(value) for value in s)
     k = tweezer.k
-    amplitude = tweezer.E0 * np.exp(1j * tweezer.φ) * np.asarray(tweezer.polarisation, dtype=float)
+    e = tweezer_polarisation(tweezer) if polarisation is None else polarisation
+    amplitude = tweezer.E0 * np.exp(1j * tweezer.φ) * e
     dS = np.zeros(3, dtype=complex)
     d2S = np.zeros((3, 3), dtype=complex)
     if model == 'plane_wave':
@@ -278,6 +297,9 @@ class OpticalBinding(Interaction):
       particle's own above which a WARNING is logged once
     - wavelength_rtol [1e-9]: tweezers whose wavelengths differ by more than this (relative) do not
       interfere, and their particles do not bind
+    - polarisation ['tweezer']: 'tweezer' uses each tweezer's own Jones vector
+      (`Tweezer.polarisation`, linear along y by default); 'y' takes every tweezer as linearly
+      polarised along lab y, the assumption of levisim before tweezers had a polarisation
 
     The stiffness blocks are analytic for order='first' and fourth-order (Richardson-extrapolated)
     central differences of `forces` for 'self_consistent'; `stiffness_blocks(..., method=...)`
@@ -289,16 +311,20 @@ class OpticalBinding(Interaction):
 
     ORDERS = ('first', 'self_consistent')
     FIELD_MODELS = ('gaussian', 'plane_wave')
+    POLARISATIONS = ('tweezer', 'y')
 
     def __init__(self, traps=None, order='first', tweezer_field='gaussian', pairs=None,
-                 overlap_tolerance=1e-3, wavelength_rtol=1e-9):
+                 overlap_tolerance=1e-3, wavelength_rtol=1e-9, polarisation='tweezer'):
         super().__init__(pairs=pairs)
         if order not in self.ORDERS:
             raise ValueError(f'OpticalBinding order must be one of {self.ORDERS}, not {order!r}')
         if tweezer_field not in self.FIELD_MODELS:
             raise ValueError(f'OpticalBinding tweezer_field must be one of {self.FIELD_MODELS}, not {tweezer_field!r}')
+        if polarisation not in self.POLARISATIONS:
+            raise ValueError(f'OpticalBinding polarisation must be one of {self.POLARISATIONS}, not {polarisation!r}')
         self.order = order
         self.tweezer_field = tweezer_field
+        self.polarisation = polarisation
         self.overlap_tolerance = float(overlap_tolerance)
         self.wavelength_rtol = float(wavelength_rtol)
         self.traps = None
@@ -378,6 +404,16 @@ class OpticalBinding(Interaction):
             return tweezer.effective_polarisability(particle) * np.eye(3, dtype=complex)
         return np.asarray(particle.effective_polarisability_tensor(tweezer.k), dtype=complex)
 
+    def polarisation_of(self, n):
+        """
+        The polarisation (Jones) vector used for tweezer n: `Tweezer.polarisation` (real for linear
+        light, complex for circular or elliptical light), or lab y with polarisation='y'
+        [·]
+        """
+        if self.polarisation == 'y':
+            return np.array([0.0, 1.0, 0.0])
+        return tweezer_polarisation(self.tweezers[n])
+
     def interacting_pairs(self, num_particles):
         """The pairs (n, m), n < m as given, whose tweezers share a wavelength"""
         pairs = []
@@ -399,7 +435,8 @@ class OpticalBinding(Interaction):
         N = len(particles)
         u, du, d2u, α = [], [], [], []
         for n in range(N):
-            fields = tweezer_field(self.tweezers[n], positions[n] - self.foci[n], order=order, model=self.tweezer_field)
+            fields = tweezer_field(self.tweezers[n], positions[n] - self.foci[n], order=order, model=self.tweezer_field,
+                                   polarisation=self.polarisation_of(n))
             u.append(fields[0])
             du.append(fields[1] if order >= 1 else None)
             d2u.append(fields[2] if order >= 2 else None)
@@ -602,4 +639,6 @@ class OpticalBinding(Interaction):
             options.append(f'tweezer_field={self.tweezer_field!r}')
         if self.pairs is not None:
             options.append(f'pairs={self.pairs}')
+        if self.polarisation != 'tweezer':
+            options.append(f'polarisation={self.polarisation!r}')
         return f'OpticalBinding({", ".join(options)})'
