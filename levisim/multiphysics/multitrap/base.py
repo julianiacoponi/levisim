@@ -214,6 +214,17 @@ class MultiTrapBase:
         #     a relative change of |Δ|/ωtw ~ 6e-10)
         # toy parameters have no standing wave or static cavity field, so there both are off
         self.cavity_wavenumber = bool(kwargs.get('cavity_wavenumber', False))
+        # corrections of the physical model from fields other than the tweezer (Trap.fields):
+        #   - intra_trap_couplings: the off-diagonal stiffness of each trap's combined fields
+        #     (Trap.intra_trap_coupling_stiffness, e.g. a tweezer plus a field whose axes are rotated
+        #     from it) couples the axes of its particle in `mechanical_coupling_matrix` (default True;
+        #     zero for a plain tweezer trap, so its couplings are unchanged)
+        #   - paul_exact_frequencies: a trap with a PaulTrap among its fields takes the exact
+        #     (Floquet) secular frequencies of the hybrid trap instead of the lowest-order secular
+        #     stiffness (default True; False for the pseudopotential frequencies of Trap.Ωj), see
+        #     `setup_static_cavity_shifts`
+        self.intra_trap_couplings = bool(kwargs.get('intra_trap_couplings', True))
+        self.paul_exact_frequencies = bool(kwargs.get('paul_exact_frequencies', True))
         static_cavity_shifts = kwargs.get('static_cavity_shifts')
         if self.toy_params:
             if self.cavity_wavenumber or static_cavity_shifts:
@@ -711,6 +722,13 @@ class MultiTrapBase:
 
         Direct couplings between any two dimensions, including those of different beads, are added:
 
+            - physical parameters with `intra_trap_couplings` (default True): the off-diagonal
+              stiffness of each trap's combined fields, K_jk of `Trap.intra_trap_coupling_stiffness`
+              (zero for a plain tweezer trap; not zero for e.g. a tweezer plus a harmonic or
+              magnetic field whose principal axes are rotated from the tweezer's), between the
+              modelled axes of its particle, as g_jk = -K_jk·x_zpf,j·x_zpf,k / ħ (below), with the
+              dimensions' zero-point fluctuations
+
             - physical parameters with `interactions`: every off-diagonal entry of the interactions'
               stiffness blocks K[n, m] (setup_interactions) between modelled axes, as ::
 
@@ -739,6 +757,19 @@ class MultiTrapBase:
                     continue
                 axes = ''.join(sorted(dim_j.axis + dim_k.axis))
                 couplings[jj, kk] = getattr(dim_j, f'g{axes}')
+
+        if not self.toy_params and getattr(self, 'intra_trap_couplings', False):
+            # the off-diagonal stiffness of each trap's own fields (Trap.intra_trap_coupling_stiffness),
+            # converted at the dimensions' zero-point fluctuations like the interactions below
+            axis_index = {'x': 0, 'y': 1, 'z': 2}
+            for jj, dim_j in enumerate(dims):
+                for kk, dim_k in enumerate(dims):
+                    if (jj == kk or dim_j.trap_index != dim_k.trap_index
+                            or dim_j.axis not in axis_index or dim_k.axis not in axis_index):
+                        continue
+                    K_jk = dim_j.trap.intra_trap_coupling_stiffness[axis_index[dim_j.axis], axis_index[dim_k.axis]]
+                    if K_jk != 0:
+                        couplings[jj, kk] += hessian_to_coupling_rate(K_jk, dim_j.zpf, dim_k.zpf)
 
         if self.toy_params and self.toy_params.get('g_direct'):
             for pair, rates in self.toy_params['g_direct'].items():

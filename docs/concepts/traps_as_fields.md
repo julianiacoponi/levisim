@@ -100,9 +100,12 @@ $$
 `Trap.intra_trap_coupling_matrix` is that $3\times3$ matrix (zero diagonal) and
 `Trap.intra_trap_couplings` the dict `{'xy': gxy, 'yx': gyx, ...}`, where `jk` is the rate at which
 axis $k$ drives axis $j$. For a tweezer plus a harmonic potential of stiffness
-(1, 0.5, 0) μN/m rotated by 0.3 rad about $z$, $g_{xy}/2\pi$ = -5.93 kHz. `MultiTrap` does not read
-these couplings yet; a later change can write them into its mechanical coupling matrix, which already
-has a slot for every pair of axes of one particle.
+(1, 0.5, 0) μN/m rotated by 0.3 rad about $z$, $g_{xy}/2\pi$ = -5.93 kHz. `MultiTrap` adds the same
+conversion of $K_{jk}$, at its dimensions' (possibly shifted) zero-point fluctuations, to its
+`mechanical_coupling_matrix` for every pair of modelled axes of one particle, so a hybrid trap with
+misaligned axes has the normal modes of its full Hessian: the eigenfrequencies $\sqrt{\lambda_i/m_n}$ of
+$K$ (tested against central differences of the summed force). For a plain tweezer trap $K$ is diagonal
+and nothing is added; `MultiTrap(intra_trap_couplings=False)` leaves the couplings out.
 
 Gravity has no stiffness, but it moves the equilibrium: for a harmonic trap the sag along each axis
 is $g\,\hat d_j/\Omega_j^2$, about 10 pm along $x$ for the default tweezer

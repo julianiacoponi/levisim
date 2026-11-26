@@ -69,6 +69,67 @@ def test_tweezer_force_is_bit_identical_to_the_peak_energy_form():
 
 
 # --------------------------------------------------------------------------------------------------
+# decision 24: intra-trap couplings in MultiTrap
+# --------------------------------------------------------------------------------------------------
+def _misaligned_multitrap(**kwargs):
+    bead = Bead(r=80*nm)
+    # θ = 0: no coherent scattering into the cavity, so the mechanics are on their own
+    tweezer = Tweezer(θ=0.0)
+    K_tw = Trap(tweezer=tweezer, bead=bead).stiffness_tensor
+    # a harmonic field as stiff as the tweezer's x axis, its principal axes rotated by 30° about z
+    # and with its own x-z tilt
+    K_h = np.diag([0.6, 0.2, 0.5]) * K_tw[0, 0]
+    R = rotation_z(np.radians(30)) @ np.array([[np.cos(0.3), 0, -np.sin(0.3)], [0, 1, 0], [np.sin(0.3), 0, np.cos(0.3)]])
+    harmonic = HarmonicPotential(R @ K_h @ R.T)
+    mt = MultiTrap(
+        tweezers=[tweezer], beads=[bead], Cartesian_axes_per_trap=3, gas_kwargs={'P': 1e-9*mbar},
+        trap_kwargs=[{'extra_fields': [harmonic], 'Γ_fbx': 0.0, 'Γ_fby': 0.0}], photon_recoil=False, **kwargs,
+    )
+    return mt, bead
+
+
+def _mechanical_frequencies(mt):
+    λ = mt.drift_eigenvalues
+    # the cavity mode decays at κ/2, the mechanics at the (tiny) gas damping
+    mechanical = λ[np.abs(λ.real) < 1e-3 * np.abs(λ.imag).max()]
+    return np.sort(np.abs(mechanical.imag))[::2]
+
+
+def test_misaligned_hybrid_trap_normal_modes_are_the_hessian_eigenvalues():
+    mt, bead = _misaligned_multitrap()
+    trap = mt.traps[0]
+    assert all(dim.G == 0 for dim in mt.dimensions.values())
+    # the full Hessian, independently from central differences of the summed static force
+    h = 1e-4 * trap.tweezer.w0
+    hessian = -np.array([(trap.static_force(h * e) - trap.static_force(-h * e)) / (2*h) for e in np.eye(3)]).T
+    assert hessian == pytest.approx(trap.stiffness_tensor, rel=1e-6, abs=1e-6 * np.abs(hessian).max())
+    Ω_modes = np.sqrt(np.sort(np.linalg.eigvalsh((hessian + hessian.T) / 2)) / bead.m)
+    assert _mechanical_frequencies(mt) == pytest.approx(Ω_modes, rel=1e-6)
+    # the couplings are the off-diagonal stiffness at the zero-point fluctuations
+    labels = mt.labels
+    zpf = {label: mt.dimensions[label].zpf for label in labels}
+    for j, a in enumerate('xyz'):
+        for k, b in enumerate('xyz'):
+            if j != k:
+                g = mt.mechanical_coupling_matrix[mt.label_to_index[f'{a}1'], mt.label_to_index[f'{b}1']]
+                K_jk = trap.intra_trap_coupling_stiffness[j, k]
+                assert g == pytest.approx(-K_jk * zpf[f'{a}1'] * zpf[f'{b}1'] / ħ, rel=1e-8)
+    # opt-out: the axes stay uncoupled, at the diagonal frequencies
+    off, _ = _misaligned_multitrap(intra_trap_couplings=False)
+    assert not np.any(off.mechanical_coupling_matrix)
+    assert _mechanical_frequencies(off) == pytest.approx(np.sort([trap.Ωx, trap.Ωy, trap.Ωz]), rel=1e-6)
+    assert not np.allclose(_mechanical_frequencies(off), Ω_modes, rtol=1e-3)
+
+
+def test_plain_tweezer_multitrap_is_unchanged_by_intra_trap_couplings():
+    common = dict(num_traps=2, Cartesian_axes_per_trap=3)
+    on = MultiTrap(**common)
+    off = MultiTrap(intra_trap_couplings=False, **common)
+    assert np.array_equal(on.mechanical_coupling_matrix, off.mechanical_coupling_matrix)
+    assert np.array_equal(on.drift_matrix, off.drift_matrix)
+
+
+# --------------------------------------------------------------------------------------------------
 # decision 36: directed force noise β
 # --------------------------------------------------------------------------------------------------
 def test_directed_noise_default_depends_on_how_the_trap_is_built():
