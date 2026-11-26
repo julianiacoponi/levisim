@@ -260,7 +260,7 @@ Each of these notebooks in [`notebooks/papers/`](notebooks/papers/) builds a pub
 | `levisim/multiphysics/enums/` | `QuantumLinearTheoryMethod`, `SpectrumType`, noise-vector and parameter enums |
 | `levisim/multiphysics/utils/` | `shelf` (default parameters and lazily built example systems), method comparison, animations |
 | `levisim/simulation/` | `FreeSpaceSimulation` (stochastic simulation of a bead in a free-space tweezer) on the `StochasticSimulation` base (time axis, seeding, noise, integrators, recording) |
-| `levisim/data/` | `Trace`, experiment data; `Simulation`, the deprecated name of `FreeSpaceSimulation` |
+| `levisim/data/` | `Trace`, experiment data; `Simulation`, the deprecated name of `FreeSpaceSimulation` (removed in 2.0) |
 | `levisim/analysis/` | spectral density estimation and theory, Gaussian-state entanglement measures |
 | `levisim/web/` | interactive Three.js optical-bench web labs (free-space tweezer and coherent-scattering cavity, `levisim-web`) and static assets for GitHub Pages |
 | `tests/` | the pytest suite |

@@ -16,7 +16,7 @@ When served through `levisim-web`, the browser computes interactive 60 FPS previ
 JavaScript ports of `levisim`'s equations (cross-checked against Python in `tests/test_web_free_space.py`
 and `tests/test_web_cavity.py`) and synchronises with the live Python `levisim` server
 (`/api/tweezer/spectra`, `/api/tweezer/simulate`, and `/api/cavity/spectra`) for exact `Trap`,
-`Simulation`, and `MultiTrap` calculations.
+`FreeSpaceSimulation`, and `MultiTrap` calculations.
 
 ## GitHub Pages (zero install)
 

@@ -16,7 +16,8 @@ motion of a `Trap` and returns position traces.
 time-domain simulation shares: the time axis, the random numbers and their seeding, the chunked noise
 generation, the integrators of `levisim.simulation.integrators` and the recording into `Trace`
 objects. The class used to be called `Simulation` (`levisim.data.simulation.Simulation`); that name
-still works, with the same keyword arguments and the same numbers, but emits a `DeprecationWarning`.
+still works, with the same keyword arguments and the same numbers, but emits a `DeprecationWarning`
+and will be removed in levisim 2.0, the next major release; new code should use `FreeSpaceSimulation`.
 
 ## Physical model
 

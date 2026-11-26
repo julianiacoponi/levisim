@@ -72,8 +72,9 @@ def test_vector_2_bit_identical_to_0_1_0_loop(seed):
 
 def test_simulation_alias_is_a_deprecated_free_space_simulation():
     Simulation._deprecation_warned = False
-    with pytest.warns(DeprecationWarning, match='FreeSpaceSimulation'):
+    with pytest.warns(DeprecationWarning, match='FreeSpaceSimulation') as record:
         a = Simulation(num_samples=500, Δt=Δt, seed=3, store_momenta=True)
+    assert 'removed in levisim 2.0' in str(record[0].message)
     # once per session
     with warnings.catch_warnings():
         warnings.simplefilter('error')
