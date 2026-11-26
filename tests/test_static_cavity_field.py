@@ -182,7 +182,8 @@ def test_librational_dispersive_coupling_against_finite_differences():
         eθ = np.eye(3)[j] * h
         # ∂²U/∂θ∂A with α = ᾱ + δA/2 (central differences; U is quadratic in α)
         d2 = ((U_cav(eθ, ᾱ + 0.5) - U_cav(-eθ, ᾱ + 0.5)) - (U_cav(eθ, ᾱ - 0.5) - U_cav(-eθ, ᾱ - 0.5))) / (2 * h * 2)
-        assert -d2 * dim.zpf / ħ == pytest.approx(np.real(dim.dispersive_G), rel=1e-6)
+        # (central differences with h = 1e-6: ~2e-6 relative error with numpy 2.0 / scipy 1.13)
+        assert -d2 * dim.zpf / ħ == pytest.approx(np.real(dim.dispersive_G), rel=1e-5)
 
 
 # --------------------------------------------------------------------------------------------------
