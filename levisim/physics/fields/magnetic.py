@@ -266,9 +266,14 @@ class EddyCurrentDamping(ForceElement):
 
         Γ = γ/m = σ R² JᵀJ / (10 ρ)
 
-    the low-frequency (skin depth ≫ R), small-particle (B varies little over the sphere) limit, derived
-    here as written above (the quasi-static eddy-current loss of a sphere in a uniform, slowly varying
-    field).
+    the low-frequency (skin depth ≫ R), small-particle (B varies little over the sphere) limit: Eq. (4)
+    of Xiong et al., Commun. Phys. 8, 80 (2025), doi:10.1038/s42005-025-02010-7,
+    γ_ij = (2π/15m) σR⁵ Σ_n ∂B_n/∂i ∂B_n/∂j (there also checked against a finite-element simulation).
+    The Lorentz force ∫ j × (B0 + J r) dV of these currents is -(2π/15) σ R⁵ (Jᵀ Ḃ - Ḃ tr J), the same
+    γ since tr J = ∇·B = 0. tests/test_eddy_current_numerical.py checks γ independently: it solves for
+    the induced currents in another gauge by minimising the dissipation over polynomial potentials and
+    integrates the Lorentz force (agreement to 1e-9). The conductivity must be isotropic; for a
+    conductivity tensor the smallest and largest principal values bound γ from below and above.
     The fluctuating force of the same dissipation at the conductor's temperature T,
     〈F_i F_j〉 = 2 kB T γ_ij δ(t - t'), is added in the time-domain simulation (noise_in_simulation).
 

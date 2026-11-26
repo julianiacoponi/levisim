@@ -149,8 +149,9 @@ against the field scale and the simulated axial line sits 0.7 % below the harmon
 A conducting sphere of radius $R$ and conductivity $\sigma$ moving with velocity $\mathbf{v}$ through the
 field sees the uniform change $\dot{\mathbf{B}} = J\mathbf{v}$; the induced field
 $\mathbf{E} = -\tfrac12\dot{\mathbf{B}}\times\mathbf{r}$ dissipates $P = (2\pi/15)\sigma R^5|\dot{\mathbf{B}}|^2$,
-the quasi-static eddy-current loss of a sphere in a uniform, slowly varying field (derived in the
-`EddyCurrentDamping` docstring). In levisim's $F = -\Gamma p$ form,
+the quasi-static eddy-current loss of a sphere in a uniform, slowly varying field. This is Eq. (4) of
+Xiong et al., Communications Physics 8, 80 (2025), doi:10.1038/s42005-025-02010-7, who also check it
+against a finite-element simulation of a levitated bismuth sphere. In levisim's $F = -\Gamma p$ form,
 
 $$
 \Gamma = \frac{\sigma R^2}{10\rho}\,J^\mathsf{T}J .
@@ -169,6 +170,12 @@ above, and `magnetic_trap_report` returns these bounds as `eddy_damping_rate_bou
 ## What was checked
 
 - Sources: the identities and closed forms listed above.
+- Eddy-current damping: an independent numerical solution for the induced currents (a vector
+  potential in a non-symmetric gauge, the electric potential found by minimising the dissipation
+  over polynomials on an exact quadrature of the ball) reproduces the friction tensor, both from the
+  dissipated power and from the Lorentz force $\int \mathbf j\times\mathbf B\,dV$, to $10^{-9}$; for
+  graphite's conductivity tensor it lies between the bounds of the smallest and largest principal
+  conductivity.
 - Levitation condition: the analytic value for bismuth and silica, with and without the shape
   correction; pyrolytic graphite along and across its c axis, and after a rotation; Houlton et al.'s
   Table 1 (five materials within 0.4 %).
