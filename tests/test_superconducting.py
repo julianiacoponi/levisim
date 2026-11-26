@@ -78,7 +78,9 @@ def test_image_force_torque_and_stiffness_against_finite_differences():
     K = plane.torque_stiffness(particle, r0=r)
     K_fd = np.array([[(U_rot(a * (ei + ej)) - U_rot(a * (ei - ej)) - U_rot(a * (ej - ei)) + U_rot(-a * (ei + ej))) / (4 * a**2)
                       for ej in np.eye(3)] for ei in np.eye(3)])
-    assert np.allclose(K, K_fd, rtol=1e-5, atol=1e-6 * np.abs(K_fd).max())
+    # absolute tolerance from the largest entry: the small off-diagonal stiffness (~3e-3 of it) carries
+    # finite-difference noise of ~1e-6 of the largest entry, which differs between platforms
+    assert np.allclose(K, K_fd, rtol=1e-5, atol=1e-5 * np.abs(K_fd).max())
     with pytest.raises(ValueError, match='not above'):
         plane.force((-400e-6, 0, 0), 0, particle)
     with pytest.raises(ValueError, match='permanent magnetic moment'):
