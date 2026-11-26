@@ -120,8 +120,9 @@ $\Delta t > 1/(20 f_\mathrm{rf})$ (`PaulTrap.max_time_step`). For noise-free Mat
 the secular frequency of the integrated motion is within $2.3 \times 10^{-4}$ of the Floquet value at 20
 steps per rf period and $2.5 \times 10^{-5}$ at 40 with Kasdin's RK4 ('vector_4', third order in
 practice here); Heun ('vector_2', second order) is off by 1.6 % at 20 steps and 0.1 % at 80, so with Heun
-the simulation also warns below 100 steps per period. A trap with a `PaulTrap` runs the NumPy loop
-(about 35 μs per step); the numba kernels cover the single-tweezer traps only.
+the simulation also warns below 100 steps per period. A trap with a `PaulTrap` (alone, or with a
+tweezer and other compiled elements) runs the compiled numba loop with `backend='auto'` for runs of
+$2^{15}$ steps or more, including the electrode noise; NumPy takes about 35 μs per step.
 
 A hybrid trap is one more element in the list:
 

@@ -7,10 +7,13 @@ The kernels advance the state [x, y, z, px, py, pz] with the arithmetic of
 exactly as the NumPy loops scale them. Trajectories therefore agree with the NumPy reference to
 round-off (the compiled exp, and the order of the products in G·dW, can differ in the last bit).
 
-Supported: the Gaussian-beam tweezer force (or override_Ω_dict), gas + feedback damping, kicks,
-photon recoil, gravity, both integrators, i.e. a Trap whose force elements are one Tweezer plus
-Feedback, Kick, PhotonRecoil and Gravity elements. Other force elements run the NumPy loop. Kernels are compiled on first use and cached on disk
-(numba's cache=True), so later processes only load them.
+Supported: the Gaussian-beam tweezer force (or override_Ω_dict), gas + feedback (and eddy-current)
+damping, kicks, photon recoil, gravity, both integrators, and any sum of the 'field' elements with a
+compiled force (`numba_elements`: the trap's tweezer, PaulTrap, MagneticTrap with polynomial,
+current-loop, cuboid or summed sources, HarmonicPotential, UniformElectricField), with the extra
+white noise of the elements that add it (a PaulTrap's electrode noise). Other force elements run the
+NumPy loop. Kernels are compiled on first use and cached on disk (numba's cache=True), so later
+processes only load them.
 
 Threading: one free-space bead has nothing to thread over, so these kernels are serial (see
 `levisim.simulation.backends.choose_threading` for the multi-particle and ensemble policy).
@@ -19,7 +22,14 @@ Threading: one free-space bead has nothing to thread over, so these kernels are 
 import numpy as np
 from numba import njit
 
+from levisim.simulation.backends.numba_elements import (
+    empty_program,
+    encode_elements,
+    field_force,
+)
+
 __all__ = [
+    'element_program',
     'free_space_parameters',
     'integrate_free_space',
 ]
@@ -38,19 +48,20 @@ def free_space_parameters(sim):
     (num_kicks, 4) array of [start, end, F_kick,x, F_kick,y]
     """
     trap = sim.trap
-    tweezer = trap.tweezer
     P = np.zeros(_NUM_PARAMETERS)
     P[_M] = trap.bead.m
     P[_GAMMA_X], P[_GAMMA_Y], P[_GAMMA_Z] = trap.Γx, trap.Γy, trap.Γz
     if trap.override_Ω_dict:
         P[_OVERRIDE] = 1.0
         P[_OMEGA_X], P[_OMEGA_Y], P[_OMEGA_Z] = (trap.override_Ω_dict[axis] for axis in 'xyz')
-    else:
+    elif trap._element_plan['single_tweezer']:
+        tweezer = trap.tweezer
         α_eff = trap.α_eff
         P[_E0], P[_ZR] = tweezer.E0, tweezer.zR
         P[_WX0], P[_WY0], P[_WZ0] = tweezer.wx0, tweezer.wy0, tweezer.wz0
         P[_RE_ALPHA], P[_IM_ALPHA] = np.real(α_eff), np.imag(α_eff)
     if trap.photon_recoil:
+        tweezer = trap.tweezer
         α_eff = trap.α_eff
         P[_RECOIL] = 1.0
         P[_E0], P[_ZR], P[_K] = tweezer.E0, tweezer.zR, tweezer.k
@@ -69,12 +80,39 @@ def free_space_parameters(sim):
     return P, kicks
 
 
-@njit(cache=True)
-def _drift(t, X, P, kicks, out):
-    """dynamics_vector of FreeSpaceSimulation, written into out (length 6)"""
+def element_program(sims):
+    """
+    The numba_elements program of the 'field' elements of the FreeSpaceSimulations sims (one per
+    particle): empty for a trap with override_Ω_dict or with its tweezer as the only field element,
+    which the drift's own expressions cover
+    """
+    traps = [sim.trap for sim in sims]
+    elements = []
+    for trap in traps:
+        if trap.override_Ω_dict or trap._element_plan['single_tweezer']:
+            elements.append([])
+        else:
+            elements.append(trap.fields_in_group('field'))
+    if not any(elements):
+        return empty_program(len(traps))
+    return encode_elements(traps, elements)
+
+
+@njit(cache=True, error_model='numpy')
+def _drift(t, X, P, kicks, start, end, program, out):
+    """
+    dynamics_vector of FreeSpaceSimulation, written into out (length 6); the 'field' force is that of
+    the element program rows [start, end) if there are any, else the single tweezer or override_Ω_dict
+    """
     x, y, z, px, py, pz = X[0], X[1], X[2], X[3], X[4], X[5]
     m = P[_M]
-    if P[_OVERRIDE] != 0.0:
+    if end > start:
+        rows, sources, data = program
+        field_force(t, x, y, z, start, end, rows, sources, data, out)
+        Ftwx = out[0]
+        Ftwy = out[1]
+        Ftwz = out[2]
+    elif P[_OVERRIDE] != 0.0:
         Ftwx = -m * (P[_OMEGA_X])**2 * x
         Ftwy = -m * (P[_OMEGA_Y])**2 * y
         Ftwz = -m * (P[_OMEGA_Z])**2 * z
@@ -118,8 +156,8 @@ def _drift(t, X, P, kicks, out):
         out[5] += P[_GZ]
 
 
-@njit(cache=True)
-def _kasdin_chunk(X, start, time_array, dW, G, Δt, c, P, kicks):
+@njit(cache=True, error_model='numpy')
+def _kasdin_chunk(X, start, time_array, dW, G, Δt, c, P, kicks, e0, e1, program):
     """
     Kasdin RK4 over the steps start .. start + len(dW) - 1, in place on X
 
@@ -141,7 +179,7 @@ def _kasdin_chunk(X, start, time_array, dW, G, Δt, c, P, kicks):
         t = time_array[n]
         Xn = X[n]
 
-        _drift(t, Xn, P, kicks, f)
+        _drift(t, Xn, P, kicks, e0, e1, program, f)
         for i in range(dim):
             g = 0.0
             for j in range(num_noises):
@@ -151,7 +189,7 @@ def _kasdin_chunk(X, start, time_array, dW, G, Δt, c, P, kicks):
         t2 = t + a21*Δt
         for i in range(dim):
             Xs[i] = Xn[i] + a21*K1[i]
-        _drift(t2, Xs, P, kicks, f)
+        _drift(t2, Xs, P, kicks, e0, e1, program, f)
         for i in range(dim):
             g = 0.0
             for j in range(num_noises):
@@ -161,7 +199,7 @@ def _kasdin_chunk(X, start, time_array, dW, G, Δt, c, P, kicks):
         t3 = t + (a31 + a32)*Δt
         for i in range(dim):
             Xs[i] = Xn[i] + a31*K1[i] + a32*K2[i]
-        _drift(t3, Xs, P, kicks, f)
+        _drift(t3, Xs, P, kicks, e0, e1, program, f)
         for i in range(dim):
             g = 0.0
             for j in range(num_noises):
@@ -171,7 +209,7 @@ def _kasdin_chunk(X, start, time_array, dW, G, Δt, c, P, kicks):
         t4 = t + (a41 + a42 + a43)*Δt
         for i in range(dim):
             Xs[i] = Xn[i] + a41*K1[i] + a42*K2[i] + a43*K3[i]
-        _drift(t4, Xs, P, kicks, f)
+        _drift(t4, Xs, P, kicks, e0, e1, program, f)
         for i in range(dim):
             g = 0.0
             for j in range(num_noises):
@@ -182,8 +220,8 @@ def _kasdin_chunk(X, start, time_array, dW, G, Δt, c, P, kicks):
             X[n + 1, i] = Xn[i] + α1*K1[i] + α2*K2[i] + α3*K3[i] + α4*K4[i]
 
 
-@njit(cache=True)
-def _heun_chunk(X, start, time_array, dP, Δt, P, kicks):
+@njit(cache=True, error_model='numpy')
+def _heun_chunk(X, start, time_array, dP, Δt, P, kicks, e0, e1, program):
     """Heun over the steps start .. start + len(dP) - 1, in place on X; dP = (normals·σ) Gᵀ per step"""
     dim = X.shape[1]
     f = np.empty(dim)
@@ -193,11 +231,11 @@ def _heun_chunk(X, start, time_array, dP, Δt, P, kicks):
         n = start + k
         t = time_array[n]
         Xn = X[n]
-        _drift(t, Xn, P, kicks, f)
+        _drift(t, Xn, P, kicks, e0, e1, program, f)
         for i in range(dim):
             K1[i] = f[i]*Δt + dP[k, i]
             Xs[i] = Xn[i] + K1[i]
-        _drift(t + Δt, Xs, P, kicks, f)
+        _drift(t + Δt, Xs, P, kicks, e0, e1, program, f)
         for i in range(dim):
             X[n + 1, i] = Xn[i] + 0.5 * (K1[i] + (f[i]*Δt + dP[k, i]))
 
@@ -236,6 +274,9 @@ def integrate_free_space(sim, integrator, G, S, X0, time_array):
     Δt = sim.Δt
     num_steps = len(time_array)
     P, kicks = free_space_parameters(sim)
+    program = element_program([sim])
+    e0, e1 = (int(value) for value in program.ranges[0])
+    arrays = program.arrays
     G = np.ascontiguousarray(G, dtype=np.float64)
     time_array = np.ascontiguousarray(time_array, dtype=np.float64)
     X = np.zeros([num_steps + 1, len(X0)])
@@ -248,12 +289,12 @@ def integrate_free_space(sim, integrator, G, S, X0, time_array):
         Σ = integrator.noise_std(S, Δt)
         for start, normals in sim._noise_chunks(num_steps, integrator.num_stages, len(S)):
             dW = normals * Σ  # exactly as the NumPy loop
-            _kasdin_chunk(X, start, time_array, dW, G, Δt, c, P, kicks)
+            _kasdin_chunk(X, start, time_array, dW, G, Δt, c, P, kicks, e0, e1, arrays)
     elif integrator.name == 'vector_2':
         σ = integrator.noise_std(S, Δt)
         for start, normals in sim._noise_chunks(num_steps, integrator.num_stages, len(S)):
             dP = np.ascontiguousarray((normals[:, 0, :] * σ) @ G.T)  # exactly as the NumPy loop
-            _heun_chunk(X, start, time_array, dP, Δt, P, kicks)
+            _heun_chunk(X, start, time_array, dP, Δt, P, kicks, e0, e1, arrays)
     else:
         raise ValueError(f'No compiled kernel for the integrator {integrator!r}')
     _mark_applied_kicks(sim, integrator, time_array)
