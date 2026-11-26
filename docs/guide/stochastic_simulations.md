@@ -274,6 +274,26 @@ The `window` keyword (`'hann'`, `'blackmanharris'`, …) is normalised to unit m
 preserves broadband levels. Use it when the tail matters: the rectangular window's sidelobes leak
 the resonance into the tail and, in the example below, inflate the 0.3–0.5 MHz band by 25%.
 
+### Ensemble-averaged spectra
+
+The periodograms can also be averaged over independent members of an ensemble, which lowers the
+relative scatter per bin to $1/\sqrt{\text{members}\times\text{segments}}$ without coarsening the
+frequency resolution. Pass a list of sources of equal length and $\Delta t$, or a source with
+trajectories (a `CavitySimulation`) and `ensemble=True` (every trajectory) or a list of trajectory
+indices:
+
+```python
+runs = [FreeSpaceSimulation(trap=trap, num_samples=2**18, seed=seed) for seed in range(8)]
+Sxx = SpectralDensityEstimate(runs, 'xx', num_segments=16)          # 8 × 16 periodograms
+Shh = SpectralDensityEstimate(cavity_sim, ('homodyne', 'homodyne'), num_segments=16, ensemble=True)
+```
+
+The values are the ensemble average; `averaging_time` is the total averaged time (members ×
+segments × segment time), and the per-segment arrays (`fft_per_segment_A`, `SDs_per_segment`, …)
+gain a leading ensemble axis. `subtract_segment_mean=True` removes each segment's mean before
+windowing, and `keep_segments=False` skips storing the per-segment arrays. Without an ensemble
+nothing changes. `CavitySimulation.averaged_psd` is a thin wrapper of this estimate.
+
 ## Worked example
 
 ```python

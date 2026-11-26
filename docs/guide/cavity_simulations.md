@@ -141,7 +141,9 @@ $\propto$ samples × trajectories × state size).
   `SpectralDensityEstimate` (its default) shows it at 2.
 - `sim.averaged_psd` cuts every trajectory into non-overlapping segments, applies a window
   normalised to unit mean square (Hann by default) and averages the periodograms over segments and
-  trajectories; it is two-sided by default. Its relative scatter per bin is
+  trajectories; it is two-sided by default. It is a thin wrapper of
+  `SpectralDensityEstimate(sim, (label, label), ensemble=True, subtract_segment_mean=sim.zero_mean)`,
+  which also gives cross-spectra and the per-segment arrays (see the stochastic-simulations guide). Its relative scatter per bin is
   $1/\sqrt{\text{segments}\times\text{trajectories}}$. Around a peak much narrower than the bin width
   the window biases the comparison, so segments must be long enough to resolve the narrowest mode.
 - `sim.record_spectrum(label, f)` is the exact spectrum of the sampled record, from the discretised

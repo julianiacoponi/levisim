@@ -820,21 +820,23 @@ class CavitySimulation(StochasticSimulation):
         """
         PSD of a record averaged over every trajectory and every segment (Welch-like, without overlap)
 
-        Each trajectory is cut into num_segments segments, each windowed (normalised to unit mean
-        square, as SpectralDensityEstimate does) and Fourier transformed; the periodograms are
+        A thin wrapper of `SpectralDensityEstimate` with `ensemble=True`: each trajectory is cut into
+        num_segments segments, each (with zero_mean, as the simulation's) has its mean subtracted,
+        is windowed (normalised to unit mean square) and Fourier transformed; the periodograms are
         averaged. Normalisation: two-sided by default, ∫S df = 〈h²〉 (levisim's convention; the
-        vacuum of an optical record is 1); one_sided=True doubles f > 0 as SpectralDensityEstimate.
-        Returns (f [Hz], S [units²/Hz]) for f ≥ 0, sorted.
+        vacuum of an optical record is 1); one_sided=True doubles 0 < f < f_Nyquist as
+        SpectralDensityEstimate does. Returns (f [Hz], S [units²/Hz]) for 0 ≤ f ≤ f_Nyquist, sorted
+        (the np.fft.rfftfreq grid of one segment). Use SpectralDensityEstimate(sim, (label, label),
+        ensemble=True, ...) directly for CSDs, the per-segment arrays or the other options.
         """
         from levisim.analysis.spectral_density_estimate import SpectralDensityEstimate
-        x = self.records[label]
-        K, N = x.shape
-        M = N // num_segments
-        w = SpectralDensityEstimate.make_window(window, M)
-        segments = x[:, :M * num_segments].reshape(K, num_segments, M)
-        segments = segments - segments.mean(axis=-1, keepdims=True) if self.zero_mean else segments
-        F = np.fft.rfft(segments * w, axis=-1)
-        S = (np.abs(F)**2).mean(axis=(0, 1)) * self.Δt / M
+        estimate = SpectralDensityEstimate(
+            self, (label, label), num_segments=num_segments, one_sided=False, ensemble=True, window=window,
+            subtract_segment_mean=self.zero_mean, keep_segments=False, fit=False,
+        )
+        M = estimate.num_samples_per_segment
+        # the record is real: S(-f) = S(f), so the f ≥ 0 half (with the Nyquist bin for even M) is all of it
+        S = np.real(estimate.fft_order_values[:M // 2 + 1])
         f = np.fft.rfftfreq(M, self.Δt)
         if one_sided:
             S[1:] *= 2

@@ -113,3 +113,46 @@ def test_momentum_spectrum_and_radial_trace():
     ratio = np.real(spp.values[band]) / (m**2 * (2*np.pi*sxx.freq_range[band])**2 * np.real(sxx.values[band]))
     assert np.allclose(ratio, 1, rtol=0.05)
     assert np.all(sim.r.values + sim.r.mean >= 0)
+
+
+# ----------------------------------------------------------------------------------------------
+# ensemble axis
+# ----------------------------------------------------------------------------------------------
+def test_ensemble_of_sources_is_the_mean_of_their_estimates_and_obeys_parseval():
+    members = [WhiteSource(seed=seed) for seed in range(5)]
+    ensemble = SpectralDensityEstimate(members, 'ab', num_segments=8, one_sided=False)
+    singles = [SpectralDensityEstimate(m, 'ab', num_segments=8, one_sided=False) for m in members]
+    np.testing.assert_allclose(ensemble.values, np.mean([s.values for s in singles], axis=0), rtol=1e-12, atol=1e-25)
+    # Parseval over the ensemble (rectangular window): Σ S Δf = mean over members of 〈a b〉
+    covariance = np.mean([np.mean(m.traces['a'].values * m.traces['b'].values) for m in members])
+    assert np.sum(ensemble.values).real * ensemble.Δf == pytest.approx(covariance, rel=1e-10)
+    assert ensemble.is_ensemble and ensemble.num_ensemble_members == 5
+    assert ensemble.averaging_time == pytest.approx(5 * N * Δt)
+    # the per-segment arrays gain a leading ensemble axis
+    M = ensemble.num_samples_per_segment
+    assert ensemble.fft_per_segment_A.shape == (5, 8, M) and ensemble.SDs_per_segment.shape == (5, 8, M)
+    assert ensemble.covariance_matrices_per_segment.shape == (5, 8, 2, 2)
+    np.testing.assert_array_equal(ensemble.fft_per_segment_A[3], singles[3].fft_per_segment_A)
+    assert singles[0].fft_per_segment_A.shape == (8, M) and not singles[0].is_ensemble
+
+
+def test_ensemble_scatter_falls_as_one_over_root_members_times_segments():
+    """Bartlett: the relative scatter of a white PSD per bin is 1/√(members × segments)"""
+    members = [WhiteSource(seed=100 + seed) for seed in range(16)]
+    for num_members in (1, 16):
+        estimate = SpectralDensityEstimate(members[:num_members], 'aa', num_segments=8, one_sided=False)
+        S = estimate.values.real
+        assert np.std(S) / np.mean(S) == pytest.approx(1 / np.sqrt(8 * num_members), rel=0.1)
+
+
+def test_ensemble_argument_checks():
+    with pytest.raises(ValueError, match='needs a source with trajectories'):
+        SpectralDensityEstimate(WhiteSource(), 'aa', num_segments=4, ensemble=True)
+    with pytest.raises(ValueError, match='not both'):
+        SpectralDensityEstimate([WhiteSource()], 'aa', num_segments=4, ensemble=True)
+    other = WhiteSource()
+    other.Δt = 2 * Δt
+    with pytest.raises(ValueError, match='same Δt'):
+        SpectralDensityEstimate([WhiteSource(), other], 'aa', num_segments=4)
+    lean = SpectralDensityEstimate([WhiteSource(), WhiteSource(seed=1)], 'aa', num_segments=4, keep_segments=False)
+    assert lean.fft_per_segment_A is None and lean.SDs_per_segment is None
