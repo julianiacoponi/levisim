@@ -44,7 +44,7 @@ print(s.backend_used, s.Φ.shape[0], (t1-t0)/N*1e6)
 
 
 def run(code):
-    p = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True)
+    p = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True, check=False)
     if p.returncode:
         raise RuntimeError(p.stderr)
     return p.stdout.strip().splitlines()[-1].split()
@@ -56,16 +56,17 @@ def main():
         for b in ('numpy', 'numba'):
             rs = [run(FS.format(root=ROOT, N=2**e, b=b)) for _ in range(3)]
             first, warm = (statistics.median(float(r[i]) for r in rs) for i in (0, 1))
-            out['free_space'][f'2^{e} {b}'] = dict(first_run_s=first, second_run_s=warm)
+            out['free_space'][f'2^{e} {b}'] = {'first_run_s': first, 'second_run_s': warm}
             print(f'free space 2^{e:<2d} {b:5s} first {first:.3f} s  second {warm:.4f} s', flush=True)
     for K, ks, N in ((1, (1, 2, 4, 8, 12, 16, 20, 24, 32, 40), 2**12), (8, (4, 16, 32, 48), 2**10)):
         for k in ks:
             for b in ('numpy', 'numba'):
                 rs = [run(CAV.format(root=ROOT, k=k, K=K, b=b, N=N)) for _ in range(3)]
                 us = statistics.median(float(r[2]) for r in rs)
-                out['cavity_linear'][f'K{K} k{k} {b}'] = dict(n=int(rs[0][1]), us_per_step=us)
+                out['cavity_linear'][f'K{K} k{k} {b}'] = {'n': int(rs[0][1]), 'us_per_step': us}
                 print(f'cavity K={K} n={rs[0][1]:>4s} {b:5s} {us:8.2f} μs/step', flush=True)
-    json.dump(out, open('auto_backend_thresholds.json', 'w'), indent=1)
+    with open('auto_backend_thresholds.json', 'w') as f:
+        json.dump(out, f, indent=1)
 
 
 if __name__ == '__main__':
