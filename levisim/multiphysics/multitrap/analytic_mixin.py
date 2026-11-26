@@ -14,6 +14,8 @@ import itertools
 
 from functools import cached_property
 
+from levisim.core.logger import logger
+
 
 __all__ = [
     'AnalyticMixin',
@@ -91,20 +93,34 @@ class AnalyticMixin:
         """
         Symmetric matrix of the direct mechanical couplings between dimensions of the same bead
 
-        Entry (j, k) is gxy, gxz or gyz when dimensions j and k belong to the same bead, and zero
-        otherwise (levisim has no direct mechanical coupling between different beads), matching the
-        mech-mech terms of the drift matrix. Ordered as `self.labels` on both axes.
+        This is `mechanical_coupling_matrix`, which the drift matrix also uses: entry (j, k) is
+        gxy, gxz or gyz when dimensions j and k belong to the same bead, and zero otherwise.
+        Ordered as `self.labels` on both axes. The closed form below is derived for couplings
+        within one bead that are reciprocal (gjk = gkj), so a matrix with a non-zero entry
+        between different beads, or an asymmetric one, raises NotImplementedError rather than
+        being silently mis-handled.
         [2π·Hz]
         """
-        couplings = np.zeros((self.num_dimensions, self.num_dimensions))
-        dims = list(self.dimensions.values())
-        for jj, dim_j in enumerate(dims):
-            for kk, dim_k in enumerate(dims):
-                if jj == kk or dim_j.trap_index != dim_k.trap_index:
-                    continue
-                axes = ''.join(sorted(dim_j.axis + dim_k.axis))
-                couplings[jj, kk] = getattr(dim_j, f'g{axes}')
-        return couplings
+        couplings = np.asarray(self.mechanical_coupling_matrix, dtype=float)
+        trap_indices = np.array([self.dimensions[label].trap_index for label in self.labels])
+        off_bead = trap_indices[:, None] != trap_indices[None, :]
+        if np.any(couplings[off_bead] != 0):
+            jj, kk = np.argwhere(off_bead & (couplings != 0))[0]
+            msg = (
+                f'mechanical_coupling_matrix couples {self.labels[jj]} to {self.labels[kk]}, which belong to'
+                ' different beads: the analytic methods do not yet support inter-bead mechanical couplings'
+                ' (use the LINEAR_AMPLIFIER_MODEL method)'
+            )
+            logger.error(msg)
+            raise NotImplementedError(msg)
+        if not np.array_equal(couplings, couplings.T):
+            msg = (
+                'mechanical_coupling_matrix is not symmetric: the analytic methods assume reciprocal'
+                ' couplings gjk = gkj (use the LINEAR_AMPLIFIER_MODEL method)'
+            )
+            logger.error(msg)
+            raise NotImplementedError(msg)
+        return couplings.copy()
 
     ################################################################################################
     # FUNCTIONS OF ONLY FREQUENCY

@@ -78,6 +78,12 @@ informative than the Routh-Hurwitz inequalities, since it also gives the frequen
 mode, so `MultiTrap` computes the eigenvalues once at construction and counts as unstable any with
 $\mathrm{Re}\,\lambda_k$ above a round-off tolerance of $10^{-8}$ of the largest $\lvert A_{ij}\rvert$.
 
+**Static instability.** A dynamical instability is a growing mode of the full drift matrix. A
+static one comes earlier: if the static cavity field softens a motion past its tweezer stiffness, that
+motion has no restoring force at all. Blue detuning near an antinode can do this to $z$. `MultiTrap`
+then raises a `ValueError` at construction (see [static cavity shifts](static_cavity_shifts.md)),
+rather than building a drift matrix with an imaginary frequency.
+
 ## Why the stationary spectra cannot reveal an instability
 
 Every levisim spectrum is built from the transfer matrix
