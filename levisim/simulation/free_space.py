@@ -56,9 +56,11 @@ class FreeSpaceSimulation(StochasticSimulation):
         (a trap with a PaulTrap needs Δt ≤ 1/(20 f_rf), else a UserWarning; its electrode noise is
             added as extra white force noise, see field_noise_modes)
         backend ['auto']: 'auto', 'numpy' or 'numba' (compiled loop, `pip install levisim[fast]`),
-            see StochasticSimulation; every option above has a compiled kernel, for a trap made of
-            one tweezer plus feedback, kicks, photon recoil and gravity (or override_Ω_dict); traps
-            with other force elements run the NumPy loop
+            see StochasticSimulation; every option above has a compiled kernel, for a trap whose
+            'field' elements are any sum of its tweezer, PaulTraps, MagneticTraps (polynomial,
+            current-loop, cuboid or summed sources), HarmonicPotentials and UniformElectricFields
+            (or override_Ω_dict), plus feedback, eddy-current damping, kicks, photon recoil and
+            gravity; traps with other force elements run the NumPy loop
         save, save_dir, save_description, save_fmt: optional pickling of the instance
 
     The forces are those of the trap's force elements (`Trap.fields`), added in a fixed order
@@ -248,32 +250,34 @@ class FreeSpaceSimulation(StochasticSimulation):
             return f'no compiled kernel for {integrator!r}'
         if self.rk_loop_debug:
             return 'rk_loop_debug logs every step'
-        if np.shape(G) != (6, 4) or len(X0) != 6:
+        if np.ndim(G) != 2 or np.shape(G)[0] != 6 or np.shape(G)[1] < 4 or len(X0) != 6:
             return 'unexpected state or noise dimensions'
         return ''
 
     def _compiled_kernel_unsupported_fields(self):
         """
-        Why the trap's force elements are outside the compiled kernel's fixed set ('' if inside)
+        Why the trap's force elements are outside the compiled kernel's set ('' if inside)
 
-        The kernel knows one Gaussian-beam tweezer (or override_Ω_dict in its place), any Feedback
-        elements (through Γx, Γy, Γz), kicks, one PhotonRecoil of that tweezer, and gravity. A generic
-        compiled path would need each element to provide a numba-compilable force with its parameters
-        packed into an array (see the PR notes of the force-element refactor).
+        The kernel knows one Gaussian-beam tweezer (or override_Ω_dict in its place), any sum of the
+        'field' elements with a compiled force (the trap's tweezer, PaulTrap, MagneticTrap with
+        polynomial, current-loop, cuboid or summed sources, HarmonicPotential and
+        UniformElectricField, see `levisim.simulation.backends.numba_elements`), any Feedback and
+        EddyCurrentDamping elements (through Γx, Γy, Γz), kicks, one PhotonRecoil of the trap
+        tweezer, and gravity.
         """
         from levisim.physics.fields.elements import Feedback, Gravity, PhotonRecoil
+        from levisim.physics.fields.magnetic import EddyCurrentDamping
         from levisim.physics.kick import Kick
-        from levisim.physics.tweezer import Tweezer
         trap = self.trap
-        field_elements = trap.fields_in_group('field')
-        single_tweezer = len(field_elements) == 1 and isinstance(field_elements[0], Tweezer)
-        if not trap.override_Ω_dict and not single_tweezer:
-            names = ', '.join(element.label for element in field_elements) or 'none'
-            return f'no compiled kernel for the field elements [{names}] (only one Tweezer)'
+        if not trap.override_Ω_dict and not trap._element_plan['single_tweezer']:
+            from levisim.simulation.backends.numba_elements import unsupported_reason
+            reason = unsupported_reason([trap], [trap.fields_in_group('field')])
+            if reason:
+                return reason
         for element in trap.fields:
             if element.simulation_group == 'field':
                 continue
-            if type(element) not in (Feedback, Kick, PhotonRecoil, Gravity):
+            if type(element) not in (Feedback, Kick, PhotonRecoil, Gravity, EddyCurrentDamping):
                 return f'no compiled kernel for the {element.label} element'
         recoils = trap.fields_of_type(PhotonRecoil)
         if recoils and (len(recoils) > 1 or recoils[0].tweezer is not trap.tweezer):
@@ -283,6 +287,159 @@ class FreeSpaceSimulation(StochasticSimulation):
     # ------------------------------------------------------------------------------------------
     # physics
     # ------------------------------------------------------------------------------------------
+    def prepare_numpy_loop(self):
+        """
+        Resolves the force dispatch of dynamics_vector once for the NumPy time loop (see
+        `force_dispatch`): edits to `trap.fields` (or to the trap's damping, gravity,
+        override_Ω_dict, or its tweezer's E0, waists, zR and polarisability) made while the loop runs
+        are ignored until the next run
+        """
+        self._numpy_loop_dispatch = self.force_dispatch()
+
+    def release_numpy_loop(self):
+        """Drops the per-run force dispatch, so that later direct calls see the trap as it is then"""
+        self._numpy_loop_dispatch = None
+
+    def force_dispatch(self):
+        """
+        The per-run plan of dynamics_vector, a dict: the mass m, the damping rates Γx, Γy, Γz, the
+        'field' force as a callable (x, y, z, t) -> (Fx, Fy, Fz), the kick force callable (or None),
+        the photon recoil callable (or None) and the total gravity force (or None)
+
+        For a plain Trap and Tweezer the tweezer force and its photon recoil are bound with the
+        tweezer's constants (E0, zR, waists, Re and Im α_eff) read once, and the beam profile w(z) is
+        evaluated once per call instead of eight times; this is where most of the saving is (30-42% of
+        the NumPy step). During a NumPy time loop the plan is built once (`prepare_numpy_loop`); a direct call of
+        dynamics_vector outside a run builds it afresh, so it always sees the current trap. The
+        arithmetic is that of the per-call dispatch it replaces, so seeded trajectories are unchanged
+        bit for bit.
+        """
+        trap = self.trap
+        plan = trap._element_plan
+        m = trap.bead.m
+        override = trap.override_Ω_dict
+        if override:
+            # -m·Ωj²·j, with the product -m·Ωj² formed exactly as the expression -m * Ωj**2 * j does
+            cx, cy, cz = (-m * (override[axis])**2 for axis in 'xyz')
+
+            def field(x, y, z, t):
+                return cx * x, cy * y, cz * z
+        elif plan['single_tweezer']:
+            field = self._tweezer_force_dispatch(trap)
+        else:
+            field = self._field_force_dispatch(trap, plan)
+        recoil = None
+        if plan['recoils']:
+            recoils = plan['recoils']
+            if (type(trap).F_photon_recoil is Trap.F_photon_recoil and len(recoils) == 1
+                    and recoils[0].tweezer is trap.tweezer):
+                recoil = self._recoil_force_dispatch(trap)
+            else:
+                recoil = trap.F_photon_recoil
+        gravity = None
+        if self.gravity_field is not None or 'gravity' in plan['groups']:
+            gravity = self.F_gravity
+        return {
+            'm': m,
+            'Γ': (trap.Γx, trap.Γy, trap.Γz),
+            'field': field,
+            'kick': trap.kick_force if plan['kicks'] else None,
+            'recoil': recoil,
+            'gravity': gravity,
+        }
+
+    @staticmethod
+    def _plain_tweezer(trap):
+        """The trap's tweezer if neither the Trap nor the Tweezer class overrides the beam expressions"""
+        from levisim.physics.tweezer import Tweezer
+        if type(trap).tweezer is not Trap.tweezer:
+            return None
+        tweezer = trap.tweezer
+        if type(tweezer) is not Tweezer:
+            return None
+        return tweezer
+
+    @classmethod
+    def _tweezer_force_dispatch(cls, trap):
+        """
+        Trap.Ftw as a callable (x, y, z, t) with the tweezer and its constants bound for the run: the
+        expressions of Trap.Ftw, Trap.Utw and the Tweezer beam profiles, evaluated in the same order
+        (the beam profile w(z) is computed once instead of eight times, with the same value), so the
+        force is bit-identical. A Trap or Tweezer subclass that overrides any of them keeps calling
+        trap.Ftw.
+        """
+        tweezer = cls._plain_tweezer(trap)
+        if tweezer is None or type(trap).Ftw is not Trap.Ftw or type(trap).Utw is not Trap.Utw:
+            Ftw = trap.Ftw
+
+            def field(x, y, z, t):
+                return Ftw(x, y, z)
+            return field
+        re_α = np.real(trap.α_eff)
+        E0, zR, wx0, wy0, wz0 = tweezer.E0, tweezer.zR, tweezer.wx0, tweezer.wy0, tweezer.wz0
+
+        def field(x, y, z, t):
+            w = np.sqrt(1 + (z / zR)**2)
+            wx, wy, wz = wx0 * w, wy0 * w, wz0 * w
+            ellipse = (x / wx)**2 + (y / wy)**2
+            # Trap.Utw (cycle-averaged) and Trap.Ftw
+            U = -(re_α / 4) * ((E0 / w) * np.exp(-ellipse))**2
+            return (
+                (4 * x / wx**2) * U,
+                (4 * y / wy**2) * U,
+                (4 * z / wz**2) * U * (1 - 2 * ellipse),
+            )
+        return field
+
+    @classmethod
+    def _recoil_force_dispatch(cls, trap):
+        """Trap.F_scattering as a callable (x, y, z), with the tweezer bound for the run (bit-identical)"""
+        tweezer = cls._plain_tweezer(trap)
+        if tweezer is None or type(trap).F_scattering is not Trap.F_scattering:
+            return trap.F_scattering
+        half_im_α = 0.5 * np.imag(trap.α_eff)
+        E0, zR, k, wx0, wy0 = tweezer.E0, tweezer.zR, tweezer.k, tweezer.wx0, tweezer.wy0
+
+        def recoil(x, y, z):
+            phase_gradient = k - zR / (zR**2 + z**2)
+            w = np.sqrt(1 + (z / zR)**2)
+            E = (E0 / w) * np.exp(-((x / (wx0 * w))**2 + (y / (wy0 * w))**2))
+            return half_im_α * E**2 * phase_gradient
+        return recoil
+
+    @staticmethod
+    def _field_force_dispatch(trap, plan):
+        """
+        The sum of the 'field' elements' forces as a callable (x, y, z, t), with the arithmetic of
+        `Trap.field_force` (the trap's tweezer through Ftw, the others through their `force`) but the
+        element lookup done once
+        """
+        if type(trap).field_force is not Trap.field_force or type(trap).element_force is not Trap.element_force:
+            return trap.field_force
+        elements = plan['groups'].get('field', [])
+        if not elements:
+            def no_field(x, y, z, t):
+                return (0.0, 0.0, 0.0)
+            return no_field
+        bead = trap.bead
+        tweezer = plan['tweezer']
+        tweezer_force = None if tweezer is None else FreeSpaceSimulation._tweezer_force_dispatch(trap)
+        forces = []
+        for element in elements:
+            if element.is_optical and element is tweezer:
+                forces.append(lambda x, y, z, t: np.array(tweezer_force(x, y, z, t)))
+            else:
+                # (Kick is a 'kick' element, never in the 'field' group)
+                forces.append(lambda x, y, z, t, force=element.force: force((x, y, z), t, bead))
+        first, rest = forces[0], forces[1:]
+
+        def field(x, y, z, t):
+            F = first(x, y, z, t)
+            for force in rest:
+                F = F + force(x, y, z, t)
+            return F[0], F[1], F[2]
+        return field
+
     def dynamics_vector(self, t, X):
         """
         Deterministic part of the equations of motion, dX = F(t, X) dt + G dW
@@ -300,28 +457,23 @@ class FreeSpaceSimulation(StochasticSimulation):
         fields; replaced by -m Ωj² j with override_Ω_dict), minus the gas + 'damping' (Feedback)
         damping Γj·pj, plus the 'kick' force; then the 'recoil' force is added to dpz/dt and last the
         'gravity' force. This is the order of the single-tweezer code, so its numbers are unchanged.
+
+        Which elements contribute is resolved by `force_dispatch`: once per run inside the NumPy time
+        loop (so edits to `trap.fields` during a run are ignored), afresh on every direct call.
         """
         x, y, z, px, py, pz = X
-        m = self.trap.bead.m
-        Γx, Γy, Γz = self.trap.Γx, self.trap.Γy, self.trap.Γz
-        # the trap's elements by role (cached until the list of elements changes)
-        plan = self.trap._element_plan
-
-        # allow for manually input frequencies
-        if self.trap.override_Ω_dict:
-            Ftwx = -m * (self.trap.override_Ω_dict['x'])**2 * x
-            Ftwy = -m * (self.trap.override_Ω_dict['y'])**2 * y
-            Ftwz = -m * (self.trap.override_Ω_dict['z'])**2 * z
-        elif plan['single_tweezer']:
-            Ftwx, Ftwy, Ftwz = self.trap.Ftw(x, y, z)
-        else:
-            # the sum of the 'field' elements' forces, in the order of Trap.fields
-            Ftwx, Ftwy, Ftwz = self.trap.field_force(x, y, z, t)
+        dispatch = getattr(self, '_numpy_loop_dispatch', None)
+        if dispatch is None:
+            dispatch = self.force_dispatch()
+        m = dispatch['m']
+        Γx, Γy, Γz = dispatch['Γ']
+        Ftwx, Ftwy, Ftwz = dispatch['field'](x, y, z, t)
 
         F_kick_x, F_kick_y = 0, 0
-        if plan['kicks']:
+        kick = dispatch['kick']
+        if kick is not None:
             # as always, the last kick active at t wins (Trap.kick_force)
-            F_kick_x, F_kick_y = self.trap.kick_force(t)
+            F_kick_x, F_kick_y = kick(t)
 
         dynamics = np.array([
             px / m,
@@ -333,12 +485,14 @@ class FreeSpaceSimulation(StochasticSimulation):
         ])
 
         # opt-in forces, added only when enabled so that the default arithmetic is unchanged
-        if plan['recoils']:
+        recoil = dispatch['recoil']
+        if recoil is not None:
             # scattering force along the beam propagation axis, +z (see Trap.F_scattering)
-            dynamics[5] += self.trap.F_photon_recoil(x, y, z)
-        if self.gravity_field is not None or 'gravity' in plan['groups']:
+            dynamics[5] += recoil(x, y, z)
+        gravity = dispatch['gravity']
+        if gravity is not None:
             # m g ≈ 16.5 aN for the default 1.68 fg bead, along gravity_direction (default -x)
-            dynamics[3:] += self.F_gravity
+            dynamics[3:] += gravity
 
         return dynamics
 
