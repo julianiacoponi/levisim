@@ -62,8 +62,14 @@ porous silica spheres used in the experiments, and $\varepsilon_r = 1.98$ is the
 earlier simulations, whose origin is not recorded. The two are not mutually consistent under the
 Lorentz-Lorenz relation for a porous material, $(\varepsilon_r - 1)/(\varepsilon_r + 2) \propto \rho$,
 with bulk fused silica as the reference: $\varepsilon_r = 1.98$ corresponds to
-2018 kg/m³, and $\rho = 1850$ kg/m³ to $\varepsilon_r = 1.875$. They are kept unchanged so that
-no existing number moves.
+2018 kg/m³, and $\rho = 1850$ kg/m³ to $\varepsilon_r = 1.875$.
+
+```{note}
+The inconsistency is known and deliberate: both values are kept for continuity with the published
+and thesis numbers computed with them, so that no existing result moves. For a self-consistent porous
+silica, derive a material with a Lorentz-Lorenz pair, e.g.
+`FUSED_SILICA.replace(name='porous silica', ρ=1850.0, permittivity=1.875)` (εr at 1064 nm).
+```
 
 ## Particles
 

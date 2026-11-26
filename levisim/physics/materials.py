@@ -56,7 +56,8 @@ LEVISIM_DEFAULT_SILICA = Material(
     # https://www.microparticles-shop.de/Monodisperse-Particles-for-Research-Purposes/Silica-particles-SiO2-R-in-the-size-range-150-nm-25-m:::1_6.html
     ρ=1850.0,
     # εr = 1.98 (n = 1.4071) is the value used in the group's earlier simulations; its origin
-    # (a measurement, a supplier value or a fit) is not recorded
+    # (a measurement, a supplier value or a fit) is not recorded. It is inconsistent with ρ = 1850
+    # under Lorentz-Lorenz (see notes) and kept for continuity with published numbers
     permittivity=1.98,
     references={
         'ρ': (
@@ -66,10 +67,12 @@ LEVISIM_DEFAULT_SILICA = Material(
         'εr': 'value used in earlier group simulations; source not recorded',
     },
     notes=(
-        'The default material of Bead(); kept exactly so that every existing number is unchanged. '
-        'OPEN QUESTION: ρ and εr are not mutually consistent under the Lorentz-Lorenz void mixture '
-        '(εr-1)/(εr+2) ∝ density with bulk fused silica (ρ = 2201 kg/m³, εr(1064 nm) = 2.1014, '
-        'FUSED_SILICA): εr = 1.98 corresponds to 2018 kg/m³, and ρ = 1850 kg/m³ to εr = 1.875.'
+        'The default material of Bead(). KNOWN INCONSISTENCY, kept deliberately: ρ and εr are not '
+        'mutually consistent under the Lorentz-Lorenz void mixture (εr-1)/(εr+2) ∝ density with bulk '
+        'fused silica (ρ = 2201 kg/m³, εr(1064 nm) = 2.1014, FUSED_SILICA) as the reference: '
+        'εr = 1.98 corresponds to 2018 kg/m³, and ρ = 1850 kg/m³ to εr = 1.875. Both values are kept '
+        'for continuity with published and thesis numbers; for a self-consistent porous silica use '
+        'e.g. FUSED_SILICA.replace(ρ=..., permittivity=...) with the Lorentz-Lorenz pair.'
     ),
 )
 
