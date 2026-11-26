@@ -234,7 +234,12 @@ The kernels are cached on disk, so only the first run on a machine compiles them
 | first call, empty cache (both kernels) | | 0.7–0.8 s, plus 0.2 s to import numba |
 | first call, cached (both kernels) | | 0.11 s, plus 0.2 s to import numba |
 
-(Apple arm64, numba 0.68; best of three for numba, one run for NumPy.) A single free-space bead has
+(Apple arm64, numba 0.68; best of three for numba, one run for NumPy.) The NumPy loop resolves which
+forces act, and binds the tweezer's constants, once per run (`FreeSpaceSimulation.force_dispatch`),
+which made it 30-42% faster per step than the first force-element release (default `Trap`, $2^{15}$
+steps, best of three under shared load: `vector_4` 38.6 → 25.5 μs, `vector_2` 15.9 → 9.2 μs) with
+bit-identical trajectories. Edits to `trap.fields`, or to the tweezer's parameters, made while a
+NumPy loop runs are therefore ignored until the next run. A single free-space bead has
 nothing to thread over, so these kernels are serial; `levisim.simulation.backends.choose_threading`
 holds the policy that multi-particle and ensemble kernels will use (threads over independent setups,
 or over particles for large systems).
