@@ -230,7 +230,8 @@ predict normal modes split by 427.76 Hz. A displacement of particle 1 alone pass
 particle 2 after $\pi/\Delta\omega$ = 1.169 ms, to within two oscillation periods, and the spectra of
 the sum and the difference of the two records peak at the predicted normal modes. The notebook
 `notebooks/papers/penny2023_sympathetic_cooling.ipynb` reproduces the normal modes of Penny et al.,
-Phys. Rev. Research **5**, 013070 (2023), and simulates sympathetic cooling.
+Phys. Rev. Research **5**, 013070 (2023), with both particles in one linear `PaulTrap`, and simulates
+sympathetic cooling.
 
 ## Entanglement between particles
 
