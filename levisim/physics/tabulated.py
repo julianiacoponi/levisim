@@ -85,7 +85,7 @@ class TabulatedParticle(Particle):
         TabulatedParticle(mass, inertia, polarisability,
                           translational_damping=None, rotational_damping=None, damping_gas=None,
                           damping_accommodation=1.0, damping_surface_temperature_ratio=1.0,
-                          volume=None, area=None, material=None, name='tabulated particle',
+                          translational_diffusion=None, rotational_diffusion=None, volume=None, area=None, material=None, name='tabulated particle',
                           charge=0, λ=1064 nm, Φ=π/2, orientation=(1, 0, 0, 0), rtol=1e-8)
 
     - mass: m_n [kg]
@@ -108,6 +108,13 @@ class TabulatedParticle(Particle):
       surface_temperature_ratio) → 3×3. Arrays are valid only for the accommodation coefficient and
       surface-temperature ratio they were computed with (`damping_accommodation`,
       `damping_surface_temperature_ratio`); asking for others raises.
+    - translational_diffusion, rotational_diffusion: optional body-frame momentum diffusion tensors
+      [N²·s], [N²·m²·s] (d〈P_i P_j〉/dt = 2D_ij, Eq. (41) of Martinetz et al. (2018)), arrays valid in
+      `damping_gas` at the same accommodation and γs as the damping arrays, scaled to another gas by
+      D ∝ P √(m_g T), or callables f(gas, accommodation, surface_temperature_ratio) → 3×3. They are
+      needed only for a surface temperature ratio γs ≠ 1: without them the diffusion is
+      D = kB T Γ diag(m_n, I) (fluctuation-dissipation, exact for γs = 1), and asking for γs ≠ 1
+      raises. `from_particle` fills them for γs ≠ 1.
     - volume, area: optional [m³], [m²] (needed for ρ, `Trap.F_gas`, ...)
     - material: optional `Material` (for information; the permittivity is not used, since the
       polarisability is given)
@@ -126,6 +133,8 @@ class TabulatedParticle(Particle):
         damping_gas=None,
         damping_accommodation=1.0,
         damping_surface_temperature_ratio=1.0,
+        translational_diffusion=None,
+        rotational_diffusion=None,
         volume=None,
         area=None,
         material=None,
@@ -174,6 +183,8 @@ class TabulatedParticle(Particle):
         self.damping_surface_temperature_ratio = float(damping_surface_temperature_ratio)
         self._translational_damping = self._set_damping('translational_damping', translational_damping)
         self._rotational_damping = self._set_damping('rotational_damping', rotational_damping)
+        self._translational_diffusion = self._set_diffusion('translational_diffusion', translational_diffusion)
+        self._rotational_diffusion = self._set_diffusion('rotational_diffusion', rotational_diffusion)
 
     # ----------------------------------------------------------------------------------------------
     # input handling
@@ -216,6 +227,17 @@ class TabulatedParticle(Particle):
         if self.damping_gas is None:
             raise ValueError(f'{name} given as an array needs damping_gas, the gas it was computed for')
         return Γ
+
+    def _set_diffusion(self, name, value):
+        if value is None or callable(value):
+            return value
+        D = _matrix(name, value)
+        _check_symmetric(name, D, self.rtol)
+        if np.linalg.eigvalsh(0.5 * (D + D.T))[0] < -self.rtol * np.max(np.abs(D)):
+            raise ValueError(f'{name} must be positive semi-definite (a diffusion tensor)')
+        if self.damping_gas is None:
+            raise ValueError(f'{name} given as an array needs damping_gas, the gas it was computed for')
+        return D
 
     # ----------------------------------------------------------------------------------------------
     # shape
@@ -333,6 +355,51 @@ class TabulatedParticle(Particle):
         """
         return self._damping(self._rotational_damping, 'rotational', gas, accommodation, surface_temperature_ratio)
 
+    def _diffusion(self, stored, kind, gas, accommodation, surface_temperature_ratio):
+        if callable(stored):
+            return _matrix(f'{kind} diffusion', stored(gas, accommodation, surface_temperature_ratio))
+        if (accommodation, surface_temperature_ratio) != (self.damping_accommodation, self.damping_surface_temperature_ratio):
+            raise ValueError(
+                f'the tabulated {kind} diffusion holds for αc = {self.damping_accommodation}, '
+                f'γs = {self.damping_surface_temperature_ratio}; pass a callable to vary them'
+            )
+        reference = self.damping_gas
+        scale = (gas.P / reference.P) * np.sqrt((gas.m / reference.m) * (gas.T / reference.T))
+        return stored * scale
+
+    def translational_diffusion_tensor(self, gas, accommodation=1.0, surface_temperature_ratio=1.0):
+        """
+        Centre-of-mass momentum diffusion tensor D_cm in the body frame, d〈P_i P_j〉/dt = 2 D_ij: the
+        tabulated tensor (scaled from `damping_gas` by P √(m_g T)) or the callable's value if given,
+        else kB T m_n Γ_cm, which holds for γs = 1 only (other γs raise)
+        [N²·s]
+        """
+        if self._translational_diffusion is not None:
+            return self._diffusion(self._translational_diffusion, 'translational', gas, accommodation,
+                                   surface_temperature_ratio)
+        if surface_temperature_ratio != 1.0:
+            raise NotImplementedError(
+                'this TabulatedParticle has no translational_diffusion: for γs ≠ 1 the diffusion does not follow '
+                'from the damping; pass translational_diffusion=... (or use TabulatedParticle.from_particle)'
+            )
+        return super().translational_diffusion_tensor(gas, accommodation, surface_temperature_ratio)
+
+    def rotational_diffusion_tensor(self, gas, accommodation=1.0, surface_temperature_ratio=1.0):
+        """
+        Angular-momentum diffusion tensor D_rot in the body frame, d〈J_i J_j〉/dt = 2 D_ij: the tabulated
+        tensor (scaled by P √(m_g T)) or the callable's value if given, else kB T Γ_rot I (γs = 1 only)
+        [N²·m²·s]
+        """
+        if self._rotational_diffusion is not None:
+            return self._diffusion(self._rotational_diffusion, 'rotational', gas, accommodation,
+                                   surface_temperature_ratio)
+        if surface_temperature_ratio != 1.0:
+            raise NotImplementedError(
+                'this TabulatedParticle has no rotational_diffusion: for γs ≠ 1 the diffusion does not follow '
+                'from the damping; pass rotational_diffusion=... (or use TabulatedParticle.from_particle)'
+            )
+        return super().rotational_diffusion_tensor(gas, accommodation, surface_temperature_ratio)
+
     # ----------------------------------------------------------------------------------------------
     # construction from another particle, and back to keyword arguments
     # ----------------------------------------------------------------------------------------------
@@ -342,7 +409,9 @@ class TabulatedParticle(Particle):
         """
         Tabulates another particle: its mass, inertia, body-frame static polarisability (at its own λ,
         or a table at `wavelengths` [m]), and, if a `gas` is given, its damping tensors in that gas.
-        Charge, λ, Φ, orientation, material, volume and area are copied; kwargs override.
+        For a surface temperature ratio γs ≠ 1 the diffusion tensors are tabulated as well (for γs = 1
+        they follow from the damping). Charge, λ, Φ, orientation, material, volume and area are
+        copied; kwargs override.
         """
         if wavelengths is None:
             polarisability = np.array(particle.static_polarisability_tensor(), copy=True)
@@ -373,6 +442,12 @@ class TabulatedParticle(Particle):
                 damping_accommodation=accommodation,
                 damping_surface_temperature_ratio=surface_temperature_ratio,
             )
+            if surface_temperature_ratio != 1.0:
+                arguments.update(
+                    translational_diffusion=particle.translational_diffusion_tensor(
+                        gas, accommodation, surface_temperature_ratio),
+                    rotational_diffusion=particle.rotational_diffusion_tensor(gas, accommodation, surface_temperature_ratio),
+                )
         arguments.update(kwargs)
         return cls(**arguments)
 
@@ -402,6 +477,8 @@ class TabulatedParticle(Particle):
             'damping_gas': None if gas is None else {'P': gas.P, 'T': gas.T, 'm': gas.m},
             'damping_accommodation': self.damping_accommodation,
             'damping_surface_temperature_ratio': self.damping_surface_temperature_ratio,
+            'translational_diffusion': damping(self._translational_diffusion),
+            'rotational_diffusion': damping(self._rotational_diffusion),
             'volume': self._volume,
             'area': self._area,
             'material': None if self._placeholder_material else self.material,

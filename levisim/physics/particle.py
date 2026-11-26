@@ -17,6 +17,7 @@ import numpy as np
 
 from levisim.core.constants import e, g, kB, ε0, π
 from levisim.core.units import aN, fg, nm
+from levisim.physics.gas_damping import _coefficients, gas_prefactor
 from levisim.physics.material import Material, _as_tensor, _is_isotropic
 
 # trapping position phase along the cavity axis: antinode, halfnode, node = 0, π/4, π/2
@@ -512,7 +513,8 @@ class Particle:
         """
         Centre-of-mass momentum diffusion tensor D_cm in the body frame, d〈P_i P_j〉/dt = 2 D_ij
         (Martinetz et al., Phys. Rev. E 97, 052112 (2018)). With a surface at the gas temperature
-        (γs = 1) it is D_cm = kB T m_n Γ_cm (their Eq. (47a)), the default here.
+        (γs = 1) it is D_cm = kB T m_n Γ_cm (their Eq. (47a)), evaluated here; `Sphere`, the shapes and
+        `TabulatedParticle` give it for any γs.
         [N²·s]
         """
         if surface_temperature_ratio != 1.0:
@@ -766,4 +768,41 @@ class Sphere(Particle):
         """
         gas_factor = (gas.m * gas.vth * gas.P) / (kB * gas.T)
         return (5/4) * accommodation * gas_factor / (self.ρ * self.r) * np.eye(3)
+
+    def translational_diffusion_tensor(self, gas, accommodation=1.0, surface_temperature_ratio=1.0):
+        """
+        Centre-of-mass momentum diffusion tensor D_cm of the sphere, d〈P_i P_j〉/dt = 2 D_ij, for any
+        surface temperature ratio γs = √(Ts/T)
+        [N²·s]
+
+        Eq. (41) of Martinetz et al., Phys. Rev. E 97, 052112 (2018), integrated over the sphere
+        (∮ n⊗n dA = (4π/3)R² 𝟙, r × n = 0)::
+
+            D_cm = kB T n_g √(m_g kB T/2π) (4π/3) R² (c₂ + 3c₃) 𝟙,
+            c₂ = 4 - (7 - γs²) αc/2 + π αc γs/2,   c₃ = (1 + γs²) αc/2
+
+        For γs = 1 this equals kB T m_n Γ_cm (their Eq. (47a)), which is what is evaluated then (the
+        original arithmetic, bit for bit).
+        """
+        if surface_temperature_ratio == 1.0:
+            return super().translational_diffusion_tensor(gas, accommodation, surface_temperature_ratio)
+        _, _, c2, c3 = _coefficients(accommodation, surface_temperature_ratio)
+        return kB * gas.T * gas_prefactor(gas) * (4*π/3) * self.r**2 * (c2 + 3*c3) * np.eye(3)
+
+    def rotational_diffusion_tensor(self, gas, accommodation=1.0, surface_temperature_ratio=1.0):
+        """
+        Angular-momentum diffusion tensor D_rot of the sphere, d〈J_i J_j〉/dt = 2 D_ij, for any γs
+        [N²·m²·s]
+
+        Eq. (41) of Martinetz et al. (2018) over the sphere (only the c₃ term survives,
+        -∮ r̂² dA = (8π/3) R⁴ 𝟙)::
+
+            D_rot = kB T n_g √(m_g kB T/2π) (8π/3) R⁴ c₃ 𝟙,   c₃ = (1 + γs²) αc/2
+
+        For γs = 1 this equals kB T Γ_rot I (their Eq. (47b)), which is what is evaluated then.
+        """
+        if surface_temperature_ratio == 1.0:
+            return super().rotational_diffusion_tensor(gas, accommodation, surface_temperature_ratio)
+        _, _, _, c3 = _coefficients(accommodation, surface_temperature_ratio)
+        return kB * gas.T * gas_prefactor(gas) * (8*π/3) * self.r**4 * c3 * np.eye(3)
 

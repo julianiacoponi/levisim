@@ -274,7 +274,19 @@ where $\mathbf r$ is the surface point relative to the centre of mass, $\mathbf 
 normal, $\hat{\mathbf r}\mathbf a = \mathbf r\times\mathbf a$, and $n_g = P/k_B T$ the gas number
 density. The diffusion matrix, their Eq. (41), satisfies
 $\mathbf D = k_B T\,\boldsymbol\Gamma\,\mathrm{diag}(m_n\mathbb 1, \mathbf I)$ for $\gamma_s = 1$.
-Spheres and cylinders use the closed forms of Table I of the paper. Ellipsoids, spheroids and
+For a sphere it integrates in closed form, for any $\gamma_s$,
+
+$$
+\mathbf D_\text{cm} = k_BT\,n_g\sqrt{\frac{m_g k_B T}{2\pi}}\,\frac{4\pi}{3}R^2\,(c_2 + 3c_3)\,\mathbb 1,
+\qquad
+\mathbf D_\text{rot} = k_BT\,n_g\sqrt{\frac{m_g k_B T}{2\pi}}\,\frac{8\pi}{3}R^4\,c_3\,\mathbb 1,
+$$
+
+with $c_2 = 4 - (7 - \gamma_s^2)\alpha_c/2 + \pi\alpha_c\gamma_s/2$ and
+$c_3 = (1 + \gamma_s^2)\alpha_c/2$; `Sphere` uses it for $\gamma_s \ne 1$ and the original
+$k_BT\,m_n\boldsymbol\Gamma_\text{cm}$, $k_BT\,\boldsymbol\Gamma_\text{rot}\mathbf I$ arithmetic at
+$\gamma_s = 1$. The tests check it against the surface integral of an `Ellipsoid` with equal axes,
+to $10^{-12}$. Spheres and cylinders use the closed forms of Table I of the paper. Ellipsoids, spheroids and
 dumbbells use these surface integrals, evaluated once on a Gauss quadrature and cached
 ({mod}`levisim.physics.gas_damping`). The tests check the numerical integrals against Table I for
 the sphere and the cylinder, to $10^{-12}$, for several values of $\alpha_c$ and $\gamma_s$.
@@ -310,7 +322,12 @@ The inputs are validated on construction:
   positive semi-definite, with levisim's $e^{-i\omega t}$ convention);
 - the damping tensors must have real, non-negative eigenvalues.
 
-Damping tensors given as arrays hold for the accommodation they were computed with. They are scaled
+Damping tensors given as arrays hold for the accommodation they were computed with. For a surface
+temperature ratio $\gamma_s \ne 1$ the momentum diffusion does not follow from the damping, so it is
+an input too (`translational_diffusion`, `rotational_diffusion`: arrays scaled to another gas by
+$D \propto P\sqrt{m_g T}$, or callables); `from_particle` tabulates it whenever $\gamma_s \ne 1$.
+Without it, the diffusion is $k_BT\,\boldsymbol\Gamma\,\mathrm{diag}(m_n, \mathbf I)$, exact for
+$\gamma_s = 1$, and other $\gamma_s$ raise an error. They are scaled
 to another gas by the free-molecular law $\Gamma \propto P\sqrt{m_g/T}$. A tabulated polarisability
 is interpolated linearly between wavelengths, and requesting a wavelength outside the table raises
 an error.
