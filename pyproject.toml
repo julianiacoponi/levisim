@@ -53,6 +53,8 @@ elk = ["elasticsearch>=8"]
 notify = ["plyer"]
 # pixel-level image comparison in levisim/multiphysics/utils/comparison.py
 video = ["opencv-python"]
+# compiled (numba) time loops for the stochastic simulations, see levisim.simulation.backends
+fast = ["numba>=0.59"]
 # running the notebooks in notebooks/
 notebooks = ["jupyterlab", "ipykernel", "nbclient", "networkx"]
 # building the documentation site

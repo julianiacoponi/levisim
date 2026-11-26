@@ -249,7 +249,7 @@ def run_tweezer_simulation(params: dict) -> dict:
         Estimated frequency bins (kHz) and one-sided ``Sxx``, ``Syy`` and ``Cxy`` arrays.
     """
     from levisim.analysis.spectral_density_estimate import SpectralDensityEstimate
-    from levisim.data.simulation import Simulation
+    from levisim.simulation import FreeSpaceSimulation
 
     trap = _build_trap_from_params(params)
     detection_floor = _float_param(params, 'detection_floor', 1e-27, min_value=1e-32, max_value=1e-18)
@@ -259,7 +259,7 @@ def run_tweezer_simulation(params: dict) -> dict:
     f_min_kHz = _float_param(params, 'f_min_kHz', 10.0, min_value=0.1, max_value=1000.0)
     f_max_kHz = _float_param(params, 'f_max_kHz', 220.0, min_value=1.0, max_value=2000.0)
 
-    sim = Simulation(
+    sim = FreeSpaceSimulation(
         trap=trap,
         num_samples=num_samples,
         Δt=0.2 * μs,

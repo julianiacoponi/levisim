@@ -1,0 +1,117 @@
+"""
+levisim.simulation.backends
+===========================
+Optional compiled backends of the stochastic time loops
+
+The NumPy loops of `levisim.simulation.integrators` are the reference. With numba installed
+(`pip install levisim[fast]`), `numba_free_space` provides compiled loops for `FreeSpaceSimulation`
+that consume exactly the same random numbers, so trajectories agree with NumPy to round-off.
+
+This module is imported by every simulation but does not import numba itself: numba is imported
+only when a compiled loop is actually used, so `import levisim` stays fast without or with numba.
+
+- `numba_available()`: whether numba can be imported
+- `require_numba()`: raises an ImportError with installation advice when it cannot
+- `resolve_backend(backend, num_steps)`: which backend a simulation should use
+- `choose_threading(num_setups, num_particles)`: the threading plan for compiled kernels
+"""
+
+import importlib.util
+import os
+from dataclasses import dataclass
+from functools import lru_cache
+
+__all__ = [
+    'AUTO_NUMBA_MIN_STEPS',
+    'BACKENDS',
+    'ThreadingPlan',
+    'choose_threading',
+    'numba_available',
+    'require_numba',
+    'resolve_backend',
+]
+
+BACKENDS = ('auto', 'numpy', 'numba')
+
+# 'auto' uses numba only for runs of at least this many steps: below it, loading the cached
+# kernels costs about as much as the NumPy loop itself (see the stochastic simulations guide)
+AUTO_NUMBA_MIN_STEPS = 2**15
+
+
+@lru_cache(maxsize=1)
+def numba_available():
+    """True if numba is installed (and not disabled with LEVISIM_DISABLE_NUMBA=1)"""
+    if os.environ.get('LEVISIM_DISABLE_NUMBA', '0') not in ('', '0'):
+        return False
+    return importlib.util.find_spec('numba') is not None
+
+
+def require_numba():
+    """Raises ImportError with installation advice if numba is not available"""
+    if not numba_available():
+        raise ImportError(
+            "backend='numba' needs the optional dependency numba, which is not installed (or is disabled "
+            "with LEVISIM_DISABLE_NUMBA). Install it with `pip install levisim[fast]` (or `pip install "
+            "numba`), or use backend='numpy' or backend='auto'."
+        )
+
+
+def resolve_backend(backend, num_steps):
+    """
+    The backend a simulation of num_steps steps should try, 'numpy' or 'numba'
+
+    - 'numpy': always NumPy
+    - 'numba': numba (ImportError if it is not installed)
+    - 'auto': numba if it is installed and num_steps ≥ AUTO_NUMBA_MIN_STEPS, otherwise NumPy
+
+    The simulation may still fall back to NumPy when its configuration has no compiled kernel.
+    """
+    if backend not in BACKENDS:
+        raise ValueError(f"Unknown backend={backend!r}; use one of {BACKENDS}")
+    if backend == 'numpy':
+        return 'numpy'
+    if backend == 'numba':
+        require_numba()
+        return 'numba'
+    return 'numba' if (numba_available() and num_steps >= AUTO_NUMBA_MIN_STEPS) else 'numpy'
+
+
+@dataclass(frozen=True)
+class ThreadingPlan:
+    """
+    How a compiled kernel should use threads
+
+    axis: 'serial' (one thread), 'setups' (independent trajectories or parameter sets in parallel,
+    each integrated serially) or 'particles' (the force/pair loop of one large system in parallel)
+    num_threads: threads to use (1 for 'serial')
+    """
+    axis: str
+    num_threads: int
+
+
+# thresholds from the round-5 backend benchmark (bench_summary.md, 8-core arm64): threading over
+# setups paid off from K = 16 (2.6x) to K = 4096 (4.2x); threading the pair loop of one system lost
+# at N = 8 and N = 64 (thread start-up per step dominates) and won only at N = 256 (1.4x)
+MIN_SETUPS_TO_THREAD = 8
+MIN_PARTICLES_TO_THREAD = 128
+
+
+def choose_threading(num_setups=1, num_particles=1, max_threads=None):
+    """
+    Chooses the threading of a compiled kernel from the problem's shape
+
+    - several independent setups (ensemble members, parameter sweeps): thread over the setups,
+      which share nothing and scale almost linearly
+    - one setup with many particles: thread over the particles (pair forces accumulated into
+      per-particle local scalars, never into a shared array inside the inner loop)
+    - otherwise (e.g. one free-space bead): serial, since there is nothing worth a thread
+
+    max_threads defaults to NUMBA_NUM_THREADS if set, else os.cpu_count().
+    """
+    if max_threads is None:
+        max_threads = int(os.environ.get('NUMBA_NUM_THREADS', '0') or '0') or os.cpu_count() or 1
+    if num_setups >= MIN_SETUPS_TO_THREAD and max_threads > 1:
+        return ThreadingPlan('setups', min(max_threads, num_setups))
+    if num_setups == 1 and num_particles >= MIN_PARTICLES_TO_THREAD and max_threads > 1:
+        return ThreadingPlan('particles', max_threads)
+    return ThreadingPlan('serial', 1)

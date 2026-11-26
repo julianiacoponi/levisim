@@ -24,7 +24,16 @@ pip install -e ".[dev]"          # editable, with pytest, ruff and the build too
 notebooks follow `main`; to run them against a release, check out its tag first, e.g.
 `git checkout v0.1.0`.
 
-Both need Python 3.10 or newer and install the runtime dependencies too. Optional extras: `elk`
+For long stochastic simulations, add the `fast` extra, which installs numba and lets
+`FreeSpaceSimulation` run a compiled time loop (about 100 times faster per step, the same random
+numbers, results equal to round-off; see [Stochastic simulations](guide/stochastic_simulations.md)):
+
+```sh
+pip install "levisim[fast]"
+```
+
+Both need Python 3.10 or newer and install the runtime dependencies too. Optional extras: `fast`
+(numba, compiled simulation loops), `elk`
 (ship logs to Elasticsearch, see [Logging](guide/logging.md)), `notify` (desktop notifications
 from long test runs), `video` (OpenCV, for the image-comparison helpers), `notebooks` (JupyterLab
 and what the notebooks import), `docs` (Sphinx, to build these pages) and `dev` (pytest and ruff),

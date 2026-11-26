@@ -7,7 +7,7 @@ doi:10.1103/PhysRevResearch.6.013129
 
 A nanosphere in a free-space tweezer, feedback-cooled in x and y, is kicked by a white-noise force
 of strength β² S_th along a fixed direction ψ in the x-y plane, on top of the thermal force. The
-stochastic Runge-Kutta `Simulation` applies the same random force to x (∝ cos ψ) and y (∝ sin ψ),
+stochastic Runge-Kutta `FreeSpaceSimulation` applies the same random force to x (∝ cos ψ) and y (∝ sin ψ),
 which correlates the two motions:
 
     (a) the power spectral densities S_xx and S_yy are the same for ψ = +45° and -45°; the shaded
@@ -29,7 +29,7 @@ from common import quiet_console, COLOURS, plotly_layout, save, setup_matplotlib
 
 from levisim.analysis.spectral_density_estimate import SpectralDensityEstimate  # noqa: E402
 from levisim.core.units import degrees, kHz, μs  # noqa: E402
-from levisim.data.simulation import Simulation  # noqa: E402
+from levisim.simulation import FreeSpaceSimulation  # noqa: E402
 from levisim.physics.trap import Trap  # noqa: E402
 
 NAME = 'prr6_directional_force'
@@ -45,7 +45,7 @@ def compute(quick=False):
     data = {}
     for ψ in ANGLES:
         trap = Trap(ψ=ψ * degrees)   # β = √2: directed force twice the thermal force PSD
-        sim = Simulation(trap=trap, num_samples=num_samples, Δt=0.1 * μs, seed=2024)
+        sim = FreeSpaceSimulation(trap=trap, num_samples=num_samples, Δt=0.1 * μs, seed=2024)
         estimates = {ij: SpectralDensityEstimate(sim, ij, num_segments=num_segments) for ij in ('xx', 'yy', 'xy')}
         f = estimates['xx'].freq_range
         band = (f > BAND[0]) & (f < BAND[1])
