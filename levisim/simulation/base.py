@@ -29,6 +29,11 @@ __all__ = [
 ]
 
 
+
+def _no_hook():
+    """Stand-in for an absent optional hook"""
+
+
 class StochasticSimulation:
     """
     Base class of levisim's stochastic time-domain simulations, dX = F(t, X) dt + G dW
@@ -64,6 +69,9 @@ class StochasticSimulation:
     - optionally `compiled_integrate(integrator, G, S, X0, time_array)`: a compiled time loop that
       consumes the random numbers exactly as `integrator.integrate` does (return None when the
       configuration has no kernel, and NumPy is used)
+    - optionally `prepare_numpy_loop()` and `release_numpy_loop()`: called just before and just after
+      the NumPy time loop (e.g. to resolve the force dispatch once per run instead of once per drift
+      evaluation)
     """
 
     # optional callable X -> X applied after every step (see Integrator.integrate); None: no projection
@@ -205,10 +213,15 @@ class StochasticSimulation:
             # a subclass with a constrained state (RigidBodySimulation) projects after every step;
             # the keyword is passed only then, so integrators written before it keep working
             project_kwargs = {} if self.project_state is None else {'project': self.project_state}
-            X = integrator.integrate(
-                self.drift, G, S, X0, time_array, self.Δt, self._noise_chunks,
-                debug=self.debug, trace_steps=self.rk_loop_debug, **project_kwargs,
-            )
+            # (looked up with getattr: duck-typed systems that borrow simulate_dynamics may lack them)
+            getattr(self, 'prepare_numpy_loop', _no_hook)()
+            try:
+                X = integrator.integrate(
+                    self.drift, G, S, X0, time_array, self.Δt, self._noise_chunks,
+                    debug=self.debug, trace_steps=self.rk_loop_debug, **project_kwargs,
+                )
+            finally:
+                getattr(self, 'release_numpy_loop', _no_hook)()
 
         elapsed_seconds = time.perf_counter() - start_time
         logger.debug(

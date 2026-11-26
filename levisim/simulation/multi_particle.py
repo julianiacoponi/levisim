@@ -121,6 +121,16 @@ class MultiParticleFreeSpaceSimulation(StochasticSimulation):
             dynamics.reshape(self.num_particles, 6)[:, 3:] += self.interaction_forces(X, t)
         return dynamics
 
+    def prepare_numpy_loop(self):
+        """Resolves every particle's force dispatch once for the run (FreeSpaceSimulation.prepare_numpy_loop)"""
+        for single in self.single_particle_systems:
+            single.prepare_numpy_loop()
+
+    def release_numpy_loop(self):
+        """Drops the per-run force dispatch of every particle"""
+        for single in self.single_particle_systems:
+            single.release_numpy_loop()
+
     def noise_matrix(self):
         """
         Block-diagonal noise matrix, one FreeSpaceSimulation block per particle: 6 × 4, plus one column
