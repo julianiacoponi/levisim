@@ -1186,7 +1186,7 @@ class MultiTrapBase:
         Mathieu a_j (`PaulTrap.mathieu_parameters`), and Ωjn = β_j·Ω_rf/2 with β_j the characteristic
         exponent from the Floquet monodromy (`mathieu_characteristic_exponent`). The lowest-order
         secular stiffness of `Trap.Ωj` underestimates the Floquet frequency of a Paul trap alone (a = 0)
-        by 0.8% at |q| = 0.2, 1.8% at |q| = 0.3 and 3.3% at |q| = 0.4, and by more in a hybrid trap,
+        by 0.8% at ``|q|`` = 0.2, 1.8% at ``|q|`` = 0.3 and 3.3% at ``|q|`` = 0.4, and by more in a hybrid trap,
         whose other elements raise a. The frequencies of such traps without the static terms are kept in
         `self.paul_floquet_Ωj` [2π·Hz], and the trap indices in `self.floquet_paul_traps`. A trap
         given override_Ω_dict, or with more than one PaulTrap (whose rf drives need not be

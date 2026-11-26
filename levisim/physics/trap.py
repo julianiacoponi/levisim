@@ -108,9 +108,9 @@ class Trap:
     This class also allows for:
     - Arbitrary values of feedback damping in x, y, z
     - Stochastic, directed force noise in the x-y plane, fdir = β·fth at angle ψ (default β = √2 for the
-      tweezer shorthand, the historical value; β = 0 for a trap built with fields=[...])
+    tweezer shorthand, the historical value; β = 0 for a trap built with fields=[...])
     - The finite-size alignment torque of an extended particle (`finite_size_torque`, default on for
-      a non-spherical particle and off for a sphere)
+    a non-spherical particle and off for a sphere)
     - Kicks at specified times (step-like impulses) in the x-y plane (to be used in Simulation, or deduced from Experiment)
     - Photon recoil (turned on or off)
     - Overriding the Tweezer potential's natural frequencies
