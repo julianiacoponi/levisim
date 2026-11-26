@@ -377,7 +377,7 @@ class Dimension:
     def dispersive_light_mech_coupling(self):
         """
         The light-mechanical coupling of the cavity's own standing-wave potential
-        U_cav = -α_pol·E0²·|α|²·cos²(kc·d·r + Φ), which MultiTrap(cavity_dispersive_coupling=True)
+        ``U_cav = -α_pol·E0²·|α|²·cos²(kc·d·r + Φ)``, which MultiTrap(cavity_dispersive_coupling=True)
         adds to `G`. Its term linear in both the displacement and the cavity fluctuation a,
         α_pol·E0²·kc·sin 2Φ·(d·r)·(ᾱ·a† + ᾱ*·a), is -ħ·q·(G_disp·a† + G_disp*·a) with ::
 

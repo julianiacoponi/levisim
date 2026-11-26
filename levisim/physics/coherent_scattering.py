@@ -158,7 +158,7 @@ def cavity_mode_polarisability(trap, effective_polarisability=True):
     """
     The polarisability e_c·α·e_c of the particle for the cavity mode's own light (the cavity
     dispersive term U_cav and the cavity pull), with α = Re α_eff at the drive tweezer's wavenumber
-    (the cavity light's, to |Δ|/ω ~ 10⁻⁹), or the static tensor with effective_polarisability=False;
+    (the cavity light's, to abs(Δ)/ω ~ 10⁻⁹), or the static tensor with effective_polarisability=False;
     Re α_eff (or `Bead.α`) for an isotropic sphere
     [Fm²]
     """

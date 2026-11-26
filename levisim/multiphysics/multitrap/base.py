@@ -1182,7 +1182,7 @@ class MultiTrapBase:
         node or with equal phases only.
 
         With `cavity_dispersive_coupling` (the default) the beads also pull the cavity frequency
-        through the cavity's own standing-wave potential, -α_pol·E0²·|α|²·cos²(k·d·r + Φn), by
+        through the cavity's own standing-wave potential, ``-α_pol·E0²·|α|²·cos²(k·d·r + Φn)``, by
         δn·cos²Φn with δn = α_pol·E0²/ħ (δn/2π ≈ 3.4 kHz for a 60 nm bead in the default cavity, so a
         pull of 1.7 kHz at Φ = π/4): Δ → Δ + Σ δn·cos²Φn
         (`Cavity.dispersive_shift`) in the static field above and in the drift matrix. It vanishes
