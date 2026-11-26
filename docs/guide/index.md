@@ -7,6 +7,7 @@ cavity_spectra
 stability
 stochastic_simulations
 paul_traps
+magnetic_levitation
 cavity_simulations
 logging
 ../two_tone_entanglement/README
@@ -23,6 +24,11 @@ logging
 - [Paul and hybrid traps](paul_traps.md): the `PaulTrap` element (full rf force and secular
   stiffness), Mathieu parameters and the exact stability region, micromotion, sag and stray fields,
   electrode noise and heating, and hybrid Paul-optical traps in `Trap` and `MultiTrap`.
+- [Magnetic levitation](magnetic_levitation.md): the `MagneticTrap` element for a diamagnetic
+  particle in a static field (shape-corrected and tensor susceptibility), the field sources (local
+  expansion, multipoles, current loops and coil pairs, magnet blocks, user callables), the levitation
+  condition, `Trap.magnetic_trap_report`, eddy-current damping and magneto-gravitational traps in the
+  time domain.
 - [Time traces of particles in a cavity](cavity_simulations.md): `CavitySimulation` and
   `MultiTrap.simulate`, the exact linear model, its homodyne, heterodyne, photon-flux and position
   records, and their validation against the `MultiTrap` spectra.

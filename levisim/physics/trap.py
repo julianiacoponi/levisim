@@ -84,7 +84,8 @@ class Trap:
     then add one), and ``tweezer=`` may not be given as well.
 
     The total stiffness tensor is the sum of the elements' stiffness tensors at the
-    `linearisation_point` (the origin, i.e. the tweezer focus, by default); its diagonal gives kx, ky,
+    `linearisation_point` (the origin, i.e. the tweezer focus, by default; a position, or 'equilibrium'
+    for `find_equilibrium` started from ``equilibrium_guess``); its diagonal gives kx, ky,
     kz and the frequencies Ωj = √(kj/m), and its off-diagonal part the `intra_trap_couplings`.
     Optical-only quantities (tweezer, α_eff, U_depth, photon_recoil_heating_rates, σ_scattering,
     z_eq, Utw, Ftw, ...) use the first optical element and raise a `MissingOpticalFieldError` (a
@@ -160,13 +161,14 @@ class Trap:
         # ------------------------------------------------------------------------------------------
         # Point about which the stiffness tensor (and so kj, Ωj) is evaluated: the origin (the
         # tweezer focus) by default, as levisim always has; give a position, or 'equilibrium' for
-        # the root of the static force (find_equilibrium)
+        # the root of the static force (find_equilibrium, started from equilibrium_guess if given)
         # [m]
         linearisation_point = kwargs.get('linearisation_point', None)
         if isinstance(linearisation_point, str):
             if linearisation_point != 'equilibrium':
                 raise ValueError(f"linearisation_point must be a position or 'equilibrium', not {linearisation_point!r}")
-            linearisation_point = self.find_equilibrium()
+            # equilibrium_guess: where find_equilibrium starts (default the origin)
+            linearisation_point = self.find_equilibrium(r_guess=kwargs.get('equilibrium_guess'))
         self.linearisation_point = (
             np.zeros(3) if linearisation_point is None else as_position(linearisation_point)
         )
@@ -773,13 +775,29 @@ class Trap:
     # ----------------------------------------------------------------------------------------------
     # OTHER PER AXIS PROPERTIES
     # ----------------------------------------------------------------------------------------------
+    @property
+    def _other_damping_rates(self):
+        """
+        Summed damping_rates of the 'damping' elements other than Feedback (e.g. EddyCurrentDamping),
+        or None if there are none (so that the damping of every other trap is computed as before)
+        [2π·Hz]
+        """
+        others = [
+            element for element in self.fields_in_group('damping') if not isinstance(element, Feedback)
+        ]
+        if not others:
+            return None
+        return sum(np.asarray(element.damping_rates(self.bead), dtype=float) for element in others)
+
     @cached_property
     def Γx(self):
         """
         Total mechanical damping rate of (x, y, z)-motion oscillations
         [2π·Hz]
         """
-        return self.Γth_j['x'] + self.Γ_fbx
+        Γ = self.Γth_j['x'] + self.Γ_fbx
+        extra = self._other_damping_rates
+        return Γ if extra is None else Γ + extra[0]
 
     @cached_property
     def Γy(self):
@@ -787,7 +805,9 @@ class Trap:
         Total mechanical damping rate of y-motion oscillations
         [2π·Hz]
         """
-        return self.Γth_j['y'] + self.Γ_fby
+        Γ = self.Γth_j['y'] + self.Γ_fby
+        extra = self._other_damping_rates
+        return Γ if extra is None else Γ + extra[1]
 
     @cached_property
     def Γz(self):
@@ -795,7 +815,9 @@ class Trap:
         Total mechanical damping rate of z-motion oscillations
         [2π·Hz]
         """
-        return self.Γth_j['z'] + self.Γ_fbz
+        Γ = self.Γth_j['z'] + self.Γ_fbz
+        extra = self._other_damping_rates
+        return Γ if extra is None else Γ + extra[2]
 
     @cached_property
     def Γj(self):
@@ -1665,8 +1687,18 @@ class Trap:
         origin), e.g. the gravitational sag -g/Ωj² of a Gravity element, or z_eq_exact with recoil
         [m]
         """
-        scale = 1e-9  # solve in nm
         r_guess = np.zeros(3) if r_guess is None else as_position(r_guess)
+        from levisim.physics.fields.magnetic import (
+            MagneticTrap,
+            find_static_equilibrium,
+        )
+        magnetic = self.fields_of_type(MagneticTrap)
+        if magnetic:
+            # a magnetic trap: Newton's method on the analytic stiffness, after a scan of the vertical
+            # line through r_guess for the stable force balance with gravity (the origin is usually
+            # not near the levitation point, and the stiffness there need not be restoring)
+            return find_static_equilibrium(self, r_guess, magnetic[0].source.length_scale)
+        scale = 1e-9  # solve in nm
         # residuals in units of the force of a 1 nm displacement (stiffness at the origin)
         K0 = sum(element.stiffness(None, self.bead) for element in self.fields)
         force_scale = max(float(np.max(np.abs(np.diag(K0)))) * scale, 1e-30)
@@ -1678,6 +1710,22 @@ class Trap:
         if status != 1:
             raise RuntimeError(f'find_equilibrium did not converge: {message}')
         return solution * scale
+
+    def magnetic_trap_report(self, element=None, r_guess=None, scan_range=None):
+        """
+        Levitation condition and margin, equilibrium (with gravity and every other static element),
+        stiffness tensor, axis and normal-mode frequencies, couplings, trap depth and eddy-current
+        damping of the trap's `MagneticTrap` (the first, or `element`), as a dict; see
+        `levisim.physics.fields.magnetic.magnetic_trap_report`
+        [dict]
+        """
+        from levisim.physics.fields.magnetic import magnetic_trap_report
+        return magnetic_trap_report(self, element=element, r_guess=r_guess, scan_range=scan_range)
+
+    def magnetic_trap_report_str(self, element=None, r_guess=None, scan_range=None):
+        """The `magnetic_trap_report` as a printable summary"""
+        from levisim.physics.fields.magnetic import magnetic_trap_report_str
+        return magnetic_trap_report_str(self.magnetic_trap_report(element, r_guess, scan_range))
 
     def paul_trap_report(self, element=None):
         """

@@ -34,6 +34,7 @@ papers/penny2023_sympathetic_cooling.ipynb               300   # [12 s with numb
 papers/krisnanda2020_gravity_entanglement.ipynb          180   # [15 s]
 papers/rieser2022_optical_binding.ipynb                  180   # [6-8 s]
 papers/reisenbauer2024_nonreciprocal_binding.ipynb      900   # [380-450 s, NumPy time loop]
+papers/slezak2018_magneto_gravitational_trap.ipynb      300   # [60-75 s]
 
 # archive (outputs stripped)
 archive/animations/3x2_truncated_heatmap.ipynb                     180   # [6 s]
