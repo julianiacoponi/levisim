@@ -58,6 +58,9 @@ __all__ = [
     'LIBRATION_AXIS_INDEX',
     'angular_velocity_body',
     'dipole_moment_torque',
+    'finite_size_potential',
+    'finite_size_torque',
+    'finite_size_torque_stiffness',
     'induced_static_torque',
     'is_libration_axis',
     'magnetic_torque',
@@ -69,6 +72,7 @@ __all__ = [
     'rotated_tensor_derivatives',
     'rotation_vector_between',
     'rotational_energy',
+    'second_moment_tensor',
     'symmetric_hessian_of_projection',
 ]
 
@@ -266,3 +270,55 @@ def symmetric_hessian_of_projection(T, u, v=None):
     gradient = np.einsum('a,jab,b->j', np.conj(u), dT, v)
     hessian = np.einsum('a,ijab,b->ij', np.conj(u), d2T, v)
     return gradient, hessian
+
+
+# --------------------------------------------------------------------------------------------------
+# finite-size (Rayleigh–Gans) alignment in an anisotropic trap
+# --------------------------------------------------------------------------------------------------
+def second_moment_tensor(inertia):
+    """
+    Second moment S = ∫ρ r rᵀ dV of a rigid body about its centre of mass from its inertia tensor,
+    S = ½Tr(I)·𝟙 - I (in the frame of I); for an ellipsoid of semi-axes a, b, c it is
+    (m/5)·diag(a², b², c²)
+    [kg·m²]
+    """
+    I = np.asarray(inertia, dtype=float)
+    return 0.5 * np.trace(I) * np.eye(3) - I
+
+
+def finite_size_potential(stiffness, second_moment):
+    """
+    Orientation-dependent energy of an extended particle in a harmonic trap of stiffness tensor k,
+    U = ½·Tr(k·⟨r rᵀ⟩) with ⟨r rᵀ⟩ = S/m the mass-weighted second moment in the lab frame
+    (`second_moment` is S/m). In the generalised Rayleigh–Gans picture the potential energy density
+    follows the intensity, so the particle's own extent samples the trap curvature: the longer axis
+    turns towards the weaker confinement (Kamba et al., Nat. Commun. 14, 7943 (2023), Eq. (3);
+    Seberson and Robicheaux, Phys. Rev. A 102, 033505 (2020))
+    [J]
+    """
+    return 0.5 * float(np.trace(np.asarray(stiffness, dtype=float) @ np.asarray(second_moment, dtype=float)))
+
+
+def finite_size_torque(stiffness, second_moment):
+    """
+    Lab-frame torque τ_j = -∂U/∂θ_j of `finite_size_potential` for small lab rotations θ
+    [N·m]
+    """
+    k = np.asarray(stiffness, dtype=float)
+    S = np.asarray(second_moment, dtype=float)
+    dS, _ = rotated_tensor_derivatives(S)
+    return -0.5 * np.einsum('ab,jba->j', k, dS)
+
+
+def finite_size_torque_stiffness(stiffness, second_moment):
+    """
+    Torque stiffness K_ij = ∂²U/∂θ_i∂θ_j of `finite_size_potential` at the current orientation;
+    for an ellipsoid with principal axes along the lab axes and k = m·diag(Ωx², Ωy², Ωz²),
+    K_x = (Ωz² - Ωy²)·(S_yy - S_zz), so that Ω_lx² = (Ωz² - Ωy²)(q² - r²)/(q² + r²) (Kamba et al.)
+    [N·m/rad]
+    """
+    k = np.asarray(stiffness, dtype=float)
+    S = np.asarray(second_moment, dtype=float)
+    _, d2S = rotated_tensor_derivatives(S)
+    K = 0.5 * np.einsum('ab,ijba->ij', k, d2S)
+    return 0.5 * (K + K.T)

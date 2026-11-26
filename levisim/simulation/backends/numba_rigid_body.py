@@ -25,7 +25,8 @@ _FB = 7          # 3 feedback rates (lab)
 _DRIVE = 10      # flag, offset (3), amplitude (3), ω, phase
 _ANG = 19        # flag, 3 angular damping rates (lab)
 _RECOIL_C = 23   # k³/(12π ε0) of the tweezer (recoil of the radiated angular momentum)
-_NUM_PARAMETERS = 24
+_FS = 24         # flag: finite-size alignment torque (tensors 3: k, 4: S_body/m, 5-7: generators)
+_NUM_PARAMETERS = 25
 
 
 def rigid_body_parameters(sim):
@@ -52,7 +53,12 @@ def rigid_body_parameters(sim):
     if sim.angular_damping is not None:
         P[_ANG] = 1.0
         P[_ANG + 1:_ANG + 4] = sim.angular_damping
-    tensors = np.ascontiguousarray(np.stack([sim.inertia_inverse, sim.Γ_cm, sim.Γ_rot]), dtype=np.float64)
+    if sim.finite_size_torque:
+        P[_FS] = 1.0
+    from levisim.physics.rotation import GENERATORS
+    tensors = np.ascontiguousarray(
+        np.stack([sim.inertia_inverse, sim.Γ_cm, sim.Γ_rot, sim._fs_k, sim._fs_S_body, *GENERATORS]), dtype=np.float64,
+    )
     parametric = np.ascontiguousarray(sim.parametric_feedback, dtype=np.float64).reshape(-1, 8)
     return P, α_body, e, tensors, parametric
 
@@ -137,6 +143,34 @@ def _drift(t, X, P, A, e, T, Q, out):
         τ_b[0] = amplitude2 * (0.5 * (vc1*u[2] - vc2*u[1]).real - cr * (vc1*v[2] - vc2*v[1]).imag)
         τ_b[1] = amplitude2 * (0.5 * (vc2*u[0] - vc0*u[2]).real - cr * (vc2*v[0] - vc0*v[2]).imag)
         τ_b[2] = amplitude2 * (0.5 * (vc0*u[1] - vc1*u[0]).real - cr * (vc0*v[1] - vc1*v[0]).imag)
+
+    if P[_FS] != 0.0:
+        # τ_j = -½ Tr(k dS_j), dS_j = G_j S - S G_j, S = R S_body Rᵀ (levisim.physics.rotation)
+        S_lab = np.zeros((3, 3))
+        for a in range(3):
+            for b in range(3):
+                acc = 0.0
+                for c in range(3):
+                    for d in range(3):
+                        acc += R[a, c] * T[4, c, d] * R[b, d]
+                S_lab[a, b] = acc
+        B = np.zeros((3, 3))
+        for a in range(3):
+            for b in range(3):
+                acc = 0.0
+                for c in range(3):
+                    acc += S_lab[a, c] * T[3, c, b] - T[3, a, c] * S_lab[c, b]
+                B[a, b] = acc
+        τ_fs = np.zeros(3)
+        for j in range(3):
+            acc = 0.0
+            for a in range(3):
+                for b in range(3):
+                    acc += T[5 + j, a, b] * B[b, a]
+            τ_fs[j] = -0.5 * acc
+        for i in range(3):
+            for j in range(3):
+                τ_b[i] += factor * R[j, i] * τ_fs[j]
 
     τ_lab = np.zeros(3)
     extra = False

@@ -198,6 +198,10 @@ class Trap:
         # Override resonant frequencies (that ignore Tweezer properties)
         # useful to get SpectralDensityTheory curves to match Experiment or Simulation data
         self.override_Ω_dict = kwargs.get('override_Ω_dict', None)
+        # Opt-in finite-size alignment torque of an extended particle in the anisotropic trap
+        # (levisim.physics.rotation.finite_size_potential): off by default, so the point-dipole
+        # torques are unchanged
+        self.finite_size_torque = bool(kwargs.get('finite_size_torque', False))
 
         # ------------------------------------------------------------------------------------------
         # Cavity drive: the light this bead coherently scatters into a cavity (used by MultiTrap)
@@ -940,7 +944,26 @@ class Trap:
         total = np.zeros(3)
         for element in self.fields:
             total = total + np.asarray(element.torque(self.linearisation_point, 0.0, self.bead), dtype=float)
+        if self.finite_size_torque:
+            from levisim.physics.rotation import finite_size_torque
+            total = total + finite_size_torque(*self.finite_size_tensors)
         return total
+
+    @cached_property
+    def finite_size_tensors(self):
+        """
+        (k, S/m): the translational stiffness tensor that the finite-size torque uses (m·Ωj² from
+        `override_Ω_dict` when it gives x, y and z, else `stiffness_tensor`) and the particle's
+        lab-frame mass-weighted second moment ⟨r rᵀ⟩ (`levisim.physics.rotation.second_moment_tensor`)
+        [N/m], [m²]
+        """
+        from levisim.physics.rotation import second_moment_tensor
+        if self.override_Ω_dict and all(axis in self.override_Ω_dict for axis in 'xyz'):
+            k = self.bead.m * np.diag([float(self.override_Ω_dict[axis])**2 for axis in 'xyz'])
+        else:
+            k = np.asarray(self.stiffness_tensor, dtype=float)
+        S_body = second_moment_tensor(self.bead.inertia_tensor) / self.bead.m
+        return k, np.asarray(self.bead.lab_tensor(S_body), dtype=float)
 
     @cached_property
     def torque_stiffness_tensor(self):
@@ -952,6 +975,9 @@ class Trap:
         total = np.zeros((3, 3))
         for element in self.fields:
             total = total + element.torque_stiffness(self.bead, None, self.linearisation_point)
+        if self.finite_size_torque:
+            from levisim.physics.rotation import finite_size_torque_stiffness
+            total = total + finite_size_torque_stiffness(*self.finite_size_tensors)
         return total
 
     @cached_property

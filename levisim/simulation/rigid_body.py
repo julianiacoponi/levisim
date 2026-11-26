@@ -34,7 +34,7 @@ from levisim.core.logger import logger
 from levisim.core.units import μs
 from levisim.physics.fields.elements import Feedback
 from levisim.physics.particle import quaternion_to_rotation_matrix
-from levisim.physics.rotation import rotation_vector_between
+from levisim.physics.rotation import finite_size_torque, rotation_vector_between
 from levisim.physics.trap import Trap
 from levisim.physics.tweezer import Tweezer
 from levisim.simulation.base import StochasticSimulation
@@ -126,6 +126,9 @@ class RigidBodySimulation(StochasticSimulation):
         torque_drive [None]: dict(amplitude=(τx, τy, τz) [N·m], ω [rad/s], phase [rad], offset [N·m]):
             a lab-frame torque offset + amplitude·cos(ω t + phase)
         angular_damping [None]: (Γx, Γy, Γz) [1/s]: a lab-frame cold-damping torque -Γj·L_lab,j
+        finite_size_torque [trap.finite_size_torque]: the finite-size alignment torque of the extended
+            particle in the trap's translational stiffness (`Trap.finite_size_tensors`, harmonic,
+            evaluated at the trap centre; scaled with the tweezer intensity modulation)
 
     backend ['auto']: 'numba' compiles the loop for a trap of at most one `Tweezer` plus `Feedback`
     elements, with the built-in controls but no callables; anything else runs the NumPy loop.
@@ -186,6 +189,14 @@ class RigidBodySimulation(StochasticSimulation):
             }
         angular_damping = kwargs.get('angular_damping')
         self.angular_damping = None if angular_damping is None else np.asarray(angular_damping, dtype=float).reshape(3)
+        self.finite_size_torque = bool(kwargs.get('finite_size_torque', getattr(self.trap, 'finite_size_torque', False)))
+        if self.finite_size_torque:
+            self._fs_k, _ = self.trap.finite_size_tensors
+            from levisim.physics.rotation import second_moment_tensor
+            self._fs_S_body = second_moment_tensor(self.particle.inertia_tensor) / self.particle.m
+        else:
+            self._fs_k = np.zeros((3, 3))
+            self._fs_S_body = np.zeros((3, 3))
 
         # the elements by role
         self.tweezers = [element for element in self.trap.fields if isinstance(element, Tweezer)]
@@ -301,6 +312,8 @@ class RigidBodySimulation(StochasticSimulation):
                 τ = np.asarray(element.torque(r, t, self.particle, orientation=orientation), dtype=float)
                 if np.any(τ):
                     τ_b = τ_b + R.T @ τ
+        if self.finite_size_torque:
+            τ_b = τ_b + factor * (R.T @ finite_size_torque(self._fs_k, R @ self._fs_S_body @ R.T))
         τ_lab = np.zeros(3)
         if self.torque_drive is not None:
             d = self.torque_drive

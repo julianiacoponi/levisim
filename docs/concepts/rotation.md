@@ -76,6 +76,20 @@ The rotational friction and diffusion tensors are those of Martinetz et al., Phy
 (2018), from the shapes (`Particle.rotational_damping_tensor`, `rotational_diffusion_tensor`):
 $\dot J = -\Gamma_\text{rot}J$ with angular-momentum diffusion $2k_BT\,\Gamma_\text{rot}I$.
 
+### Finite-size alignment in an anisotropic trap
+
+A particle that is not small compared with the trap's length scales also samples the curvature of
+the intensity over its own extent. In the generalised Rayleigh–Gans picture this adds
+$U = \tfrac12\mathrm{Tr}(k\,\langle r r^\top\rangle)$, with $k$ the translational stiffness tensor and
+$\langle r r^\top\rangle = S/m$ the particle's mass-weighted second moment in the lab frame
+(`rotation.second_moment_tensor`, `finite_size_potential`, `finite_size_torque`,
+`finite_size_torque_stiffness`). It turns the longer axes towards the weaker confinement; for an
+ellipsoid with radii $p, q, r$ along the lab axes it gives
+$\Omega_{lx}^2 = (\Omega_z^2 - \Omega_y^2)(q^2 - r^2)/(q^2 + r^2)$, the trap-anisotropy term of
+Kamba et al., Nat. Commun. **14**, 7943 (2023), Eq. (3). It is opt-in, `Trap(finite_size_torque=True)`
+(then also the default of `RigidBodySimulation`), so the point-dipole torques are unchanged by default;
+`Trap` uses $m\Omega_j^2$ from `override_Ω_dict` when that gives x, y and z.
+
 ## Time domain: `RigidBodySimulation`
 
 ```python

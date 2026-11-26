@@ -512,3 +512,58 @@ def test_nonlinear_cavity_model_rejects_librations():
     mt = libration_multitrap(π/4)
     with pytest.raises(NotImplementedError, match='translations only'):
         mt.simulate(model='nonlinear', num_samples=10)
+
+
+# --------------------------------------------------------------------------------------------------
+# finite-size alignment torque in an anisotropic trap
+# --------------------------------------------------------------------------------------------------
+def test_finite_size_torque_against_finite_differences_and_kamba_eq3():
+    from levisim.physics.particle import quaternion_to_rotation_matrix
+    from levisim.physics.rotation import (
+        finite_size_potential,
+        finite_size_torque,
+        finite_size_torque_stiffness,
+        quaternion_from_rotation_vector,
+        second_moment_tensor,
+    )
+    particle = Ellipsoid(176*nm, 175.3*nm, 174.5*nm)
+    m = particle.m
+    S_body = second_moment_tensor(particle.inertia_tensor) / m
+    assert np.allclose(S_body, np.diag([176**2, 175.3**2, 174.5**2]) * nm**2 / 5, rtol=1e-12)
+    k = m * np.diag([65.0, 73.5, 205.0])**2 * (2 * π * 1e3)**2
+    R0 = quaternion_to_rotation_matrix(quaternion_from_rotation_vector([0.2, -0.3, 0.1]))
+    S = R0 @ S_body @ R0.T
+    h = 1e-5
+    U = lambda θ: finite_size_potential(k, quaternion_to_rotation_matrix(quaternion_from_rotation_vector(θ)) @ S
+                                        @ quaternion_to_rotation_matrix(quaternion_from_rotation_vector(θ)).T)
+    τ_fd = np.array([-(U(h * e) - U(-h * e)) / (2 * h) for e in np.eye(3)])
+    assert np.allclose(finite_size_torque(k, S), τ_fd, rtol=1e-6, atol=1e-6 * np.abs(τ_fd).max())  # finite-difference round-off
+    # Kamba et al. (2023), Eq. (3), aligned axes: Ω_lx² = (Ωz² - Ωy²)(q² - r²)/(q² + r²)
+    K = finite_size_torque_stiffness(k, S_body)
+    I = particle.inertia_tensor
+    Ω2 = np.diag(k) / m
+    p, q, r = 176.0, 175.3, 174.5
+    assert K[0, 0] / I[0, 0] == pytest.approx((Ω2[2] - Ω2[1]) * (q**2 - r**2) / (q**2 + r**2), rel=1e-10)
+    assert K[1, 1] / I[1, 1] == pytest.approx((Ω2[2] - Ω2[0]) * (p**2 - r**2) / (p**2 + r**2), rel=1e-10)
+    assert K[2, 2] / I[2, 2] == pytest.approx((Ω2[1] - Ω2[0]) * (p**2 - q**2) / (p**2 + q**2), rel=1e-10)
+
+
+def test_finite_size_torque_in_trap_and_rigid_body():
+    pytest.importorskip('numba')
+    particle = Spheroid(a=70*nm, b=50*nm, orientation=body_axis_to_quaternion((0, 1, 0)))
+    plain = Trap(tweezer=Tweezer(), particle=particle, gas=Gas(P=1 * mbar))
+    extended = Trap(tweezer=Tweezer(), particle=particle, gas=Gas(P=1 * mbar), finite_size_torque=True)
+    # default off: point-dipole numbers unchanged; on: α and γ split (the beam axis is softer)
+    assert plain.Ωθ['α'] == pytest.approx(plain.Ωθ['γ'], rel=1e-12)
+    assert extended.Ωθ['α'] < plain.Ωθ['α'] < extended.Ωθ['γ']
+    common = {'trap': extended, 'num_samples': 3000, 'Δt': 2e-9, 'seed': 4, 'recoil': True, 'ω0': (1e5, 2e4, -1e5)}
+    numba_run = RigidBodySimulation(backend='numba', **common)
+    numpy_run = RigidBodySimulation(backend='numpy', **common)
+    assert numba_run.backend_used == 'numba'
+    assert np.allclose(numba_run.X, numpy_run.X, rtol=1e-9, atol=1e-12 * np.abs(numpy_run.X).max(axis=0))
+    # the time-domain libration frequencies follow the extended trap
+    sim = RigidBodySimulation(trap=extended, num_samples=20000, Δt=2e-9, gas_damping=False, ω0=(1e3, 0, 0))
+    θ = sim.lab_directions((0, 0, 1))[:, 2]
+    crossings = np.flatnonzero(np.diff(np.sign(θ)) > 0)
+    Ω_sim = 2 * π / (np.diff(crossings).mean() * sim.Δt)
+    assert Ω_sim == pytest.approx(extended.Ωθ['α'], rel=2e-3)
