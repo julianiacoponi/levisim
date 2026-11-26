@@ -64,6 +64,7 @@ from levisim.multiphysics.multitrap.omega_model import ΩModel
 from levisim.physics.bead import Bead
 from levisim.physics.cavity import Cavity
 from levisim.physics.coherent_scattering import (
+    cavity_mode_polarisability,
     drive_polarisability,
     hessian_to_coupling_rate,
     librational_expansion,
@@ -77,6 +78,7 @@ from levisim.physics.tweezer import Tweezer
 
 __all__ = [
     'MultiTrapBase',
+    'equilibrium_linearisation',
 ]
 
 
@@ -87,6 +89,72 @@ PROGRESS_BAR = True
 
 # keyword arguments of MultiTrap that replace the built-in per-trap physics (one entry per trap)
 PHYSICAL_PER_TRAP_KWARGS = ('tweezers', 'beads', 'trap_kwargs')
+
+
+def equilibrium_linearisation(mtrap, model):
+    """
+    The linear parameters of `MultiTrap.from_nonlinear_equilibrium` from the Jacobian of a
+    NonlinearCavityModel (damping='symmetric') of `mtrap` at its equilibrium, as a dict with
+    'Ω' {trap index: {axis: Ω}}, 'G' {label: G}, 'mechanical_coupling_matrix' (over mtrap.labels),
+    'α' (cavity-frame static field), 'dispersive_shift' (the pull Δ_eff - Δ) and 'stiffness'
+    (N, 3, N, 3) [N/m]
+
+    The model's quadratures are X_j = r_j/x_zpf,j and P_j = p_j/(m·Ω_j·x_zpf,j) with mtrap's
+    frequencies, so the Jacobian gives the physical derivatives: the stiffness
+    K[n a, m b] = -∂F_{n a}/∂r_{m b} = -J[P_{n a}, X_{m b}]·m·Ω_{n a}·x_zpf,{n a}/x_zpf,{m b} and
+    ∂F_j/∂(A, P) = J[P_j, (A, P)]·m·Ω_j·x_zpf,j. With the new frequencies Ω'_j = √(K_jj/m) and
+    x'_zpf,j = √(ħ/(2mΩ'_j)), Gj = (∂F_j/∂A + i·∂F_j/∂P)·x'_zpf,j/ħ (from H/ħ ∋ -qj·(Gj·a† + Gj*·a),
+    with δα = (δA + iδP)/2) and gjk = -K_jk·x'_zpf,j·x'_zpf,k/ħ.
+    """
+    J = model.jacobian
+    N = model.num_particles
+    inv_P = model.parameters[:, 3:6]          # 1/(m·Ω·x_zpf)
+    zpf = model.zpf
+
+    def iX(p, a):
+        return 2 + 6 * p + 2 * a
+
+    K = np.zeros((N, 3, N, 3))
+    for p in range(N):
+        for a in range(3):
+            for q in range(N):
+                for b in range(3):
+                    K[p, a, q, b] = -J[iX(p, a) + 1, iX(q, b)] / (inv_P[p, a] * zpf[q, b])
+    Ω, zpf_new = {}, np.zeros((N, 3))
+    modelled = set(mtrap.labels)
+    for p, trap in enumerate(model.traps):
+        n = trap.trap_index
+        Ω[n] = {}
+        for a, axis in enumerate('xyz'):
+            K_aa = K[p, a, p, a]
+            if not K_aa > 0:
+                if f'{axis}{n}' in modelled:
+                    msg = (f'{axis}{n} has no restoring stiffness at the nonlinear equilibrium (K = {K_aa:.4g} N/m):'
+                           ' it cannot be linearised there')
+                    logger.error(msg)
+                    raise ValueError(msg)
+                Ω[n][axis] = mtrap.static_shifted_Ωj[n][axis]
+            else:
+                Ω[n][axis] = float(np.sqrt(K_aa / trap.bead.m))
+            zpf_new[p, a] = np.sqrt(ħ / 2 / (trap.bead.m * Ω[n][axis]))
+    G = {}
+    for label in mtrap.labels:
+        p, a = mtrap.dimensions[label].trap_index - 1, 'xyz'.index(label[0])
+        dF_dA = J[iX(p, a) + 1, 0] / inv_P[p, a]
+        dF_dP = J[iX(p, a) + 1, 1] / inv_P[p, a]
+        G[label] = complex(dF_dA, dF_dP) * zpf_new[p, a] / ħ
+    g = np.zeros((len(mtrap.labels), len(mtrap.labels)))
+    for jj, label_j in enumerate(mtrap.labels):
+        p, a = mtrap.dimensions[label_j].trap_index - 1, 'xyz'.index(label_j[0])
+        for kk, label_k in enumerate(mtrap.labels):
+            if jj == kk:
+                continue
+            q, b = mtrap.dimensions[label_k].trap_index - 1, 'xyz'.index(label_k[0])
+            g[jj, kk] = hessian_to_coupling_rate(K[p, a, q, b], zpf_new[p, a], zpf_new[q, b])
+    return {
+        'Ω': Ω, 'G': G, 'mechanical_coupling_matrix': g, 'α': model.α_eq,
+        'dispersive_shift': float(J[1, 0]) - float(mtrap.cavity.Δ), 'stiffness': K,
+    }
 
 
 class MultiTrapBase:
@@ -194,9 +262,19 @@ class MultiTrapBase:
         # direct interactions between the particles (levisim.physics.interactions), physical
         # parameters only (toy parameters give direct couplings as toy_params['g_direct'])
         self.interactions = list(kwargs.get('interactions') or [])
-        # whether each particle's own block of the interactions' stiffness shifts its frequencies,
-        # including frequencies given through override_Ω_dict (see setup_static_cavity_shifts)
-        self.interaction_frequency_shifts = bool(kwargs.get('interaction_frequency_shifts', True))
+        # whether each particle's own block of the interactions' stiffness shifts its frequencies:
+        # True shifts the frequencies levisim computes but not measured ones given through
+        # override_Ω_dict (since levisim 1.0; see setup_static_cavity_shifts), 'all' shifts those
+        # too (levisim <= 0.1.1), False shifts none
+        interaction_frequency_shifts = kwargs.get('interaction_frequency_shifts', True)
+        if isinstance(interaction_frequency_shifts, str):
+            if interaction_frequency_shifts != 'all':
+                msg = f"interaction_frequency_shifts={interaction_frequency_shifts!r}: use True, False or 'all'"
+                logger.error(msg)
+                raise ValueError(msg)
+            self.interaction_frequency_shifts = 'all'
+        else:
+            self.interaction_frequency_shifts = bool(interaction_frequency_shifts)
         if self.interactions and self.toy_params:
             msg = "interactions=[...] needs physical parameters; with toy_params give toy_params['g_direct'] instead"
             logger.error(msg)
@@ -212,7 +290,21 @@ class MultiTrapBase:
         #   - cavity_wavenumber: the standing wave (and so the couplings gx, gy, gxy, gxz, gyz and
         #     the static shifts) uses the cavity wavenumber Cavity.k, not the tweezer's (off by default;
         #     a relative change of |Δ|/ωtw ~ 6e-10)
-        # toy parameters have no standing wave or static cavity field, so there both are off
+        #   - static_cavity_phases: the static cavity field sums each bead's drive with its tweezer
+        #     phase, Σ ωd·sin θ·cos Φn·e^{iφn}, and each bead sees it in the frame of its own tweezer,
+        #     α·e^{-iφn} (the cotrapping shifts and gxy, gxz, gyz), as the nonlinear cavity model does
+        #     (see setup_linearised_coherent_scattering_physics). On by default since levisim 1.0;
+        #     False sums the drives without phases, as levisim <= 0.1.1 did
+        #   - cavity_dispersive_coupling: the dynamical terms of the cavity's own standing-wave
+        #     potential U_cav: its light-mechanical coupling along the cavity axis (added to Dimension.G)
+        #     and the beads' pull of the cavity frequency (Cavity.dispersive_shift, in the detuning
+        #     of the drift matrix and the static field). On by default since levisim 1.0
+        #   - cavity_envelope: the static stiffness includes the curvature of the cavity mode's
+        #     transverse envelope (waist Cavity.waist) about its axis. On by default since levisim 1.0
+        #   - cavity_effective_polarisability: the coherent-scattering drive Ed and the cavity terms use
+        #     Re α_eff (radiation-reaction corrected, as the tweezer stiffness does) rather than the
+        #     static polarisability (levisim <= 0.1.1). On by default since levisim 1.0
+        # toy parameters have no standing wave or static cavity field, so there all of them are off
         self.cavity_wavenumber = bool(kwargs.get('cavity_wavenumber', False))
         # corrections of the physical model from fields other than the tweezer (Trap.fields):
         #   - intra_trap_couplings: the off-diagonal stiffness of each trap's combined fields
@@ -226,16 +318,35 @@ class MultiTrapBase:
         self.intra_trap_couplings = bool(kwargs.get('intra_trap_couplings', True))
         self.paul_exact_frequencies = bool(kwargs.get('paul_exact_frequencies', True))
         static_cavity_shifts = kwargs.get('static_cavity_shifts')
+        corrections = {
+            name: kwargs.get(name)
+            for name in ('static_cavity_phases', 'cavity_dispersive_coupling', 'cavity_envelope', 'cavity_effective_polarisability')
+        }
         if self.toy_params:
-            if self.cavity_wavenumber or static_cavity_shifts:
+            if self.cavity_wavenumber or static_cavity_shifts or any(corrections.values()):
                 logger.warning(
-                    'cavity_wavenumber and static_cavity_shifts only apply to physical parameters and are'
+                    'cavity_wavenumber, static_cavity_phases, cavity_dispersive_coupling, cavity_envelope,'
+                    ' cavity_effective_polarisability and static_cavity_shifts only apply to physical parameters and are'
                     ' ignored with toy_params (give shifted frequencies through the toy Ω model instead)'
                 )
             self.cavity_wavenumber = False
             self.static_cavity_shifts = False
+            for name in corrections:
+                setattr(self, name, False)
         else:
             self.static_cavity_shifts = True if static_cavity_shifts is None else bool(static_cavity_shifts)
+            for name, value in corrections.items():
+                setattr(self, name, True if value is None else bool(value))
+        # the mechanical bath: False (the default) is levisim's rotating-wave bath, which damps both
+        # quadratures of each dimension at Γ/2 with its own input noise; True is the Brownian
+        # (velocity) bath of Caldeira-Leggett, a force -Γ·p with momentum noise only, which
+        # thermalises coupled (hybridised) normal modes to the bath temperature at any coupling
+        # strength (see LinearAmplifierMixin.setup_linear_amplifier_model_matrices). Linear Amplifier
+        # Model methods and QuadratureSystem.from_multitrap only
+        self.brownian_bath = bool(kwargs.get('brownian_bath', False))
+        # the linearisation of MultiTrap.from_nonlinear_equilibrium (None: the closed forms at the
+        # trap centres)
+        self.equilibrium_linearisation = kwargs.get('_equilibrium_linearisation')
 
         if self.toy_params:
             self.cavity = Cavity(**cavity_kwargs)
@@ -256,6 +367,8 @@ class MultiTrapBase:
             self.setup_static_cavity_shifts()
             self.setup_librations()
             self.dimensions = {label: Dimension(self, label) for label in self.labels}
+            if kwargs.get('dropped_axis_warning', True):
+                self.warn_about_dropped_light_coupled_axes()
 
         # ------------------------------------------------------------------------------------------
         # PHASE DEPENDENCE
@@ -284,6 +397,9 @@ class MultiTrapBase:
 
         # direct mechanical couplings between dimensions, in one matrix (see its docstring)
         self.mechanical_coupling_matrix = self.build_mechanical_coupling_matrix()
+        if self.equilibrium_linearisation:
+            # MultiTrap.from_nonlinear_equilibrium: every coupling from the stiffness at the equilibrium
+            self.mechanical_coupling_matrix = np.array(self.equilibrium_linearisation['mechanical_coupling_matrix'], dtype=float)
 
 
         # ------------------------------------------------------------------------------------------
@@ -394,6 +510,65 @@ class MultiTrapBase:
         # LOGGING
         # ------------------------------------------------------------------------------------------
         self._log_construction()
+
+    @classmethod
+    def from_nonlinear_equilibrium(cls, **kwargs):
+        """
+        A MultiTrap linearised at the true equilibrium of the nonlinear coherent-scattering model,
+        instead of at the trap centres (opt-in; the closed forms of `MultiTrap(**kwargs)` are unchanged)
+
+        The static cavity force (tens of nm along z off the node), the scattering force of a
+        `PhotonRecoil` element, `Gravity` and the pair forces of the `interactions` displace the
+        particles from their trap centres, where `MultiTrap` linearises; off the node its drift matrix
+        then differs from the linearisation at the equilibrium by ~1-6 %. This constructor builds
+        `MultiTrap(**kwargs)`, solves for the equilibrium of
+        `levisim.simulation.nonlinear_cavity.NonlinearCavityModel` (damping='symmetric', with the
+        MultiTrap's interactions), and builds the MultiTrap again with every linear parameter taken
+        from the Jacobian there (`equilibrium_linearisation`):
+
+            - Ωj = √(K_jj/m) with K = -∂F/∂r the stiffness at the equilibrium (tweezer, cavity terms
+              at the equilibrium field, force elements, pair forces); `Dimension.Ω` and the
+              zero-point fluctuations follow it
+            - Gj from ∂F_j/∂(A, P) (the energy is Hamiltonian, so it is also the drive of the cavity by
+              r_j)
+            - every direct coupling gjk = -K_jk·x_zpf,j·x_zpf,k/ħ, within and between particles
+            - the static field α (`cavity.A0`, `cavity.P0`) and the pull of the cavity frequency
+              (`Cavity.dispersive_shift`) at the equilibrium
+
+        so that its drift matrix is the Jacobian of the nonlinear drift at the equilibrium (in the
+        quadratures of the new frequencies), and every method (numerical, hybridisation, analytic)
+        uses it. The model is kept as `mtrap.nonlinear_model` and the equilibrium displacements as
+        `mtrap.equilibrium_displacements` (N, 3) [m]. Frequencies given through override_Ω_dict are
+        replaced by the curvature of the force elements (the nonlinear model integrates those).
+        Translational dimensions and physical parameters only; not for traps with a `PaulTrap` (a
+        time-dependent force: NotImplementedError). Raises ValueError if a modelled axis has no
+        restoring stiffness at the equilibrium.
+        """
+        from levisim.simulation.nonlinear_cavity import NonlinearCavityModel
+        if kwargs.get('toy_params'):
+            msg = 'from_nonlinear_equilibrium needs physical parameters, not toy_params'
+            logger.error(msg)
+            raise ValueError(msg)
+        kwargs.pop('_equilibrium_linearisation', None)
+        centre = cls(**kwargs)
+        from levisim.physics.fields.electric import PaulTrap
+        paul = [trap.trap_index for trap in centre.traps if trap.fields_of_type(PaulTrap)]
+        if paul:
+            msg = (f'from_nonlinear_equilibrium: traps {paul} have a PaulTrap, whose rf force is time-dependent, so the'
+                   ' Jacobian of the drift is not the linearisation of a static equilibrium; use MultiTrap(...) (exact'
+                   ' Floquet frequencies)')
+            logger.error(msg)
+            raise NotImplementedError(msg)
+        model = NonlinearCavityModel(centre, damping='symmetric', interactions=centre.interactions)
+        linearisation = equilibrium_linearisation(centre, model)
+        mtrap = cls(**kwargs, _equilibrium_linearisation=linearisation)
+        mtrap.nonlinear_model = model
+        mtrap.equilibrium_displacements = np.array(model.r_eq)
+        logger.info(
+            '{} linearised at the nonlinear equilibrium: displacements {} nm', mtrap,
+            ', '.join(np.array2string(r / nm, precision=3) for r in model.r_eq),
+        )
+        return mtrap
 
     def __repr__(self):
         """
@@ -824,8 +999,9 @@ class MultiTrapBase:
             - interactions: list of `levisim.physics.interactions.Interaction` (Coulomb,
               NewtonianGravity, Casimir, ...) between the particles; see `setup_interactions`
             - interaction_frequency_shifts: add each particle's own block of the interactions'
-              stiffness to its frequencies, also to those given through override_Ω_dict (default
-              True; pass False for measured frequencies that already contain it)
+              stiffness to the frequencies levisim computes (default True; measured frequencies
+              given through override_Ω_dict already contain it and are not shifted), 'all' to add
+              it to those too, False to add it to none
             - φn_dict: {n: φn} tweezer phases [rad] for any of the traps n = 1, ..., num_traps; they
               replace the phase of that trap's tweezer (given or built-in). The `Tweezer` instances
               passed in are not modified: a trap whose phase is replaced gets a copy of its tweezer.
@@ -1029,32 +1205,100 @@ class MultiTrapBase:
             dα/dt = 0 = (iΔ - κ/2)α + ∑ iωd·sin(θ)·cos(Φ)
             α = -∑ iωd·sin(θ)·cos(Φ) / (iΔ - κ/2)
             α = +∑ ωd·sin(θ)·cos(Φ) · [(-Δ + iκ/2) / (Δ² + (κ/2)²]
+
+        With `static_cavity_phases` (the default) each bead's drive carries its tweezer phase, as
+        the linear couplings G = g·e^{iφn} do (an = a·e^{-iφn}), so the static field in the frame of
+        the cavity mode is ::
+
+            α = ∑ ωd·sin(θ)·cos(Φn)·e^{iφn} · (-Δ + iκ/2) / (Δ² + (κ/2)²)
+
+        and bead n sees it in the frame of its own tweezer, αn = α·e^{-iφn}
+        (`static_bead_frame_amplitudes`), which is what its cotrapping shifts and its couplings gxy
+        (∝ Re αn), gxz and gyz (∝ Im αn) use, exactly as in the nonlinear cavity model. αn is summed
+        directly from the phase differences φm - φn, so that with equal phases (or one bead) every
+        bead-frame number is bit-identical to the sum without phases; the cavity-frame α
+        (`cavity.A0`, `cavity.P0`) is rotated by the common phase. static_cavity_phases=False sums
+        the drives without phases (levisim <= 0.1.1), which agrees with the nonlinear model at the
+        node or with equal phases only.
+
+        With `cavity_dispersive_coupling` (the default) the beads also pull the cavity frequency
+        through the cavity's own standing-wave potential, ``-α_pol·E0²·|α|²·cos²(k·d·r + Φn)``, by
+        δn·cos²Φn with δn = α_pol·E0²/ħ (δn/2π ≈ 3.4 kHz for a 60 nm bead in the default cavity, so a
+        pull of 1.7 kHz at Φ = π/4): Δ → Δ + Σ δn·cos²Φn
+        (`Cavity.dispersive_shift`) in the static field above and in the drift matrix. It vanishes
+        at the node.
         """
 
+        effective = self.cavity_effective_polarisability
         for trap in self.traps:
             # Cavity drive energy for a particular bead in a particular tweezer trap
             # [J]
             # (the field the bead scatters is its trapping tweezer's focal field E0 by default, or
             # cavity_drive_field_ratio × E0 of another tweezer: see Trap.cavity_drive_field)
-            trap.Ed = 0.5 * drive_polarisability(trap) * trap.cavity_drive_field * self.cavity.E0
+            trap.Ed = 0.5 * drive_polarisability(trap, effective) * trap.cavity_drive_field * self.cavity.E0
             # Cavity drive frequency for a particular bead in a particular tweezer trap
             # [2π·Hz]
             trap.ωd = trap.Ed / ħ
 
+        drives = [trap.ωd * np.sin(trap.drive_tweezer.θ) * np.cos(trap.bead.Φ) for trap in self.traps]
         # ∑ ωd·sin(θ)·cos(Φ)
-        self.ωd_total = sum(
-            [trap.ωd * np.sin(trap.drive_tweezer.θ) * np.cos(trap.bead.Φ) for trap in self.traps]
-        )
-        α_prefactor = self.ωd_total / (self.cavity.Δ**2 + (self.cavity.κ/2)**2)
+        self.ωd_total = sum(drives)
         self.Ed_total = ħ * self.ωd_total
 
-        # Real part of the static part of the photon annihilation operator
-        # [·]
-        self.cavity.αR = α_prefactor * (-self.cavity.Δ)
+        # the beads' pull of the cavity frequency, Σ δn·cos²Φn (cavity_dispersive_coupling)
+        # [2π·Hz]
+        self.cavity.dispersive_shift = 0.0
+        if self.cavity_dispersive_coupling:
+            self.cavity.dispersive_shift = float(sum(
+                cavity_mode_polarisability(trap, effective) * self.cavity.E0**2 / ħ * np.cos(trap.bead.Φ)**2
+                for trap in self.traps
+            ))
+        Δ_eff = self.cavity.Δ_eff
 
-        # Imaginary part of the static part of the photon annihilation operator
+        def static_amplitude(total_drive):
+            # (αR, αI) of total_drive·(-Δ + iκ/2)/(Δ² + (κ/2)²), in the order of operations of
+            # levisim <= 0.1.1 for a real total drive
+            denominator = Δ_eff**2 + (self.cavity.κ/2)**2
+            if np.iscomplexobj(total_drive):
+                # real and imaginary parts divided separately (a complex division by a real number
+                # is not exact in NumPy)
+                real, imag = total_drive.real / denominator, total_drive.imag / denominator
+                return (
+                    real * (-Δ_eff) - imag * (self.cavity.κ/2),
+                    real * (self.cavity.κ/2) + imag * (-Δ_eff),
+                )
+            prefactor = total_drive / denominator
+            return prefactor * (-Δ_eff), prefactor * (self.cavity.κ/2)
+
+        if self.static_cavity_phases:
+            φs = [float(trap.tweezer.φ) for trap in self.traps]
+            cavity_frame_drive = sum(c * np.exp(1j * φ) for c, φ in zip(drives, φs))
+            self.static_bead_frame_amplitudes = {}
+            for trap, φn in zip(self.traps, φs):
+                αR_n, αI_n = static_amplitude(sum(c * np.exp(1j * (φm - φn)) for c, φm in zip(drives, φs)))
+                self.static_bead_frame_amplitudes[trap.trap_index] = complex(αR_n, αI_n)
+            αR, αI = static_amplitude(cavity_frame_drive)
+        else:
+            αR, αI = static_amplitude(self.ωd_total)
+            self.static_bead_frame_amplitudes = {trap.trap_index: complex(αR, αI) for trap in self.traps}
+
+        if self.equilibrium_linearisation:
+            # MultiTrap.from_nonlinear_equilibrium: the static field and the pull of the cavity at the
+            # true equilibrium of the nonlinear model
+            α_eq = complex(self.equilibrium_linearisation['α'])
+            αR, αI = α_eq.real, α_eq.imag
+            self.cavity.dispersive_shift = float(self.equilibrium_linearisation['dispersive_shift'])
+            self.static_bead_frame_amplitudes = {
+                trap.trap_index: α_eq * np.exp(-1j * float(trap.tweezer.φ)) for trap in self.traps
+            }
+
+        # Real part of the static part of the photon annihilation operator (cavity frame)
         # [·]
-        self.cavity.αI = α_prefactor * (self.cavity.κ/2)
+        self.cavity.αR = αR
+
+        # Imaginary part of the static part of the photon annihilation operator (cavity frame)
+        # [·]
+        self.cavity.αI = αI
 
         # Static part of the amplitude quadrature
         # A0 = α* + α = 2αR
@@ -1162,9 +1406,12 @@ class MultiTrapBase:
 
             Ωjn = Ωjn,tw·√(1 + Kjj/(m·Ωjn,tw²))      (Ωjn,tw = Trap.Ωj, the tweezer's)
 
-        and Kxy adds -Kxy·x_zpf·y_zpf/ħ to gxy. A trap given measured frequencies
-        (`override_Ω_dict` in its `trap_kwargs`) keeps them as they are, since a measured
-        frequency already contains the static shift. The shifted Ωjn is used self-consistently: it is
+        and Kxy adds -Kxy·x_zpf·y_zpf/ħ to gxy. Each bead uses the static field in the frame of its
+        own tweezer (`static_bead_frame_amplitudes`), and with `cavity_envelope` (the default) K
+        includes the curvature of the cavity mode's transverse envelope (waist `Cavity.waist`). A trap
+        given measured frequencies (`override_Ω_dict` in its `trap_kwargs`) keeps them as they are,
+        since a measured frequency already contains every static stiffness (the couplings are still
+        added). The shifted Ωjn is used self-consistently: it is
         Dimension.Ω (the mechanical susceptibilities), it sets the zero-point fluctuation (so
         every coupling g, gxy, gxz, gyz is rescaled by √(Ωtw/Ω) per dimension), the thermal and
         recoil phonon occupations and the cooling estimates. Both terms vanish when the static
@@ -1174,10 +1421,12 @@ class MultiTrapBase:
 
         With `interactions`, each trap's own block of the interactions' stiffness
         (`setup_interactions`) is added to K before the frequencies are shifted, whether or not
-        static_cavity_shifts is on; `static_cavity_hessians` keeps the cavity part alone. Unlike the
-        cavity part, it is also added to frequencies given through override_Ω_dict (taken as the
-        trap's own frequencies), unless MultiTrap(interaction_frequency_shifts=False) says that
-        they were measured with the interaction present.
+        static_cavity_shifts is on; `static_cavity_hessians` keeps the cavity part alone. Like the
+        cavity part (since levisim 1.0), it is NOT added to frequencies given through override_Ω_dict,
+        which are taken as measured with the interaction present; MultiTrap(
+        interaction_frequency_shifts='all') adds it to them as well (taking them as the trap's own
+        frequencies, as levisim <= 0.1.1 did), and interaction_frequency_shifts=False adds it to no
+        frequency. The couplings between the particles are added in every case.
 
         A trap with one `PaulTrap` among its fields (a hybrid Paul-optical trap) takes, with
         `paul_exact_frequencies=True` (the default), the exact (Floquet) secular frequencies of the
@@ -1195,8 +1444,8 @@ class MultiTrapBase:
         Raises ValueError if a modelled dimension is statically unstable (Ωtw² + K/m ≤ 0), or outside
         the first Mathieu stability region with exact Paul-trap frequencies.
         """
-        α = (self.cavity.A0 + 1j * self.cavity.P0) / 2
         kc = self.cavity.k if self.cavity_wavenumber else None
+        cavity_waist = self.cavity.waist if self.cavity_envelope else None
         modelled_axes = ''.join(axis for axis in self.axes_per_trap if axis in 'xyz')
         self.static_cavity_hessians = {}
         self.static_shifted_Ωj = {}
@@ -1205,16 +1454,21 @@ class MultiTrapBase:
         for trap in self.traps:
             n = trap.trap_index
             if self.static_cavity_shifts:
-                K = static_cavity_hessian(trap, self.cavity.E0, α, kc=kc)
+                K = static_cavity_hessian(
+                    trap, self.cavity.E0, self.static_bead_frame_amplitudes[n], kc=kc, cavity_waist=cavity_waist,
+                    effective_polarisability=self.cavity_effective_polarisability,
+                )
             else:
                 K = np.zeros((3, 3))
             self.static_cavity_hessians[n] = K
-            # the particle's own block of the interactions' stiffness (setup_interactions); it is
-            # added to frequencies given through override_Ω_dict as well, unless
-            # interaction_frequency_shifts=False says those already contain it
+            # the particle's own block of the interactions' stiffness (setup_interactions); like the
+            # cavity part it is not added to measured frequencies (override_Ω_dict), unless
+            # interaction_frequency_shifts='all'
             K_interaction = None
             if self.interactions and self.interaction_frequency_shifts:
-                K_interaction = self.interaction_stiffness_blocks[n - 1, n - 1]
+                if not trap.override_Ω_dict or self.interaction_frequency_shifts == 'all':
+                    K_interaction = self.interaction_stiffness_blocks[n - 1, n - 1]
+            # (a trap given override_Ω_dict never takes the Floquet frequencies: _floquet_paul_trap)
             paul = self._floquet_paul_trap(trap)
             if paul is not None:
                 self.static_shifted_Ωj[n] = self._paul_floquet_frequencies(trap, paul, K, K_interaction, modelled_axes)
@@ -1223,8 +1477,9 @@ class MultiTrapBase:
             for ii, axis in enumerate('xyz'):
                 Ω_tw = trap.Ωj[axis]
                 # NOTE: frequencies given through override_Ω_dict are measured ones, which already
-                # contain whatever static shift the cavity field causes, so it is not added again
-                # (the x-y coupling of the cavity's dispersive potential still is)
+                # contain every static stiffness (the cavity field's and the interactions'), so
+                # neither is added again (the couplings, e.g. the x-y coupling of the cavity's
+                # dispersive potential and the pair couplings, still are)
                 K_jj = 0.0 if trap.override_Ω_dict else K[ii, ii]
                 if K_interaction is not None:
                     K_jj = K_jj + K_interaction[ii, ii]
@@ -1241,6 +1496,9 @@ class MultiTrapBase:
                     logger.error(msg)
                     raise ValueError(msg)
                 shifted[axis] = Ω_tw * np.sqrt(1 + relative) if 1 + relative > 0 else np.nan
+            if self.equilibrium_linearisation:
+                # MultiTrap.from_nonlinear_equilibrium: √(K_jj/m) of the stiffness at the equilibrium
+                shifted = dict(self.equilibrium_linearisation['Ω'][n])
             self.static_shifted_Ωj[n] = shifted
         if self.static_cavity_shifts:
             logger.debug(
@@ -1340,12 +1598,15 @@ class MultiTrapBase:
         self.rotranslational_stiffness = {}
         self.librational_light_couplings = {}
         self.librational_static_torques = {}
+        self.librational_dispersive_couplings = {}
         if not self.librational_axes:
             return
-        α = (self.cavity.A0 + 1j * self.cavity.P0) / 2
         for trap in self.traps:
             n = trap.trap_index
-            expansion = librational_expansion(trap, self.cavity.E0, α, kc=self.cavity.k if self.cavity_wavenumber else None)
+            expansion = librational_expansion(
+                trap, self.cavity.E0, self.static_bead_frame_amplitudes[n], kc=self.cavity.k if self.cavity_wavenumber else None,
+                effective_polarisability=self.cavity_effective_polarisability,
+            )
             K_CS = expansion['K_θθ_CS']
             K = np.array(trap.torque_stiffness_tensor, dtype=float)
             K = K + (K_CS - np.diag(np.diag(K_CS)))
@@ -1358,6 +1619,7 @@ class MultiTrapBase:
             self.libration_stiffness[n] = K
             self.rotranslational_stiffness[n] = K_rθ
             self.librational_light_couplings[n] = expansion['light']
+            self.librational_dispersive_couplings[n] = expansion['light_cav']
             self.librational_static_torques[n] = torque
 
             inertia = np.asarray(trap.bead.lab_inertia_tensor, dtype=float)
@@ -1403,6 +1665,84 @@ class MultiTrapBase:
                 for n in self.librational_Ω for axis in self.librational_axes
             ),
         )
+
+    def dropped_axis_couplings(self):
+        """
+        The couplings of the Cartesian axes that this MultiTrap leaves out (`Cartesian_axes_per_trap`)
+        to the light and to the modelled axes of the same particle, as {label: (abs(G), max abs(g))}
+        [2π·Hz]
+
+        abs(G) is the light-mechanical coupling the axis would have (the coherent-scattering coupling
+        g_j·e^{iΦ_CS}, plus the dispersive coupling with cavity_dispersive_coupling) and max abs(g)
+        the largest direct coupling gjk to a modelled axis k of the same particle (from the
+        coherent-scattering Hessian and the static cavity stiffness), both with the axis's zero-point
+        fluctuation at its (shifted) frequency. Off the node z couples to the phase quadrature
+        (g_z ∝ cos Φ) and to x and y (g_xz, g_yz ∝ P0·sin Φ), so a 2-axis model drops a light-coupled
+        axis. Physical parameters only (empty for toy parameters).
+        """
+        couplings = {}
+        if self.toy_params:
+            return couplings
+        modelled = [axis for axis in self.axes_per_trap if axis in ('x', 'y', 'z')]
+        dropped = [axis for axis in 'xyz' if axis not in modelled]
+        if not dropped:
+            return couplings
+        kc_wanted = self.cavity.k if self.cavity_wavenumber else None
+        ᾱ = complex(self.cavity.αR, self.cavity.αI)
+        effective = self.cavity_effective_polarisability
+        for trap in self.traps:
+            n = trap.trap_index
+            drive = trap.drive_tweezer
+            θ, Φ = drive.θ, trap.bead.Φ
+            s_, c_ = np.sin(θ), np.cos(θ)
+            k = drive.k if kc_wanted is None else kc_wanted
+            kz = drive.k - 1 / drive.zR
+            d = np.array([s_, c_, 0.0])
+            αn = self.static_bead_frame_amplitudes[n]
+            A0, P0 = 2 * αn.real, 2 * αn.imag
+            Ed = trap.Ed
+            # the coherent-scattering couplings: ∇D at the centre and the off-diagonal Hessian
+            grad_D = s_ * (-k * np.sin(Φ) * d + np.array([0.0, 0.0, 1j * kz * np.cos(Φ)]))
+            K = np.array(self.static_cavity_hessians[n], dtype=float)
+            K = K - np.diag(np.diag(K))
+            K[0, 1] = K[1, 0] = K[0, 1] + Ed * s_ * A0 * k**2 * s_ * c_ * np.cos(Φ)
+            K[0, 2] = K[2, 0] = K[0, 2] + Ed * s_ * P0 * k * kz * s_ * np.sin(Φ)
+            K[1, 2] = K[2, 1] = K[1, 2] + Ed * s_ * P0 * k * kz * c_ * np.sin(Φ)
+            δ = cavity_mode_polarisability(trap, effective) * self.cavity.E0**2 / ħ if self.cavity_dispersive_coupling else 0.0
+            zpf = {axis: np.sqrt(ħ / 2 / (trap.bead.m * self.static_shifted_Ωj[n][axis])) for axis in 'xyz'}
+            for axis in dropped:
+                a = 'xyz'.index(axis)
+                G = abs(trap.ωd * grad_D[a] * zpf[axis] - δ * k * np.sin(2 * Φ) * d[a] * zpf[axis] * ᾱ)
+                g = max([abs(hessian_to_coupling_rate(K[a, 'xyz'.index(b)], zpf[axis], zpf[b])) for b in modelled] or [0.0])
+                couplings[f'{axis}{n}'] = (float(G), float(g))
+        return couplings
+
+    def warn_about_dropped_light_coupled_axes(self, threshold=1e-3):
+        """
+        Logs a WARNING if a Cartesian axis that this MultiTrap leaves out couples to the light or to a
+        modelled axis by more than `threshold` × the largest light-mechanical coupling abs(G) of the
+        modelled dimensions (`dropped_axis_couplings`): its dynamics, which can change the stability
+        and the spectra, are then missing. E.g. off the node a 2 × 2 system can be stable with two
+        axes per particle and unstable with three. MultiTrap(dropped_axis_warning=False) silences it.
+        """
+        self.dropped_light_coupled_axes = ()
+        couplings = self.dropped_axis_couplings()
+        if not couplings:
+            return
+        scale = max((abs(dim.G) for dim in self.dimensions.values()), default=0.0)
+        if not scale > 0:
+            return
+        coupled = {label: values for label, values in couplings.items() if max(values) > threshold * scale}
+        if coupled:
+            logger.warning(
+                '{}: the axes {} are left out (Cartesian_axes_per_trap = {}) but couple to the light or to the modelled'
+                ' axes ({}; largest modelled |G|/2π = {:.4g} kHz): their dynamics are missing, which can change the'
+                ' stability and the spectra. Model them, or pass dropped_axis_warning=False to silence this',
+                self, ', '.join(coupled), self.Cartesian_axes_per_trap,
+                ', '.join(f'{label}: |G|/2π = {G / kHz:.4g} kHz, max |g|/2π = {g / kHz:.4g} kHz' for label, (G, g) in coupled.items()),
+                scale / kHz,
+            )
+        self.dropped_light_coupled_axes = tuple(coupled)
 
     def librational_coupling_rate(self, dim_j, dim_k):
         """
@@ -1836,6 +2176,16 @@ class MultiTrapBase:
             msg = f'{method!r} needs a power series: build the MultiTrap with load_in_power_series=True or generate_power_series=True'
             logger.error(msg)
             raise AttributeError(msg)
+        lam_methods = (
+            QuantumLinearTheoryMethod.LINEAR_AMPLIFIER_MODEL,
+            QuantumLinearTheoryMethod.HYBRID_LINEAR_AMPLIFIER_MODEL,
+            QuantumLinearTheoryMethod.TNT_LINEAR_AMPLIFIER_MODEL,
+        )
+        if getattr(self, 'brownian_bath', False) and method not in lam_methods:
+            msg = (f'{method!r} assumes the rotating-wave bath; with brownian_bath=True use a Linear Amplifier Model'
+                   ' method (LINEAR_AMPLIFIER_MODEL, HYBRID_LINEAR_AMPLIFIER_MODEL, TNT_LINEAR_AMPLIFIER_MODEL)')
+            logger.error(msg)
+            raise NotImplementedError(msg)
         options_str = ''.join(f', {name}={value}' for name, value in options.items())
         logger.info('🧮 Calculating {} via {!r} over {} ω points{}', quantity, method, len(self.ω_range), options_str)
         logger.opt(lazy=True).debug(

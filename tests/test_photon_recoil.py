@@ -105,8 +105,9 @@ def test_recoil_rates_match_the_delic_notebook():
         n = mtrap.dimensions[label].noise_phonons_exact + Γ_rec / mtrap.dimensions[label].Γ
         assert mtrap.quantum_factor_per_noise_operator[index] == pytest.approx(n + 1, rel=1e-14)
         assert mtrap.quantum_factor_per_noise_operator[index + 1] == pytest.approx(n, rel=1e-14)
-    # n_x at 315 kHz: 0.398 with recoil (measured 0.43 ± 0.03), 0.322 without
-    assert occupation(mtrap, 'x1') == pytest.approx(0.39756, rel=1e-4)
+    # n_x at 315 kHz: 0.398 with recoil (measured 0.43 ± 0.03), 0.322 without (0.39756 with the static
+    # polarisability in the cavity terms, levisim 0.1.x)
+    assert occupation(mtrap, 'x1') == pytest.approx(0.39760, rel=1e-4)
     assert occupation(delic_multitrap(315*kHz, photon_recoil=False), 'x1') == pytest.approx(0.32189, rel=1e-4)
 
 

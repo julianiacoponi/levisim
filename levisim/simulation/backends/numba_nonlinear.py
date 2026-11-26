@@ -142,6 +142,19 @@ def _term_drift(U, P, flags, extra, out):
             ph = kk * (s * x + c * y) + P[p, _CS + 3]
             cos_u = math.cos(ph)
             sin_u = math.sin(ph)
+            inv_w2 = P[p, _CS + 13]
+            env = 1.0
+            glx = 0.0
+            gly = 0.0
+            glz = 0.0
+            if inv_w2 > 0:
+                along = s * x + c * y
+                tx = x - along * s
+                ty = y - along * c
+                env = math.exp(-(tx ** 2 + ty ** 2 + z ** 2) * inv_w2)
+                glx = -2 * tx * inv_w2
+                gly = -2 * ty * inv_w2
+                glz = -2 * z * inv_w2
             if use_cs:
                 wx0 = P[p, _CS + 4]
                 wy0 = P[p, _CS + 5]
@@ -156,6 +169,11 @@ def _term_drift(U, P, flags, extra, out):
                 gx = D * (-2 * x / (wx0 ** 2 * w2)) - dD_sin * s
                 gy = D * (-2 * y / (wy0 ** 2 * w2)) - dD_sin * c
                 gz = D * ((z / zR ** 2) / w2 * (2 * e - 1)) + 1j * (kk - zR / (zR ** 2 + z ** 2)) * D
+                if inv_w2 > 0:
+                    gx = env * (gx + D * glx)
+                    gy = env * (gy + D * gly)
+                    gz = env * (gz + D * glz)
+                    D = D * env
                 e_iφ = P[p, _CS + 9] + 1j * P[p, _CS + 10]
                 αn_conj = (α.real - 1j * α.imag) * e_iφ
                 two_Ed = P[p, _CS + 8]
@@ -165,9 +183,16 @@ def _term_drift(U, P, flags, extra, out):
                 dα += 1j * P[p, _CS + 7] * e_iφ * D
             if use_cav:
                 Fcav = -P[p, _CS + 12] * (α.real ** 2 + α.imag ** 2) * kk * 2 * sin_u * cos_u
-                Fx += Fcav * s
-                Fy += Fcav * c
-                dα += 1j * α * P[p, _CS + 11] * cos_u ** 2
+                if inv_w2 > 0:
+                    intensity = P[p, _CS + 12] * (α.real ** 2 + α.imag ** 2) * env ** 2
+                    Fx += env ** 2 * Fcav * s + intensity * 2 * cos_u ** 2 * glx
+                    Fy += env ** 2 * Fcav * c + intensity * 2 * cos_u ** 2 * gly
+                    Fz += intensity * 2 * cos_u ** 2 * glz
+                    dα += 1j * α * P[p, _CS + 11] * cos_u ** 2 * env ** 2
+                else:
+                    Fx += Fcav * s
+                    Fy += Fcav * c
+                    dα += 1j * α * P[p, _CS + 11] * cos_u ** 2
         if use_int:
             Fx += F_int[p, 0]
             Fy += F_int[p, 1]

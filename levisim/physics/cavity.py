@@ -107,6 +107,14 @@ class Cavity:
         self.P0 = 0.0
 
         # ------------------------------------------------------------------------------------------
+        # Shift of the detuning by the particles' pull of the cavity frequency (the dispersive
+        # term of the cavity's standing-wave potential, set by MultiTrap(cavity_dispersive_coupling=
+        # True)): the light sees Δ_eff = Δ + dispersive_shift. ω, k and E0 keep Δ (a relative
+        # change of ~10⁻¹⁴).
+        # [2π·Hz]
+        self.dispersive_shift = 0.0
+
+        # ------------------------------------------------------------------------------------------
         # Total cavity drive angular frequency of all tweeer bead traps scattering into the cavity
         # [2π·Hz]
         self.ωd_total = 0.0
@@ -148,6 +156,7 @@ class Cavity:
                 f'\n    |α|² = {np.abs(self.αR + 1j*self.αI)**2:.5e} photons'
                 f'\n    A0 = {self.A0:.5e}'
                 f'\n    P0 = {self.P0:.5e}'
+                f'\n    dispersive_shift/2π = {getattr(self, "dispersive_shift", 0.0) / Hz:.5e} Hz'
                 f'\n    ωd_total/2π = {self.ωd_total / Hz:.5e} Hz'
                 f'\n    Ed_total = {self.Ed_total:.5e} J'
             )
@@ -304,13 +313,22 @@ class Cavity:
     # FREQUENCY-DEPENDENT FUNCTIONS
     # ----------------------------------------------------------------------------------------------
     # for use in QLT calculations
+    @property
+    def Δ_eff(self):
+        """
+        The detuning of the drive from the cavity resonance pulled by the particles,
+        Δ + `dispersive_shift` (Δ itself unless a MultiTrap set the pull)
+        [2π·Hz]
+        """
+        return self.Δ + getattr(self, 'dispersive_shift', 0.0)
+
     def χC(self, ω):
         """
         The optical susceptibility
-        for photon annihilation in the cavity
+        for photon annihilation in the cavity, at the pulled detuning `Δ_eff`
         [complex (2π·Hz)⁻¹]
         """
-        return (-1j*(ω + self.Δ) + self.κ / 2)**(-1)
+        return (-1j*(ω + self.Δ_eff) + self.κ / 2)**(-1)
 
     def χC_star(self, ω):
         """

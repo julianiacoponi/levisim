@@ -4,11 +4,11 @@ Shelf kwargs: `DEFAULT_gas_kwargs` (P = 1e-06 mbar) and `DEFAULT_cavity_kwargs` 
 
 | System | shelf kwargs: verdict (growing modes) | max Re λ (s⁻¹) | mode \|Im λ\|/2π (kHz) | constructor defaults: verdict (growing modes) | max Re λ (s⁻¹) | mode \|Im λ\|/2π (kHz) |
 |---|---|---|---|---|---|---|
-| physical defaults, 1×2 | stable | -2713 | 154.59 | stable | -7709 | 155.23 |
-| physical defaults, 2×1 | stable | -1924 | 154.22 | **unstable** (1) | +474.2 | 152.10 |
-| physical defaults, 2×2 | **unstable** (1) | +2678 | 134.92 | **unstable** (1) | +9233 | 134.55 |
+| physical defaults, 1×2 | stable | -2712 | 154.60 | stable | -7708 | 155.23 |
+| physical defaults, 2×1 | stable | -1924 | 154.22 | **unstable** (1) | +472.7 | 152.10 |
+| physical defaults, 2×2 | **unstable** (1) | +2677 | 134.92 | **unstable** (1) | +9232 | 134.55 |
 | physical defaults, 1×3 | stable | -0.003629 | 35.06 | stable | -13.61 | 35.06 |
-| physical defaults, 3×2 | **unstable** (1) | +3060 | 134.70 | **unstable** (1) | +1.268e+04 | 134.28 |
+| physical defaults, 3×2 | **unstable** (1) | +3059 | 134.70 | **unstable** (1) | +1.268e+04 | 134.28 |
 | `FORTRAN_toy_params`, 8×2 | stable | -96.76 | 207.68 | stable | -262 | 207.66 |
 | `PHASE_EQUAL_toy_params`, 1×2 | stable | -411.1 | 306.36 | stable | -1128 | 306.25 |
 | `PHASE_EQUAL_toy_params`, 2×2 | stable | -350.3 | 306.54 | stable | -1021 | 306.46 |

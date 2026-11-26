@@ -50,6 +50,9 @@ def gravity_pair(ω=0.01, R=1e-3, separation_factor=2.1, P=0.0, **kwargs):
     L = separation_factor * R
     kwargs.setdefault('photon_recoil', False)
     kwargs.setdefault('static_cavity_shifts', False)
+    # ω is the paper's trap frequency without the gravitational self-stiffness, which shifts it to
+    # ω·√(1 - η): 'all' adds the interaction's self-stiffness to the override_Ω_dict frequencies too
+    kwargs.setdefault('interaction_frequency_shifts', 'all')
     return MultiTrap(
         num_traps=2, Cartesian_axes_per_trap=1, beads=particles, trap_positions=[(0, 0, 0), (L, 0, 0)],
         trap_kwargs=[{'override_Ω_dict': {'x': ω, 'y': ω, 'z': ω}}] * 2, interactions=[NewtonianGravity()],
@@ -129,6 +132,12 @@ def test_gravity_coupling_and_frequency_shift_from_the_interaction():
     assert mtrap.dimensions['x1'].Ω == pytest.approx(ω * np.sqrt(1 - η), rel=1e-12)
     unshifted, _ = gravity_pair(ω, interaction_frequency_shifts=False)
     assert unshifted.dimensions['x1'].Ω == ω
+    # by default measured frequencies (override_Ω_dict) already contain the self-stiffness: unshifted,
+    # with the pair coupling still added
+    measured, _ = gravity_pair(ω, interaction_frequency_shifts=True)
+    assert measured.dimensions['x1'].Ω == ω
+    assert np.array_equal(measured.mechanical_coupling_matrix, unshifted.mechanical_coupling_matrix)
+    assert measured.mechanical_coupling_matrix[0, 1] != 0
 
 
 def test_ground_state_entanglement_reaches_eta():

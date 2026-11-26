@@ -478,7 +478,7 @@ class AnalyticMixin:
         return 1 + 2j * self.cavity.ξC(ω) * np.sum([
             dim.g**2
             * dim.μm(ω)
-            * (self.cavity.Δ + 1j * dim.K(ω) / 2)
+            * (self.cavity.Δ_eff + 1j * dim.K(ω) / 2)
             for dim in self.dimensions.values()
         ])
 
@@ -550,7 +550,7 @@ class AnalyticMixin:
         return 1 + 2j * self.cavity.ξC(ω) * np.sum([
             dim.g**2
             * dim.μm(ω)
-            * (self.cavity.Δ + 1j * dim.K_2(ω) / 2)
+            * (self.cavity.Δ_eff + 1j * dim.K_2(ω) / 2)
             for dim in self.dimensions.values()
         ])
 

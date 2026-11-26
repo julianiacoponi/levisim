@@ -286,7 +286,15 @@ def run_tweezer_simulation(params: dict) -> dict:
 # The cavity lab's browser engine (cavity_physics.js) implements MultiTrap's linearised model as in
 # levisim 0.1, without the static cavity field. The live spectra use the same model, so that the server
 # and the browser agree (tests/test_web_cavity.py).
-WEB_LAB_MULTITRAP_KWARGS = {'static_cavity_shifts': False}
+WEB_LAB_MULTITRAP_KWARGS = {
+    'static_cavity_shifts': False,
+    'static_cavity_phases': False,
+    'cavity_dispersive_coupling': False,
+    'cavity_envelope': False,
+    'cavity_effective_polarisability': False,
+    # the lab's traps have two axes by design
+    'dropped_axis_warning': False,
+}
 
 
 def compute_cavity_spectra(params: dict) -> dict:
