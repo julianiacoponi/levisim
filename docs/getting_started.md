@@ -7,6 +7,7 @@ The latest release is on [PyPI](https://pypi.org/project/levisim/):
 ```sh
 pip install levisim              # the latest release
 pip install --upgrade levisim    # move to a newer release
+pip install --pre levisim        # the 1.0 release candidate (1.0.0rc1)
 python -c "import levisim; print(levisim.__version__)"
 ```
 
