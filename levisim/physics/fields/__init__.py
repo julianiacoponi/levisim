@@ -45,6 +45,8 @@ from levisim.physics.fields.magnetic import (
     MagneticTrap,
     demagnetising_factors_of,
     effective_susceptibility,
+    find_escape_saddle,
+    static_energy,
 )
 from levisim.physics.fields.magnetic_sources import (
     CallableField,
@@ -86,12 +88,14 @@ __all__ = [
     'UniformElectricField',
     'demagnetising_factors_of',
     'effective_susceptibility',
+    'find_escape_saddle',
     'mathieu_characteristic_exponent',
     'mathieu_first_region_stable',
     'mathieu_floquet_multiplier',
     'mathieu_secular_beta',
     'meissner_levitation_height',
     'real_solid_harmonic',
+    'static_energy',
 ]
 
 

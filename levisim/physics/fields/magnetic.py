@@ -44,6 +44,8 @@ __all__ = [
     'MagneticTrap',
     'demagnetising_factors_of',
     'effective_susceptibility',
+    'find_escape_saddle',
+    'static_energy',
 ]
 
 
@@ -429,7 +431,159 @@ def _ray_depth(trap, r_eq, direction, scan_range, n=400):
     return float(W[i]), i == n - 1
 
 
-def magnetic_trap_report(trap, element=None, r_guess=None, scan_range=None):
+def static_energy(trap, points):
+    """
+    Potential energy of the trap's static (field, recoil, gravity) elements at each of `points`, shape
+    (N, 3) or (3,), from the elements' `potential` (vectorised for `MagneticTrap`, `Gravity` and
+    `HarmonicPotential`, point by point for the others)
+    [J]
+
+    Raises NotImplementedError if an element has no potential energy (e.g. it is not conservative).
+    """
+    from levisim.physics.fields.elements import Gravity, HarmonicPotential
+    points = np.asarray(points, dtype=float)
+    single = points.ndim == 1
+    points = np.atleast_2d(points)
+    particle = trap.bead
+    U = np.zeros(len(points))
+    for element in _static_elements(trap):
+        if isinstance(element, MagneticTrap):
+            scale, χ = element._response(particle)
+            B = np.asarray(element.source.B(points), dtype=float).reshape(len(points), 3)
+            U += -0.5 * scale * np.einsum('ni,ij,nj->n', B, χ, B)
+        elif isinstance(element, Gravity):
+            U += -particle.m * element.g * (points @ element.direction)
+        elif isinstance(element, HarmonicPotential):
+            d = points - element.centre
+            U += 0.5 * np.einsum('ni,ij,nj->n', d, element.K, d)
+        else:
+            U += np.array([element.potential(point, particle) for point in points])
+    return float(U[0]) if single else U
+
+
+def _component_reaches_boundary(below, centre_index):
+    """Whether the connected (6-neighbour) component of `below` holding centre_index touches the box faces"""
+    from scipy import ndimage
+    labels, _ = ndimage.label(below)
+    label = labels[centre_index]
+    if label == 0:
+        return False
+    faces = (labels[0], labels[-1], labels[:, 0], labels[:, -1], labels[:, :, 0], labels[:, :, -1])
+    return any(np.any(face == label) for face in faces)
+
+
+def find_escape_saddle(trap, r_eq, scan_range, grid_points=41, refine=True, max_iterations=50):
+    """
+    The lowest energy barrier for escape from the equilibrium r_eq out of the cube of half-width
+    scan_range around it, and the saddle point that sets it, as a dict
+
+    The static energy U (`static_energy`) is evaluated on a grid of grid_points³ nodes (odd, so that
+    r_eq is a node). The barrier on the grid is the minimax energy of all 6-neighbour grid paths from
+    r_eq to a face of the cube: the lowest level U* for which the connected region {U ≤ U*} holding
+    r_eq reaches a face (a bisection over the sorted node energies, with `scipy.ndimage.label`). The
+    node at that level is the grid saddle. With refine=True it is refined by Newton's method on the
+    analytic stiffness, r ← r + K⁻¹F (as `find_static_equilibrium`, steps limited to two grid
+    spacings), and accepted if it converges within three grid spacings of the node to a point with
+    exactly one negative stiffness eigenvalue (an index-1 saddle); the barrier is then U(saddle) -
+    U(r_eq), exact to the convergence of Newton's method.
+
+    If the minimax path reaches its highest energy on a face, the energy is still rising there and the
+    true barrier lies outside the cube: the result is a lower bound ('is_lower_bound' True, no saddle).
+    Any path out of the trap, the rays of `magnetic_trap_report` included, crosses an energy at least
+    as high as the minimax, so the saddle barrier is never above the ray estimate (to the resolution
+    of the grid and of the ray integration).
+
+    Keys:
+
+    - 'barrier' [J]: U(saddle) - U(r_eq) (or the grid value if not refined, or the lower bound)
+    - 'saddle' [m]: the saddle point (None for a lower bound)
+    - 'grid_barrier' [J] and 'grid_saddle' [m]: the grid values before refinement
+    - 'is_lower_bound' [bool], 'refined' [bool]
+    - 'saddle_stiffness_eigenvalues' [N/m]: eigenvalues of the symmetrised stiffness at the saddle
+      (None for a lower bound)
+    - 'direction' [·]: unit vector from r_eq to the saddle (or to the grid node that bounds it)
+    """
+    grid_points = int(grid_points)
+    if grid_points < 5 or grid_points % 2 == 0:
+        raise ValueError(f'grid_points must be an odd number ≥ 5, not {grid_points}')
+    r_eq = as_position(r_eq)
+    scan_range = float(scan_range)
+    axis = np.linspace(-scan_range, scan_range, grid_points)
+    spacing = axis[1] - axis[0]
+    X, Y, Z = np.meshgrid(axis, axis, axis, indexing='ij')
+    nodes = r_eq + np.stack([X.ravel(), Y.ravel(), Z.ravel()], axis=1)
+    U = static_energy(trap, nodes).reshape(X.shape)
+    centre = (grid_points // 2,) * 3
+    U_eq = static_energy(trap, r_eq)
+
+    # bisection over the sorted energies for the lowest level whose basin around r_eq reaches a face
+    levels = np.unique(U[np.isfinite(U)])
+    levels = levels[levels >= U[centre]]
+    low, high = 0, len(levels) - 1
+    if not _component_reaches_boundary(U <= levels[high], centre):
+        raise RuntimeError('find_escape_saddle: the region around r_eq never reaches the faces of the cube')
+    while low < high:
+        middle = (low + high) // 2
+        if _component_reaches_boundary(U <= levels[middle], centre):
+            high = middle
+        else:
+            low = middle + 1
+    level = levels[low]
+    # the grid saddle: a node at that level, adjacent to the basin below it
+    from scipy import ndimage
+    labels, _ = ndimage.label(U < level)
+    basin = labels == labels[centre] if labels[centre] else np.zeros_like(U, dtype=bool)
+    basin[centre] = True
+    neighbours = ndimage.binary_dilation(basin)
+    candidates = np.argwhere(np.isclose(U, level, rtol=0, atol=0) & neighbours)
+    if len(candidates) == 0:
+        candidates = np.argwhere(U == level)
+    node = tuple(candidates[0])
+    grid_saddle = nodes[np.ravel_multi_index(node, U.shape)]
+    on_face = any(index in (0, grid_points - 1) for index in node)
+    out = {
+        'grid_barrier': float(level - U_eq),
+        'grid_saddle': grid_saddle,
+        'is_lower_bound': bool(on_face),
+        'refined': False,
+        'saddle': None if on_face else grid_saddle,
+        'barrier': float(level - U_eq),
+        'saddle_stiffness_eigenvalues': None,
+    }
+    if not on_face:
+        K = _total_stiffness(trap, grid_saddle)
+        out['saddle_stiffness_eigenvalues'] = np.linalg.eigvalsh(0.5 * (K + K.T))
+    if refine and not on_face:
+        r = grid_saddle.copy()
+        converged = False
+        for _ in range(max_iterations):
+            F = trap.static_force(r)
+            K = _total_stiffness(trap, r)
+            try:
+                step = np.linalg.solve(K, F)
+            except np.linalg.LinAlgError:
+                step = np.linalg.lstsq(K, F, rcond=None)[0]
+            norm = np.linalg.norm(step)
+            if norm > 2 * spacing:
+                step *= 2 * spacing / norm
+            r = r + step
+            if norm < 1e-12 * scan_range:
+                converged = True
+                break
+        if converged and np.linalg.norm(r - grid_saddle) <= 3 * spacing:
+            K = _total_stiffness(trap, r)
+            λ = np.linalg.eigvalsh(0.5 * (K + K.T))
+            if np.sum(λ < 0) == 1:
+                out.update(saddle=r, barrier=float(static_energy(trap, r) - U_eq), refined=True,
+                           saddle_stiffness_eigenvalues=λ)
+    target = out['saddle'] if out['saddle'] is not None else grid_saddle
+    offset = target - r_eq
+    out['direction'] = offset / np.linalg.norm(offset) if np.linalg.norm(offset) > 0 else offset
+    return out
+
+
+def magnetic_trap_report(trap, element=None, r_guess=None, scan_range=None, trap_depth_method='saddle',
+                         saddle_grid_points=41):
     """
     Characteristics of a trap holding a `MagneticTrap` (normally with `Gravity`, possibly with other
     elements such as a tweezer), as a dict:
@@ -450,16 +604,30 @@ def magnetic_trap_report(trap, element=None, r_guess=None, scan_range=None):
       'Ω_normal_modes' [2π·Hz] and 'normal_modes' (columns) from the eigen-decomposition of K/m;
       'stable' (all eigenvalues of K positive); 'coupling_stiffness' [N/m]: the off-diagonal part of K,
       which `Trap(linearisation_point=...)` turns into `intra_trap_couplings`
-    - 'trap_depth' [J]: the smallest energy barrier along rays from the equilibrium in the ± normal-mode
-      and ± vertical directions (an upper bound on the true saddle-point barrier, which can lie off
-      these rays); 'trap_depth_direction', and 'trap_depth_is_lower_bound' (True if the barrier along
-      that ray lies beyond scan_range)
+    - 'trap_depth' [J]: the energy barrier for escape from the equilibrium, by `trap_depth_method`:
+      'saddle' (default) the lowest barrier over all paths out of the cube of half-width scan_range,
+      from the saddle-point search `find_escape_saddle` (saddle_grid_points³ grid, refined by Newton's
+      method); 'rays' the ray estimate below (the value of levisim before the saddle search).
+      'trap_depth_direction' (unit vector towards the saddle, or along the lowest ray) and
+      'trap_depth_is_lower_bound' (True if the barrier lies beyond scan_range) belong to the same
+      method; 'trap_depth_method' records it
+    - 'trap_depth_rays' [J]: the smallest energy barrier along rays from the equilibrium in the ±
+      normal-mode and ± vertical directions, an upper bound on the saddle-point barrier (which can lie
+      off these rays); 'trap_depth_rays_direction' and 'trap_depth_rays_is_lower_bound' (True if the
+      barrier along that ray lies beyond scan_range)
+    - 'saddle_point' [m]: the saddle point that sets the barrier, None for a lower bound or with
+      trap_depth_method='rays'; 'saddle_refined' (whether Newton's method converged to an index-1
+      saddle) and 'saddle_search' (the full `find_escape_saddle` dict, or None)
     - 'eddy_damping_rates' [2π·Hz]: diagonal Γ of eddy-current damping at the equilibrium if the
       particle material has a conductivity (else None)
 
-    scan_range defaults to the field source's length_scale [m].
+    scan_range defaults to the field source's length_scale [m]. The saddle search needs the potential
+    energy of every static element (`static_energy`); if one has none, the report falls back to the
+    rays and says so in 'trap_depth_method'.
     """
     from levisim.physics.fields.elements import Gravity
+    if trap_depth_method not in ('saddle', 'rays'):
+        raise ValueError(f"trap_depth_method must be 'saddle' or 'rays', not {trap_depth_method!r}")
     if element is None:
         elements = trap.fields_of_type(MagneticTrap)
         if not elements:
@@ -522,9 +690,29 @@ def magnetic_trap_report(trap, element=None, r_guess=None, scan_range=None):
         directions += [up, -up]
     depths = [(*_ray_depth(trap, r_eq, d, scan_range), d) for d in directions]
     depth, beyond, direction = min(depths, key=lambda item: item[0])
+    out['trap_depth_rays'] = depth
+    out['trap_depth_rays_direction'] = direction
+    out['trap_depth_rays_is_lower_bound'] = beyond
     out['trap_depth'] = depth
     out['trap_depth_direction'] = direction
     out['trap_depth_is_lower_bound'] = beyond
+    out['trap_depth_method'] = 'rays'
+    out['saddle_point'] = None
+    out['saddle_refined'] = False
+    out['saddle_search'] = None
+    if trap_depth_method == 'saddle':
+        try:
+            saddle = find_escape_saddle(trap, r_eq, scan_range, grid_points=saddle_grid_points)
+        except NotImplementedError as error:
+            out['trap_depth_method'] = f'rays (no saddle search: {error})'
+        else:
+            out['saddle_search'] = saddle
+            out['trap_depth'] = saddle['barrier']
+            out['trap_depth_direction'] = saddle['direction']
+            out['trap_depth_is_lower_bound'] = saddle['is_lower_bound']
+            out['trap_depth_method'] = 'saddle'
+            out['saddle_point'] = saddle['saddle']
+            out['saddle_refined'] = saddle['refined']
 
     if getattr(particle.material, 'is_conductor', False):
         out['eddy_damping_rates'] = EddyCurrentDamping(element.source, r_eq).damping_rates(particle)
@@ -548,10 +736,22 @@ def magnetic_trap_report_str(report):
         )
     lines.append(f'  Ω_axes/2π = {np.array2string(r["Ω_axes"] / Hz, precision=5)} Hz')
     lines.append(f'  normal modes Ω/2π = {np.array2string(r["Ω_normal_modes"] / Hz, precision=5)} Hz, stable = {r["stable"]}')
-    lines.append(
-        f'  trap depth ≈ {r["trap_depth"]:.4g} J = {r["trap_depth"] / kB:.4g} K·kB'
-        + (' (lower bound)' if r['trap_depth_is_lower_bound'] else '')
-    )
+    method = r.get('trap_depth_method', 'rays')
+    if method == 'saddle':
+        lines.append(
+            f'  trap depth = {r["trap_depth"]:.4g} J = {r["trap_depth"] / kB:.4g} K·kB'
+            + (' (lower bound: no saddle within the scan range)' if r['trap_depth_is_lower_bound'] else
+               f' (saddle at {np.array2string(r["saddle_point"] / μm, precision=4)} μm)')
+        )
+        lines.append(
+            f'  ray estimate ≈ {r["trap_depth_rays"]:.4g} J = {r["trap_depth_rays"] / kB:.4g} K·kB'
+            + (' (lower bound)' if r['trap_depth_rays_is_lower_bound'] else '')
+        )
+    else:
+        lines.append(
+            f'  trap depth ≈ {r["trap_depth"]:.4g} J = {r["trap_depth"] / kB:.4g} K·kB'
+            + (' (lower bound)' if r['trap_depth_is_lower_bound'] else '')
+        )
     if r['eddy_damping_rates'] is not None:
         lines.append(f'  eddy-current damping Γ/2π = {np.array2string(r["eddy_damping_rates"] / Hz, precision=4)} Hz')
     return '\n'.join(lines)
