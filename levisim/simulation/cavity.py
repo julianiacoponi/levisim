@@ -407,7 +407,7 @@ class CavitySimulation(StochasticSimulation):
         the field at the true equilibrium of the nonlinear drift [√photons]
         """
         if not self._is_multitrap_cavity(cavity):
-            raise ValueError(f'the static field of cavity mode {cavity!r} is not known: pass α=... to PhotonNumber')
+            raise ValueError(f'the static field of cavity mode {cavity!r} is not known: pass α=... to the record')
         if self.nonlinear_model is not None:
             return self.nonlinear_model.α_eq
         c = self.mtrap.cavity
@@ -462,7 +462,12 @@ class CavitySimulation(StochasticSimulation):
             slices[record.label] = slice(i - n, i - n + qr)
             i += qr
             j += er
-        self.augmented = {'A': A, 'B': B, 'N': N, 'n': n, 'q': q, 'slices': slices}
+        # records sampled instantaneously (Position(sampling='instantaneous')): state components
+        # copied at every sample time t_k, outside the augmented system
+        instantaneous = [r for r in self.detection if getattr(r, 'instantaneous', False)]
+        self.augmented = {'A': A, 'B': B, 'N': N, 'n': n, 'q': q, 'slices': slices,
+                          'instantaneous': {r.label: index for index, r in enumerate(instantaneous)},
+                          'instantaneous_indices': np.array([r.state_index for r in instantaneous], dtype=int)}
         return self.augmented
 
     def discretise(self):
@@ -543,6 +548,13 @@ class CavitySimulation(StochasticSimulation):
         ΦT = np.ascontiguousarray(self.Φ.T)       # (n, n + q), for the NumPy loop
         Φc = np.ascontiguousarray(self.Φ)         # (n + q, n), for the compiled loop
         LT = np.ascontiguousarray(self.L.T)       # (n + q, n + q)
+        # instantaneous samples u_k[idx] at t_k: the NumPy loop copies them before each step; the
+        # compiled loop gets extra rows of Φ that select them, with zero noise (no random numbers)
+        idx = aug['instantaneous_indices']
+        r = len(idx)
+        U = np.empty((N, K, r)) if r else None
+        if r:
+            Φc_inst = np.ascontiguousarray(np.vstack([self.Φ, np.eye(n)[idx]]))
 
         self.backend_used = 'numpy'
         kernel = None
@@ -559,11 +571,20 @@ class CavitySimulation(StochasticSimulation):
             nn = min(self.chunk_size, N - start)
             # one (nn·K, n + q) product is about 3× faster than the batched (nn, K, n + q) @ LT
             ξ = (self.standard_normals((nn, K, n + q)).reshape(nn * K, n + q) @ LT).reshape(nn, K, n + q)
-            if kernel is not None:
+            if kernel is not None and r:
+                ξ_inst = np.concatenate([ξ, np.zeros((nn, K, r))], axis=-1)
+                YU = np.empty((nn, K, q + r))
+                u = kernel(Φc_inst, ξ_inst, u, YU, states[start + 1:start + nn + 1] if states is not None else None,
+                           self.threading.axis == 'setups')
+                Y[start:start + nn] = YU[..., :q]
+                U[start:start + nn] = YU[..., q:]
+            elif kernel is not None:
                 u = kernel(Φc, ξ, u, Y[start:start + nn], states[start + 1:start + nn + 1] if states is not None else None,
                            self.threading.axis == 'setups')
             else:
                 for k in range(nn):
+                    if r:
+                        U[start + k] = u[:, idx]
                     z = u @ ΦT
                     z += ξ[k]
                     u = z[:, :n]
@@ -577,7 +598,7 @@ class CavitySimulation(StochasticSimulation):
         logger.debug('Integrated {} steps × {} trajectories in {:.3f} s ({:.3f} μs per step, {} backend)',
                      N, K, elapsed, 1e6 * elapsed / max(N, 1), self.backend_used)
 
-        self.record(np.transpose(Y, (1, 0, 2)) / self.Δt)
+        self.record(np.transpose(Y, (1, 0, 2)) / self.Δt, None if U is None else np.transpose(U, (1, 0, 2)))
         logger.info('Simulated {} samples ({:.4g} ms) in {:.2f} s: traces {}',
                     N, self.time_length / ms, time.perf_counter() - start_time, list(self.traces))
 
@@ -637,7 +658,9 @@ class CavitySimulation(StochasticSimulation):
         )
         u = self.initial_state()
         Y = np.empty((N, K, q))
-        states = np.empty((N + 1, K, n)) if self.store_state else None
+        # instantaneous samples are read from the stored states (kept internally when store_state=False)
+        idx = aug['instantaneous_indices']
+        states = np.empty((N + 1, K, n)) if (self.store_state or len(idx)) else None
         if states is not None:
             states[0] = u
 
@@ -691,12 +714,15 @@ class CavitySimulation(StochasticSimulation):
             if not np.all(np.isfinite(u)):
                 logger.warning('The nonlinear simulation diverged (non-finite state) before sample {}', start + nn)
         self.u_final = u
+        U = np.transpose(states[:N][..., idx], (1, 0, 2)) if len(idx) else None
+        if not self.store_state:
+            states = None
         self.states = None if states is None else np.transpose(states, (1, 0, 2))
         self.X = self.states
         elapsed = time.perf_counter() - start_time
         logger.debug('Integrated {} steps × {} trajectories in {:.3f} s ({:.3f} μs per sample, {} backend)',
                      N, K, elapsed, 1e6 * elapsed / max(N, 1), self.backend_used)
-        self.record(np.transpose(Y, (1, 0, 2)) / self.Δt)
+        self.record(np.transpose(Y, (1, 0, 2)) / self.Δt, U)
         logger.info('Simulated {} samples ({:.4g} ms) in {:.2f} s: traces {}',
                     N, self.time_length / ms, time.perf_counter() - start_time, list(self.traces))
 
@@ -760,15 +786,21 @@ class CavitySimulation(StochasticSimulation):
     # ------------------------------------------------------------------------------------------
     # recording
     # ------------------------------------------------------------------------------------------
-    def record(self, values):
+    def record(self, values, instantaneous=None):
         """
-        Turns the sample averages of the auxiliary integrals, shape (K, num_samples, q), into the
-        records (self.records, arrays (K, num_samples)) and the Traces of trajectory 0
+        Turns the sample averages of the auxiliary integrals, shape (K, num_samples, q), and the
+        instantaneous state samples, shape (K, num_samples, r) (None if no record samples the state),
+        into the records (self.records, arrays (K, num_samples)) and the Traces of trajectory 0
         """
         slices = self.augmented['slices']
+        columns = self.augmented.get('instantaneous', {})
         self.records = {}
         for record in self.detection:
-            self.records[record.label] = record.finish(values[..., slices[record.label]], self)
+            if record.label in columns:
+                c = columns[record.label]
+                self.records[record.label] = record.finish(instantaneous[..., c:c + 1], self)
+            else:
+                self.records[record.label] = record.finish(values[..., slices[record.label]], self)
         self.traces = {label: self._make_trace(label, 0) for label in self.records}
         for label, trace in self.traces.items():
             if label.isidentifier() and not hasattr(type(self), label) and label not in vars(self):
@@ -825,7 +857,9 @@ class CavitySimulation(StochasticSimulation):
           to compare with ½[S(ω) + S(-ω)] of MultiTrap
 
         Includes the detection efficiency, electronic noise, detection floor and conversion to
-        volts; excludes LO phase noise. [units²/Hz]
+        volts; excludes LO phase noise and the static carrier (static_carrier=True). For an
+        instantaneous Position record, kind='discrete' is the exact spectrum of the sampled state and
+        kind='continuous' has no sinc² factor. [units²/Hz]
         """
         record = next((r for r in self.detection if r.label == label), None)
         if record is None:
@@ -837,7 +871,9 @@ class CavitySimulation(StochasticSimulation):
             raise ValueError(f"kind={kind!r}: use 'discrete' or 'continuous'")
         sl = self.augmented['slices'][label]
 
-        if isinstance(record, Heterodyne):
+        if getattr(record, 'instantaneous', False):
+            S = self._state_spectrum(ω, record.state_index, kind)
+        elif isinstance(record, Heterodyne):
             v = np.array([1.0, 1j])
             Ω = record.Ωhet_used
             s_lo = np.einsum('i,wij,j->w', v, cross(ω - Ω, sl), v.conj()).real
@@ -849,7 +885,7 @@ class CavitySimulation(StochasticSimulation):
             S = np.einsum('i,wij,j->w', v, cross(ω, sl), v).real
         else:
             S = cross(ω, sl)[:, 0, 0].real
-        if kind == 'continuous':
+        if kind == 'continuous' and not getattr(record, 'instantaneous', False):
             S = S * np.sinc(f * self.Δt)**2
         if isinstance(record, OpticalRecord):
             S = S * record.scale(self)**2 + record.electronic_noise / 2
@@ -876,6 +912,24 @@ class CavitySimulation(StochasticSimulation):
         H[:, :, :n] = Φy[None] @ Minv
         H[:, np.arange(len(idx_y)), idx_y] += 1
         return H @ self.Q @ np.conj(np.transpose(H, (0, 2, 1))) / self.Δt
+
+    def _state_spectrum(self, ω, index, kind):
+        """
+        Spectrum of state component `index` [·²/Hz]: kind='discrete', the exact spectrum of its
+        instantaneous samples u_k (aliasing included), S = Δt·[M⁻¹·Q_uu·M⁻†]_ii with M = z·I − Φ_u,
+        z = e^{-iωΔt}; kind='continuous', the symmetrised spectrum of the continuous u_i(t)
+        """
+        n = self.augmented['n']
+        if kind == 'discrete':
+            z = np.exp(-1j * ω * self.Δt)
+            Minv = np.linalg.inv(z[:, None, None] * np.eye(n)[None] - self.Φ[:n][None])
+            h = Minv[:, index, :]
+            return np.einsum('wi,ij,wj->w', h, self.Q[:n, :n], h.conj()).real * self.Δt
+        aug = self.augmented
+        GB = np.linalg.solve(-1j * ω[:, None, None] * np.eye(n)[None] - aug['A'][:n, :n][None],
+                             np.broadcast_to(aug['B'][:n].astype(complex), (len(ω), n, aug['B'].shape[1])))
+        g = GB[:, index, :]
+        return np.einsum('wi,ij,wj->w', g, aug['N'], g.conj()).real
 
     def _aux_spectral_matrix_continuous(self, ω, sl):
         """Symmetrised spectral matrix of the continuous outputs C·u + D·w + E·v of records `sl`"""

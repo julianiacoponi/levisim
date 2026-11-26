@@ -110,6 +110,24 @@ shows where the growth saturates.
 | `PhotonNumber(η)` | flux fluctuation $\lvert\bar\alpha_\mathrm{out}\rvert\, h(\theta_\alpha)$, $\theta_\alpha = -\arg\bar\alpha_\mathrm{out}$ | shot-noise units, or photons/s |
 | `Position(label)` | $x = x_\mathrm{zpf}\,(b + b^\dagger)$ | m (or `units='zpf'`) |
 
+Every record is the average over its sample interval by default. `Position(label,
+sampling='instantaneous')` records the position at the sample time $t_k$ instead, as
+`FreeSpaceSimulation` does: no $\mathrm{sinc}^2(f\Delta t)$ response, and everything beyond the
+Nyquist frequency aliases. The instantaneous sample is a copy of the state and draws no random
+numbers, so the other records of a seeded run are unchanged by adding it; `trace_label` names it,
+so one mode can be recorded both ways:
+
+```python
+sim = mtrap.simulate(detection=[Position('x1'), Position('x1', sampling='instantaneous', trace_label='x1_inst')])
+```
+
+For it, `sim.record_spectrum(label, f)` is the exact spectrum of the sampled state,
+$\Delta t\,[M^{-1}Q_{uu}M^{-\dagger}]_{ii}$ with $M = e^{-i\omega\Delta t}I - \Phi_u$, whose integral
+over the Nyquist band is the steady-state variance (a test), and `kind='continuous'` is the
+symmetrised `MultiTrap` spectrum without the $\mathrm{sinc}^2$ factor. With `model='nonlinear'` the
+samples come from the stored states, which are then kept internally during the run (memory
+$\propto$ samples × trajectories × state size).
+
 - Output field: $a_\mathrm{out} = -\sqrt{\kappa}\,a + a_\mathrm{in}$, with quadratures
   $X_\mathrm{out} = a_\mathrm{out} + a_\mathrm{out}^\dagger$ and
   $P_\mathrm{out} = i(a_\mathrm{out} - a_\mathrm{out}^\dagger)$, the convention of
@@ -189,9 +207,21 @@ Every optical record takes:
   phase that is slow against the spectral features averages the spectrum over its distribution:
   with a static Gaussian error of variance $\sigma^2$ per trajectory, the ensemble-averaged spectrum
   is `quadrature_squeezing.phase_noise_averaged(..., σ²)` (a test, with $\sigma = 0.5$ rad and 256
-  trajectories). Only the detected fluctuations are rotated; the term that LO phase noise makes from
-  a static output field, $\propto \lvert\bar\alpha_\mathrm{out}\rvert\,\delta\phi$, is not part of the
-  linearised record.
+  trajectories). By default only the detected fluctuations are rotated; the term that LO phase noise
+  makes from a static output field, $\propto \lvert\bar\alpha_\mathrm{out}\rvert\,\delta\phi$, is not
+  part of the linearised record (see `static_carrier`).
+- `static_carrier` (default `False`; `Homodyne` and `Heterodyne`): adds the static output field
+  $\bar\alpha_\mathrm{out} = -\sqrt{\kappa_j}\,\alpha$ of the port to the record, i.e. the sample
+  average of $2\sqrt{\eta}\,\lvert\bar\alpha_\mathrm{out}\rvert\cos(\theta(t) + \phi_k - \theta_\alpha)$ with
+  $\theta_\alpha = -\arg\bar\alpha_\mathrm{out}$. This is the DC term of a homodyne record (the beat note at
+  $\Omega_\mathrm{het}$ of a heterodyne, averaged exactly over each interval) and, with phase noise
+  $\phi$, its conversion $\approx -2\sqrt{\eta}\,\lvert\bar\alpha_\mathrm{out}\rvert\sin(\theta - \theta_\alpha)\,\phi$
+  into the record. At $\theta = \theta_\alpha + \pi/2$, white phase noise of one-sided PSD $S_\phi$
+  raises the two-sided record PSD by $2\eta\lvert\bar\alpha_\mathrm{out}\rvert^2 S_\phi$ (a test); at the
+  amplitude quadrature $\theta_\alpha$ the conversion is second order. The static field comes from the
+  `MultiTrap` (or the nonlinear equilibrium); for a `QuadratureSystem` pass `α=`. The carrier draws
+  no random numbers, so the fluctuations of a seeded run are unchanged. `sim.records` keep the DC
+  term; traces subtract their mean when `zero_mean=True` (the default).
 - `electronic_noise`: white noise added to the record, as a one-sided PSD in the record's final
   units (the same one-sided convention as `detection_floor`).
 - `volts`: a `VoltageConversion(power, responsivity, transimpedance_gain)`. The record becomes
@@ -211,7 +241,7 @@ SpectralDensityEstimate(experiment, ('homodyne', 'homodyne'), num_segments=8)
 ```
 
 `sim.record_spectrum` includes η, the electronic noise, the detection floor and the conversion to
-volts; it does not include LO phase noise.
+volts; it does not include LO phase noise or the static carrier.
 
 ## The nonlinear model
 

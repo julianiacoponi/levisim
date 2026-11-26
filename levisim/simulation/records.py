@@ -31,10 +31,13 @@ Records
 - `Homodyne(θ, η)`: one output quadrature
 - `Heterodyne(Ωhet, η)`: the beat of the output field with a local oscillator detuned by Ωhet
 - `PhotonNumber(η)`: the fluctuation of the output photon flux about the static field (linearised)
-- `Position(label)`: a mechanical position, x_zpf-scaled to metres
+- `Position(label)`: a mechanical position, x_zpf-scaled to metres; sample-averaged like every
+  record by default, or the instantaneous value at the sample time (`sampling='instantaneous'`)
 
 Detection realism (optical records): efficiency η (vacuum admixture), local-oscillator phase noise
-(`PhaseNoise`), an electronic noise floor, and conversion to volts (`VoltageConversion`).
+(`PhaseNoise`), an electronic noise floor, and conversion to volts (`VoltageConversion`). Homodyne
+and heterodyne records can also carry the static output carrier (`static_carrier=True`): the DC
+term 2√η·|ᾱ_out|·cos(θ − θ_α) and, with phase noise, its conversion into the record.
 """
 
 from dataclasses import dataclass
@@ -120,8 +123,10 @@ class PhaseNoise:
       averaged over an ensemble then equals
       `levisim.multiphysics.quadrature_squeezing.phase_noise_averaged` with σθ2 = σ².
 
-    Only the detected fluctuations are rotated: the large term ∝ abs(ᾱ_out)·sin(θ - θ_α)·δφ that LO
-    phase noise produces from a static output field is not part of the linearised record.
+    By default only the detected fluctuations are rotated: the large term ∝ abs(ᾱ_out)·sin(θ - θ_α)·δφ
+    that LO phase noise produces from a static output field is not part of the linearised record.
+    `Homodyne(..., static_carrier=True)` (or `Heterodyne`) adds the static carrier, and with it that
+    conversion, to the record.
     """
 
     def __init__(self, model, **parameters):
@@ -221,14 +226,31 @@ class OpticalRecord(Record):
     - electronic_noise [0]: white noise added to the record, one-sided PSD in the record's final
       units² per Hz (shot-noise units, or V²/Hz when `volts` is given)
     - volts [None]: a `VoltageConversion`; the record is then in volts
+    - static_carrier [False]: add the static output carrier (homodyne and heterodyne only, see below)
+    - α [None]: the static intracavity field for static_carrier (and `PhotonNumber`) [√photons]
+      (default: from the MultiTrap, or the nonlinear equilibrium; required for a QuadratureSystem)
     - label: name in `sim.traces`
 
     The record is built from the two detected quadratures (X_out, P_out), sample-averaged; the
     detection phase θ_k of sample k (plus φ_k of the phase noise) then selects
     h_k = X_k·cos θ_k + P_k·sin θ_k.
+
+    Static carrier: the linearised record holds the fluctuations only. With static_carrier=True the
+    static output field ᾱ_out = -√κ_j·α of the port is added, i.e. the sample average of ::
+
+        2·√η·abs(ᾱ_out)·cos(θ(t) + φ_k − θ_α),      θ_α = −arg ᾱ_out,
+
+    in the record's units (√(photons/s) for shot-noise units). It is the DC term of the record and,
+    with phase noise φ, its conversion ≈ −2·√η·abs(ᾱ_out)·sin(θ − θ_α)·φ_k into the record; the
+    full cosine is kept, so the conversion is exact for any φ. A heterodyne's carrier is its beat
+    note at Ωhet, averaged exactly over each sample interval. The carrier draws no random numbers,
+    so the fluctuations are unchanged. Traces subtract their mean when the simulation has
+    zero_mean=True; `sim.records` keep it. `sim.record_spectrum` describes the fluctuations only
+    (it excludes the carrier's DC line and LO phase noise).
     """
 
-    def __init__(self, cavity=None, port=None, η=1.0, phase_noise=None, electronic_noise=0.0, volts=None, label=None):
+    def __init__(self, cavity=None, port=None, η=1.0, phase_noise=None, electronic_noise=0.0, volts=None,
+                 static_carrier=False, α=None, label=None):
         super().__init__(label)
         if not 0 <= η <= 1:
             raise ValueError(f'detection efficiency η = {η} should be in [0, 1]')
@@ -238,6 +260,8 @@ class OpticalRecord(Record):
         self.phase_noise = phase_noise
         self.electronic_noise = float(electronic_noise or 0)
         self.volts = volts
+        self.static_carrier = bool(static_carrier)
+        self.α = α
 
     # the rotation of the auxiliary integrals (non-zero for a heterodyne)
     rotation_rate = 0.0
@@ -264,7 +288,25 @@ class OpticalRecord(Record):
         R = np.array([[0.0, -Ω], [Ω, 0.0]])
         self.units = 'V' if self.volts is not None else 'shot noise units'
         self.κ_port = κ_j
+        if self.static_carrier:
+            α = complex(self.α) if self.α is not None else sim.static_field(self.cavity_label)
+            α_out = -np.sqrt(κ_j) * α
+            self.carrier_amplitude = 2 * np.sqrt(self.η) * abs(α_out)    # √(photons/s)
+            self.θ_carrier = -np.angle(α_out)
         return RecordRows(C, D, E, R)
+
+    def carrier(self, θ, sim):
+        """
+        Sample averages of the static carrier 2√η·abs(ᾱ_out)·cos(θ(t) − θ_α) for detection phases θ
+        at the END of each sample interval (phase noise included), in shot-noise units; a rotating
+        local oscillator (rotation_rate Ω ≠ 0) is averaged exactly over the interval
+        """
+        c = θ - self.θ_carrier
+        Ω = self.rotation_rate
+        if Ω == 0:
+            return self.carrier_amplitude * np.cos(c)
+        ΩΔt = Ω * sim.Δt
+        return self.carrier_amplitude * (np.sin(c) - np.sin(c - ΩΔt)) / ΩΔt
 
     def detection_phases(self, sim, K):
         """θ_k of every sample, shape (K, num_samples) or broadcastable [rad]"""
@@ -283,6 +325,8 @@ class OpticalRecord(Record):
             self.phase_noise_samples = self.phase_noise.sample(sim.standard_normals((K, N)), sim.Δt)
             θ = θ + self.phase_noise_samples
         h = values[..., 0] * np.cos(θ) + values[..., 1] * np.sin(θ)
+        if self.static_carrier:
+            h = h + self.carrier(θ, sim)
         h = h * self.scale(sim)
         if self.electronic_noise:
             h = h + np.sqrt(self.electronic_noise / (2 * sim.Δt)) * sim.standard_normals(h.shape)
@@ -390,11 +434,12 @@ class PhotonNumber(OpticalRecord):
     def __init__(self, units='shot noise', α=None, **kwargs):
         if kwargs.get('phase_noise') is not None:
             raise ValueError('PhotonNumber is direct detection: it has no local oscillator, hence no phase noise')
+        if kwargs.get('static_carrier'):
+            raise ValueError('PhotonNumber records the flux fluctuation; its static part is the mean flux, record.mean_flux')
         if units not in ('shot noise', 'photons/s'):
             raise ValueError(f"PhotonNumber units {units!r}: use 'shot noise' or 'photons/s'")
-        super().__init__(**kwargs)
+        super().__init__(α=α, **kwargs)
         self.flux_units = units
-        self.α = α
 
     def rows(self, sim):
         rows = super().rows(sim)
@@ -429,30 +474,53 @@ class PhotonNumber(OpticalRecord):
 # --------------------------------------------------------------------------------------------------
 class Position(Record):
     """
-    Position of one mechanical mode, sample-averaged like every record
+    Position of one mechanical mode, sample-averaged like every record (or sampled instantaneously)
 
     label: the mode label, e.g. 'x1'; units 'm' (default, x = x_zpf·q with q = b + b†) or 'zpf'
     (q itself, as `MultiTrap.position_power_spectrum(zpf_scaled=True)`); detection_floor: one-sided
     white noise PSD added to the record [units²/Hz] (default: the simulation's `detection_floor`,
     as in `FreeSpaceSimulation`).
+
+    sampling ['average']: 'average' records the average of the position over each sample interval
+    [t_k, t_k + Δt] (a sinc²(fΔt) response, no aliasing of white noise); 'instantaneous' records
+    the position at t_k, as `FreeSpaceSimulation` does (no sinc² response; everything beyond the
+    Nyquist frequency aliases). The instantaneous sample draws no random numbers, so the other
+    records of the run are unchanged.
+
+    trace_label [None]: the name in `sim.traces` and `sim.records` (default: the mode label), so that
+    one mode can be recorded both ways, e.g. Position('x1', sampling='instantaneous', trace_label='x1_inst').
     """
 
-    def __init__(self, label, units='m', detection_floor=None):
-        super().__init__(label)
+    SAMPLINGS = ('average', 'instantaneous')
+
+    def __init__(self, label, units='m', detection_floor=None, sampling='average', trace_label=None):
+        super().__init__(trace_label or label)
         if units not in ('m', 'zpf'):
             raise ValueError(f"Position units {units!r}: use 'm' or 'zpf'")
+        if sampling not in self.SAMPLINGS:
+            raise ValueError(f'Position sampling {sampling!r}: use one of {self.SAMPLINGS}')
         self.mode = label
         self.position_units = units
         self.detection_floor = detection_floor
+        self.sampling = sampling
+
+    @property
+    def instantaneous(self):
+        """True if the record samples the state at t_k instead of averaging over the interval"""
+        return self.sampling == 'instantaneous'
 
     def rows(self, sim):
         system = sim.system
         n, m = system.B.shape
         iX, _ = system.quadrature_indices(self.mode)
-        C = np.zeros((1, n))
-        C[0, iX] = 1.0
         self.factor = sim.zero_point_fluctuation(self.mode) if self.position_units == 'm' else 1.0
         self.units = 'm' if self.position_units == 'm' else 'zpf'
+        self.state_index = iX
+        if self.instantaneous:
+            # no auxiliary integral: the simulation samples state component iX at every t_k
+            return RecordRows(np.zeros((0, n)), np.zeros((0, m)), np.zeros((0, 0)), np.zeros((0, 0)))
+        C = np.zeros((1, n))
+        C[0, iX] = 1.0
         return RecordRows(C, np.zeros((1, m)), np.zeros((1, 0)), np.zeros((1, 1)))
 
     def finish(self, values, sim):
@@ -463,4 +531,7 @@ class Position(Record):
         return x
 
     def __repr__(self):
-        return f'Position({self.mode!r}, units={self.position_units!r})'
+        extra = '' if self.sampling == 'average' else f', sampling={self.sampling!r}'
+        if self.label != self.mode:
+            extra += f', trace_label={self.label!r}'
+        return f'Position({self.mode!r}, units={self.position_units!r}{extra})'
