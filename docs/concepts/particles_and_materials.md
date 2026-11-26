@@ -232,8 +232,13 @@ because the components of the induced dipole perpendicular to $\hat{\mathbf e}$ 
 `Trap` therefore uses $\alpha_\text{eff} = \hat{\mathbf y}\cdot\mathbf R\boldsymbol\alpha_\text{eff}\mathbf R^\mathsf{T}\cdot\hat{\mathbf y}$,
 and its stiffness, trap frequencies, potential, forces, scattering cross section and equilibrium
 offset follow from that projection. A sphere of an isotropic material keeps the original scalar
-arithmetic, and its numbers are unchanged. `particle.α` is the projected static polarisability,
-which `MultiTrap` uses for the coherent-scattering drive.
+arithmetic, and its numbers are unchanged. Every particle has the same polarisability API:
+`particle.α` is the scalar projected static polarisability
+$\hat{\mathbf y}\cdot\mathbf R\boldsymbol\alpha\mathbf R^\mathsf{T}\cdot\hat{\mathbf y}$, which
+`MultiTrap` uses for the coherent-scattering drive, and `particle.α_tensor` is the $3\times3$
+static tensor $\boldsymbol\alpha$ in the body frame. For a sphere of an isotropic material `α` is the
+Clausius-Mossotti scalar and `α_tensor` is $\alpha\,\mathbb 1$; for a birefringent sphere (e.g.
+`VATERITE`) `α` is the projection, as for the other shapes.
 
 The photon-recoil noise is generalised in the same way. The induced dipole
 $\mathbf p \propto \boldsymbol\alpha_\text{eff}\hat{\mathbf y}$ need not lie along the polarisation.

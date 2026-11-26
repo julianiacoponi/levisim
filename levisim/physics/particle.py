@@ -370,6 +370,16 @@ class Particle:
         value = TWEEZER_POLARISATION @ self.lab_polarisability_tensor() @ TWEEZER_POLARISATION
         return value.real if np.imag(value) == 0 else complex(value)
 
+    @property
+    def α_tensor(self):
+        """
+        Static polarisability tensor in the body frame at the particle's wavelength λ (3×3, without
+        the radiation reaction), `polarisability_tensor()`; `α` is its projection on the tweezer
+        polarisation in the current orientation, and `lab_polarisability_tensor()` its lab-frame form
+        [Fm²]
+        """
+        return _as_tensor(self.static_polarisability_tensor())
+
     def effective_polarisability_tensor(self, k):
         """
         Lab-frame polarisability with the radiation reaction at the wavenumber k [1/m] of the light,
@@ -604,7 +614,7 @@ class Sphere(Particle):
         """
         String describing the Sphere instance
         """
-        α = self.α if np.ndim(self.εr) == 0 else np.diag(self.α)
+        α = self.α if self.has_scalar_polarisability else np.diag(self.α_tensor)
         return (
             f'Sphere(id={id(self)}'
             f'\n    r = {self.r / nm:.1f} nm'
@@ -668,30 +678,41 @@ class Sphere(Particle):
         return 3 * V * ε0 * (εr - identity) @ np.linalg.inv(εr + 2*identity)
 
     @cached_property
+    def _α_body(self):
+        """Clausius-Mossotti polarisability at λ: a scalar, or a 3×3 body-frame tensor for an anisotropic material"""
+        return self._clausius_mossotti(self.V, self.εr)
+
+    @property
     def α(self):
         """
-        Static polarisability of the sphere at its wavelength λ (Clausius-Mossotti; a 3×3
-        body-frame tensor for an anisotropic material)
+        Static polarisability of the sphere at its wavelength λ (Clausius-Mossotti)
         [Capacitance × Area] = [Fm²]
+
+        A scalar for every material, as for every other particle: for an isotropic material the
+        Clausius-Mossotti value itself; for an anisotropic (birefringent) material its projection
+        ŷ·(R α_body Rᵀ)·ŷ on levisim's tweezer polarisation in the current orientation (`Particle.α`).
+        The 3×3 body-frame tensor is `α_tensor`.
 
         [F] = [Farad] = Capacitance = Charge / Electric Potential = [C/V]
         NOTE: https://en.wikipedia.org/wiki/Clausius–Mossotti_relation#Lorentz–Lorenz_equation
         """
-        return self._clausius_mossotti(self.V, self.εr)
+        if np.ndim(self._α_body) == 0:
+            return self._α_body
+        return super().α
 
     @property
     def has_scalar_polarisability(self):
         """
-        Whether `α` is a scalar (an isotropic material)
+        Whether the polarisability is one scalar for every field direction (an isotropic material)
         [bool]
         """
-        return np.ndim(self.α) == 0
+        return np.ndim(self._α_body) == 0
 
     def effective_polarisability_along(self, direction, k):
         """
         Effective polarisability for light polarised along `direction` at wavenumber k [1/m]. For an
         isotropic material this is the scalar α/(1 - i k³α/(6πε0)) whatever the direction, with
-        exactly the arithmetic of the original `Trap.α_eff`; for an anisotropic material (a 3×3 `α`)
+        exactly the arithmetic of the original `Trap.α_eff`; for an anisotropic material (a 3×3 `α_tensor`)
         it is ê·α_eff·ê of the rotated tensor (see `Particle.effective_polarisability_along`).
         [complex Fm²]
         """
@@ -706,7 +727,7 @@ class Sphere(Particle):
         [Fm²]
         """
         if λ is None or float(λ) == self.λ:
-            return _as_tensor(self.α)
+            return _as_tensor(self._α_body)
         return _as_tensor(self._clausius_mossotti(self.V, self.material.εr(float(λ))))
 
     ################################################################################################

@@ -20,7 +20,7 @@ Landau and Lifshitz, Electrodynamics of Continuous Media, §4), with depolarisat
 
 For a scalar εr, α_i = ε0 V (εr - 1)/(1 + L_i(εr - 1)); a 3×3 εr (a birefringent material, its
 principal axes given in the particle's body frame) enters through the matrix form. At L_i = 1/3
-this is Clausius-Mossotti, `Sphere.α`. The radiation reaction α_eff = α (𝟙 - i k³α/(6πε0))⁻¹ is
+this is Clausius-Mossotti, `Sphere.α_tensor`. The radiation reaction α_eff = α (𝟙 - i k³α/(6πε0))⁻¹ is
 applied to the whole tensor (`Particle.polarisability_tensor(radiation_reaction=True)`).
 
 APPROXIMATION (Cylinder, Rod, Disk, Dumbbell). Cylinders (rods, disks) have no closed-form
