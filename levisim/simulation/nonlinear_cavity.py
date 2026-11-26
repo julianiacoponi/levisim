@@ -152,6 +152,12 @@ class NonlinearCavityModel:
         unknown = (set(terms) | set(linearised_terms)) - set(NONLINEAR_TERMS)
         if unknown:
             raise ValueError(f'unknown terms {sorted(unknown)}; the terms are {NONLINEAR_TERMS}')
+        librations = [label for label, dim in getattr(mtrap, 'dimensions', {}).items() if getattr(dim, 'is_libration', False)]
+        if librations:
+            raise NotImplementedError(
+                f"model='nonlinear' simulates translations only, not the librational dimensions {librations}:"
+                " use model='linear', or RigidBodySimulation for the nonlinear rotation in free space"
+            )
         self.mtrap = mtrap
         self.damping = damping
         self.interactions = list(interactions or [])

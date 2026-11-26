@@ -506,3 +506,9 @@ def test_parametric_feedback_cools_at_the_harmonic_rate():
         energies[sign] = E[-400:].mean()  # over the last period
     assert energies[1] == pytest.approx(E0 / 2, rel=0.03)
     assert energies[-1] > E0
+
+
+def test_nonlinear_cavity_model_rejects_librations():
+    mt = libration_multitrap(π/4)
+    with pytest.raises(NotImplementedError, match='translations only'):
+        mt.simulate(model='nonlinear', num_samples=10)
