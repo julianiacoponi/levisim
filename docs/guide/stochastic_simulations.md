@@ -212,7 +212,9 @@ With numba installed (the `fast` extra), the time loop can run as a compiled ker
 - `backend='auto'` (default): numba when it is installed and the run has at least $2^{15}$ steps
   (shorter runs cost less in NumPy than loading the kernels), NumPy otherwise;
 - `backend='numpy'`: the NumPy loop, which remains the tested reference;
-- `backend='numba'`: the compiled loop; an `ImportError` explains how to install numba if it is missing.
+- `backend='numba'`: the compiled loop; an `ImportError` explains how to install numba if it is missing,
+  and an `UnsupportedBackendError` (a `ValueError`) names the reason when the configuration has no
+  compiled kernel. An explicit request never silently runs the NumPy loop instead.
 
 `sim.backend_used` records which loop ran. Both loops draw the same random numbers in the same order
 (the compiled loop takes them from the same chunked generator), so a seeded run gives the same
@@ -223,7 +225,8 @@ Over very long runs the anharmonic, lightly damped $z$ motion amplifies any last
 long trajectories from the two backends agree statistically rather than sample by sample. Every
 option on this page (kicks, gravity, photon recoil, `override_Ω_dict`, the detection floor, the stored
 traces) has a compiled kernel; a subclass that overrides the physics methods, or
-`rk_loop_debug=True`, falls back to NumPy.
+`rk_loop_debug=True`, runs the NumPy loop with `backend='auto'` and raises `UnsupportedBackendError`
+with `backend='numba'`.
 
 The kernels are cached on disk, so only the first run on a machine compiles them:
 

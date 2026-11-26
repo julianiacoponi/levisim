@@ -64,6 +64,7 @@ from levisim.multiphysics.output_modes import QuadratureSystem
 from levisim.simulation.backends import (
     choose_threading,
     resolve_backend,
+    unsupported_backend_error,
 )
 from levisim.simulation.base import StochasticSimulation
 from levisim.simulation.records import (
@@ -202,7 +203,10 @@ class CavitySimulation(StochasticSimulation):
             (K, num_samples + 1, n); the final state is always kept as self.u_final
         seed [None], backend ['auto'], detection_floor [0], zero_mean [True], save...: see
             StochasticSimulation. With backend 'numba' (or 'auto' and numba installed) the time loop
-            is compiled; it consumes the same random numbers as the NumPy loop
+            is compiled; it consumes the same random numbers as the NumPy loop. A nonlinear model
+            without a compiled kernel (integrator='heun', pair interactions, force elements outside
+            the compiled set) falls back to NumPy with 'auto' and raises UnsupportedBackendError
+            with 'numba'
         chunk_size [2¹⁴]: time steps per block of pre-generated random numbers
 
     Keyword arguments of model='nonlinear' only (see `NonlinearCavityModel` for the first six)::
@@ -649,8 +653,10 @@ class CavitySimulation(StochasticSimulation):
                 # numba 256-910 μs per step for one trajectory), so this choice is not benchmark-proven
                 use_numba = False
             if use_numba and not model.compilable:
-                log = logger.warning if self.backend == 'numba' else logger.debug
-                log('No compiled kernel for this nonlinear configuration (interactions or other force elements): using NumPy')
+                if self.backend == 'numba':
+                    raise unsupported_backend_error('nonlinear CavitySimulation', model.not_compilable_reason)
+                logger.debug('No compiled kernel for this nonlinear configuration ({}): using NumPy',
+                             model.not_compilable_reason)
                 use_numba = False
             if use_numba:
                 from levisim.simulation.backends.numba_nonlinear import split_step_chunk
@@ -659,7 +665,7 @@ class CavitySimulation(StochasticSimulation):
                 self.threading = choose_threading(num_setups=K, num_particles=model.num_particles)
         else:
             if self.backend == 'numba':
-                logger.warning("integrator='heun' has no compiled kernel: using NumPy")
+                raise unsupported_backend_error('nonlinear CavitySimulation', "integrator='heun'")
             B̃ = aug['B']
             w, V = np.linalg.eigh(aug['N'])
             L_c = B̃ @ (V * np.sqrt(np.clip(w, 0, None)))      # L_c·L_cᵀ = B̃ÑB̃ᵀ

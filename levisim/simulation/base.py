@@ -21,7 +21,11 @@ from levisim.core.units import (
 )
 from levisim.core.utils import generate_time_array, save_variable_to_pickle
 from levisim.data.trace import Trace
-from levisim.simulation.backends import BACKENDS, resolve_backend
+from levisim.simulation.backends import (
+    BACKENDS,
+    resolve_backend,
+    unsupported_backend_error,
+)
 from levisim.simulation.integrators import get_integrator
 
 __all__ = [
@@ -44,8 +48,9 @@ class StochasticSimulation:
         backend ['auto']: 'numpy' (the reference time loop), 'numba' (compiled kernels, needs
             `pip install levisim[fast]`; ImportError without numba) or 'auto' (numba when it is
             installed and the run has at least AUTO_NUMBA_MIN_STEPS = 2¹⁵ steps, NumPy otherwise).
-            Both consume the same random numbers; trajectories agree to round-off. A configuration
-            without a compiled kernel falls back to NumPy. self.backend_used says which ran.
+            Both consume the same random numbers; trajectories agree to round-off. With 'auto' a
+            configuration without a compiled kernel falls back to NumPy; an explicit 'numba' raises
+            UnsupportedBackendError for it instead. self.backend_used says which ran.
         detection_floor [0]: one-sided white noise PSD added to the recorded traces only (a number,
             or a dict per trace label) [trace units²/Hz]
         zero_mean [True]: subtract each trace's mean
@@ -63,7 +68,8 @@ class StochasticSimulation:
       using `make_trace` and `add_detection_floor`, and fill `self.traces`
     - optionally `compiled_integrate(integrator, G, S, X0, time_array)`: a compiled time loop that
       consumes the random numbers exactly as `integrator.integrate` does (return None when the
-      configuration has no kernel, and NumPy is used)
+      configuration has no kernel, after setting self.compiled_kernel_unsupported to the reason;
+      NumPy is then used with backend='auto' and UnsupportedBackendError raised with 'numba')
     """
 
     # optional callable X -> X applied after every step (see Integrator.integrate); None: no projection
@@ -132,8 +138,11 @@ class StochasticSimulation:
     def compiled_integrate(self, integrator, G, S, X0, time_array):
         """
         A compiled time loop for this configuration, or None if there is none (the NumPy loop is
-        then used). Must consume the random numbers exactly as `integrator.integrate` does.
+        then used with backend='auto'; backend='numba' raises UnsupportedBackendError). Must consume
+        the random numbers exactly as `integrator.integrate` does. A subclass returning None sets
+        self.compiled_kernel_unsupported to the reason, which the error message quotes.
         """
+        self.compiled_kernel_unsupported = f'{type(self).__name__} has no compiled time loop'
 
     # ------------------------------------------------------------------------------------------
     # random numbers
@@ -197,8 +206,11 @@ class StochasticSimulation:
         if resolve_backend(self.backend, self.num_samples) == 'numba':
             X = self.compiled_integrate(integrator, G, S, X0, time_array)
             if X is None:
-                log = logger.warning if self.backend == 'numba' else logger.debug
-                log('No compiled kernel for this {} configuration: using the NumPy loop', type(self).__name__)
+                reason = getattr(self, 'compiled_kernel_unsupported', '') or 'no compiled kernel'
+                if self.backend == 'numba':
+                    raise unsupported_backend_error(type(self).__name__, reason)
+                logger.debug('No compiled kernel for this {} configuration ({}): using the NumPy loop',
+                             type(self).__name__, reason)
             else:
                 self.backend_used = 'numba'
         if X is None:
