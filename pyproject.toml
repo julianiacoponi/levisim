@@ -55,7 +55,8 @@ notify = ["plyer"]
 video = ["opencv-python"]
 # compiled (numba) time loops for the stochastic simulations, see levisim.simulation.backends
 fast = ["numba>=0.59"]
-# Mie theory for spheres beyond the dipole limit, see levisim.physics.mie (miepython: MIT licence)
+# Mie theory for spheres beyond the dipole limit, see levisim.physics.mie (miepython: MIT licence);
+# miepython>=3 itself requires numba and matplotlib, so this extra also installs numba (see docs/getting_started.md)
 mie = ["miepython>=3.0"]
 # running the notebooks in notebooks/
 notebooks = ["jupyterlab", "ipykernel", "nbclient", "networkx"]
@@ -83,5 +84,6 @@ include = ["levisim*"]
 
 # the shipped power-series pickles (2D, 4D, 6D; about 270 kB), their README, and the web lab assets
 [tool.setuptools.package-data]
+"levisim.physics" = ["optical_data/*.csv"]
 "levisim.multiphysics" = ["power_series_data/*.pickle", "power_series_data/README.md"]
 "levisim.web" = ["static/*.html", "static/shared/*", "static/free_space_tweezer/*", "static/coherent_scattering_cavity/*"]

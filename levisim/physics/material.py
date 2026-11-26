@@ -9,6 +9,7 @@ a shape. A small library of materials, each number with its source, is in
 `levisim.physics.materials`.
 """
 
+import os
 from collections.abc import Mapping
 from numbers import Number
 
@@ -48,13 +49,145 @@ def SiO2_permittivity_Malitson(λ):
     return SiO2_refractive_index_Malitson(λ)**2
 
 
+class RefractiveIndexTable:
+    """
+    A tabulated complex refractive index n + iκ against the vacuum wavelength, interpolated linearly
+
+    ::
+
+        RefractiveIndexTable(λ, n, κ=None, source='', name='')
+
+    - λ: strictly increasing vacuum wavelengths [m]
+    - n, κ: refractive index and extinction coefficient at each λ [·] (κ = 0 if omitted)
+    - source: citation of the data; name: a label
+
+    Calling the table, ``table(λ)``, returns the relative permittivity εr = (n + iκ)² at λ (a float if
+    κ = 0 there, else complex, e^{-iωt} convention). n and κ are interpolated separately and linearly
+    in λ between the two neighbouring rows, v1 + (λ - λ1)(v2 - v1)/(λ2 - λ1) with λ in μm, and a
+    tabulated wavelength returns its row exactly. Outside [λ_min, λ_max] it raises: there is no
+    extrapolation. A `Material` built with a table has `permittivity_kind == 'nk table'`.
+    """
+    def __init__(self, λ, n, κ=None, source='', name='', λ_μm=None):
+        """
+        Initialises a RefractiveIndexTable instance (`λ_μm`: the same wavelengths as tabulated in μm,
+        used for the interpolation so that the source's numbers enter unchanged; default λ/μm)
+        """
+        λ = np.array(λ, dtype=float)
+        n = np.array(n, dtype=float)
+        κ = np.zeros_like(n) if κ is None else np.array(κ, dtype=float)
+        if λ.ndim != 1 or λ.size < 2 or n.shape != λ.shape or κ.shape != λ.shape:
+            raise ValueError('λ, n and κ must be 1D arrays of the same length (at least 2 rows)')
+        if not (np.all(np.isfinite(λ)) and np.all(np.isfinite(n)) and np.all(np.isfinite(κ))):
+            raise ValueError('λ, n and κ must be finite')
+        if np.any(np.diff(λ) <= 0) or λ[0] <= 0:
+            raise ValueError('the wavelengths of a RefractiveIndexTable must be positive and strictly increasing')
+        if np.any(κ < 0):
+            raise ValueError('κ must be ≥ 0 (absorption, e^{-iωt} convention)')
+        for array in (λ, n, κ):
+            array.setflags(write=False)
+        # rows are stored with λ in μm, as tabulated, so that interpolation uses the source's numbers
+        self._λ_μm = λ / μm if λ_μm is None else np.array(λ_μm, dtype=float)
+        if self._λ_μm.shape != λ.shape or not np.allclose(self._λ_μm * μm, λ, rtol=1e-12, atol=0.0):
+            raise ValueError('λ_μm must be the wavelengths λ in μm')
+        self._λ_μm.setflags(write=False)
+        self.λ, self.n_values, self.κ_values = λ, n, κ
+        self.source = str(source)
+        self.name = str(name)
+
+    @classmethod
+    def from_csv(cls, path, source=None, name=None):
+        """
+        A table from a text file of rows 'λ [μm], n, κ' (comma separated; lines starting with '#' are
+        comments). Without `source`, the comment lines are the source.
+        """
+        comments, rows = [], []
+        with open(path, encoding='utf-8') as file:
+            for line in file:
+                line = line.strip()
+                if not line:
+                    continue
+                if line.startswith('#'):
+                    comments.append(line.lstrip('#').strip())
+                    continue
+                rows.append([float(value) for value in line.split(',')])
+        data = np.array(rows, dtype=float)
+        return cls(
+            data[:, 0] * μm, data[:, 1], data[:, 2] if data.shape[1] > 2 else None,
+            source=' '.join(comments) if source is None else source, λ_μm=data[:, 0],
+            name=os.path.splitext(os.path.basename(str(path)))[0] if name is None else name,
+        )
+
+    @property
+    def wavelength_range(self):
+        """(λ_min, λ_max) of the table [m]"""
+        return (float(self.λ[0]), float(self.λ[-1]))
+
+    def nk(self, λ):
+        """
+        (n, κ) at vacuum wavelength λ [m], interpolated linearly in λ
+        [·]
+        """
+        x = float(λ) / μm
+        grid = self._λ_μm
+        if not grid[0] * (1 - 1e-12) <= x <= grid[-1] * (1 + 1e-12):
+            raise ValueError(
+                f'λ = {x * 1e3:.3f} nm is outside the table {self.name!r} '
+                f'({grid[0] * 1e3:.1f}-{grid[-1] * 1e3:.1f} nm); there is no extrapolation'
+            )
+        exact = np.flatnonzero(np.isclose(grid, x, rtol=1e-12, atol=0.0))
+        if exact.size:
+            i = int(exact[0])
+            return float(self.n_values[i]), float(self.κ_values[i])
+        i = int(np.clip(np.searchsorted(grid, x) - 1, 0, grid.size - 2))
+        λ1, λ2 = float(grid[i]), float(grid[i + 1])
+
+        def interpolate(values):
+            v1, v2 = float(values[i]), float(values[i + 1])
+            return v1 + (x - λ1) * (v2 - v1) / (λ2 - λ1)
+
+        return interpolate(self.n_values), interpolate(self.κ_values)
+
+    def refractive_index(self, λ):
+        """n + iκ at vacuum wavelength λ [m] (a float if κ = 0) [·]"""
+        n, κ = self.nk(λ)
+        return n if κ == 0 else complex(n + 1j*κ)
+
+    def __call__(self, λ):
+        """
+        Relative permittivity εr = (n + iκ)² at vacuum wavelength λ [m]; a float if κ = 0
+        [·]
+        """
+        n, κ = self.nk(λ)
+        return n**2 if κ == 0 else (n + 1j*κ)**2
+
+    def __len__(self):
+        return int(self.λ.size)
+
+    def __repr__(self):
+        λ_min, λ_max = self.wavelength_range
+        return f'RefractiveIndexTable({self.name!r}, {len(self)} rows, {λ_min / μm:.4g}-{λ_max / μm:.4g} μm)'
+
+
+def optical_data_path(filename):
+    """Path of a data file shipped in levisim/physics/optical_data"""
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), 'optical_data', filename)
+
+
+def load_refractive_index_table(filename, **kwargs):
+    """
+    A `RefractiveIndexTable` from a file shipped in levisim/physics/optical_data (e.g.
+    'gold_olmon2012_evaporated.csv'); each file's header comments give its source
+    """
+    return RefractiveIndexTable.from_csv(optical_data_path(filename), **kwargs)
+
+
 # named dispersion models accepted as `Material(permittivity='<name>')` (case-insensitive)
 PERMITTIVITY_MODELS = {
     'malitson': SiO2_permittivity_Malitson,
 }
 
 # the kinds of permittivity a Material can hold
-_KINDS = ('none', 'constant', 'tensor', 'model', 'tabulated')
+_KINDS = ('none', 'constant', 'tensor', 'model', 'tabulated', 'nk table')
 
 
 def _as_permittivity_value(value):
@@ -104,11 +237,14 @@ class Material:
         - the name of a dispersion model in `PERMITTIVITY_MODELS`, e.g. 'Malitson'
         - a mapping {λ: εr} of values at specific vacuum wavelengths (no interpolation: asking for
           another wavelength raises)
+        - a `RefractiveIndexTable` of n, κ against λ, interpolated linearly at any wavelength inside
+          the table (e.g. the library's SILICON, DIAMOND and GOLD)
     - χ_m: magnetic volume susceptibility (SI, dimensionless) [·], scalar or 3×3 body-frame tensor;
       negative for a diamagnet
     - magnetisation: remanent magnetisation M_r [A/m], a magnitude or a body-frame 3-vector;
       None for a material without one
-    - conductivity: electrical conductivity σ [S/m]; None if not specified
+    - conductivity: electrical conductivity σ [S/m], scalar or 3×3 body-frame tensor (e.g.
+      pyrolytic graphite, in-plane and along the c axis); None if not specified
     - references: {quantity: citation} with the source of each number
     - notes: free text on caveats, e.g. where a value depends on the sample
 
@@ -155,6 +291,9 @@ class Material:
                 )
             self.permittivity_kind = 'model'
             self._εr = PERMITTIVITY_MODELS[key]
+        elif isinstance(permittivity, RefractiveIndexTable):
+            self.permittivity_kind = 'nk table'
+            self._εr = permittivity
         elif callable(permittivity):
             self.permittivity_kind = 'model'
             self._εr = permittivity
@@ -188,9 +327,20 @@ class Material:
                 raise ValueError(f'magnetisation must be a magnitude or a 3-vector, got shape {M.shape}')
             self.magnetisation = float(M) if M.ndim == 0 else M
 
-        # Electrical conductivity
+        # Electrical conductivity, scalar or body-frame tensor
         # [S/m]
-        self.conductivity = None if conductivity is None else float(conductivity)
+        if conductivity is None:
+            self.conductivity = None
+        else:
+            σ = np.asarray(conductivity, dtype=float)
+            if σ.shape == (3, 3):
+                if not np.allclose(σ, σ.T) or np.any(np.linalg.eigvalsh(σ) < 0):
+                    raise ValueError('a conductivity tensor must be symmetric and positive semi-definite')
+                self.conductivity = σ
+            elif σ.ndim == 0:
+                self.conductivity = float(σ)
+            else:
+                raise ValueError(f'conductivity must be a scalar or a 3×3 body-frame tensor, got shape {σ.shape}')
 
         self.references = dict(references or {})
         self.notes = str(notes)
@@ -255,7 +405,16 @@ class Material:
     @property
     def is_dispersive(self):
         """Whether εr depends on the wavelength (a model or a table) [bool]"""
-        return self.permittivity_kind in ('model', 'tabulated')
+        return self.permittivity_kind in ('model', 'tabulated', 'nk table')
+
+    @property
+    def wavelength_range(self):
+        """
+        (λ_min, λ_max) over which an interpolated n, κ table (`RefractiveIndexTable`) holds; None for
+        other kinds of permittivity
+        [m]
+        """
+        return self._εr.wavelength_range if self.permittivity_kind == 'nk table' else None
 
     @property
     def tabulated_wavelengths(self):
@@ -278,7 +437,7 @@ class Material:
             return self._εr
         if λ is None:
             raise ValueError(f'Material {self.name!r} has a dispersive permittivity: pass the vacuum wavelength λ')
-        if kind == 'model':
+        if kind in ('model', 'nk table'):
             return _as_permittivity_value(self._εr(λ))
         for λ_table, value in self._εr.items():
             if np.isclose(λ_table, λ, rtol=1e-9, atol=0.0):
@@ -351,6 +510,19 @@ class Material:
         return not _is_isotropic(self.χ_m_tensor)
 
     @property
+    def conductivity_tensor(self):
+        """
+        Electrical conductivity as a 3×3 body-frame tensor (None if not specified)
+        [S/m]
+        """
+        return None if self.conductivity is None else _as_tensor(self.conductivity)
+
+    @property
     def is_conductor(self):
-        """Whether a conductivity is given and positive [bool]"""
-        return self.conductivity is not None and self.conductivity > 0
+        """Whether a conductivity is given and positive along some axis [bool]"""
+        return self.conductivity is not None and bool(np.max(np.linalg.eigvalsh(self.conductivity_tensor)) > 0)
+
+    @property
+    def is_electrically_anisotropic(self):
+        """Whether the conductivity is a tensor that is not a multiple of the identity [bool]"""
+        return self.conductivity is not None and not _is_isotropic(self.conductivity_tensor)

@@ -231,8 +231,11 @@ def test_sphere_geometry_mass_inertia_and_charge():
 
 def test_sphere_polarisability_of_an_anisotropic_material_is_diagonal_clausius_mossotti():
     sphere = Sphere(r=1e-6, material=VATERITE)
-    α = sphere.α
+    α = sphere.α_tensor
     assert α.shape == (3, 3)
+    # α is the scalar projection on the tweezer polarisation (lab y), as for every particle
+    assert np.ndim(sphere.α) == 0 and sphere.α == α[1, 1]
+    assert not sphere.has_scalar_polarisability
     for i, n in enumerate([1.55, 1.55, 1.65]):
         εr = n**2
         assert np.isclose(α[i, i], 3 * sphere.V * 8.8541878128e-12 * (εr - 1) / (εr + 2), rtol=1e-9)
@@ -356,3 +359,30 @@ def test_trap_particle_alias():
     assert isinstance(Trap().particle, Bead)
     with pytest.raises(ValueError, match='either bead or particle'):
         Trap(bead=Bead(), particle=sphere)
+
+
+def test_alpha_is_a_scalar_projection_and_alpha_tensor_the_body_tensor_for_every_particle():
+    """Owner decision 30: the same API for every particle"""
+    from levisim.physics import Dumbbell, Rod, Spheroid, TabulatedParticle
+    from levisim.physics.particle import axis_angle_quaternion
+
+    tilt = axis_angle_quaternion((1.0, 0.0, 0.0), 0.7)
+    y = np.array([0.0, 1.0, 0.0])
+    particles = [
+        Sphere(r=200*nm, material=VATERITE, orientation=tilt),
+        Spheroid(150*nm, 50*nm, orientation=tilt),
+        Rod(300*nm, 50*nm, orientation=tilt),
+        Dumbbell(50*nm, 50*nm, 100*nm, orientation=tilt),
+        TabulatedParticle(mass=1e-18, inertia=[1.0, 1.0, 1.5], polarisability=[1.0, 2.0, 3.0], orientation=tilt),
+    ]
+    for p in particles:
+        assert np.ndim(p.α) == 0, type(p).__name__
+        assert np.shape(p.α_tensor) == (3, 3)
+        np.testing.assert_allclose(p.α_tensor, p.polarisability_tensor(), rtol=0, atol=0)
+        assert p.α == pytest.approx(y @ p.lab_polarisability_tensor() @ y, rel=1e-14)
+    # the projection follows the orientation of an anisotropic sphere
+    upright = Sphere(r=200*nm, material=VATERITE)
+    assert upright.α == upright.α_tensor[1, 1] and particles[0].α != upright.α
+    # an isotropic sphere: α is the Clausius-Mossotti scalar itself, α_tensor = α·𝟙
+    bead = Sphere()
+    np.testing.assert_array_equal(bead.α_tensor, bead.α * np.eye(3))

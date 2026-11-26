@@ -268,9 +268,14 @@ class EddyCurrentDamping(ForceElement):
 
         Γ = γ/m = σ R² JᵀJ / (10 ρ)
 
-    the low-frequency (skin depth ≫ R), small-particle (B varies little over the sphere) limit, derived
-    here as written above (the quasi-static eddy-current loss of a sphere in a uniform, slowly varying
-    field).
+    the low-frequency (skin depth ≫ R), small-particle (B varies little over the sphere) limit: Eq. (4)
+    of Xiong et al., Commun. Phys. 8, 80 (2025), doi:10.1038/s42005-025-02010-7,
+    γ_ij = (2π/15m) σR⁵ Σ_n ∂B_n/∂i ∂B_n/∂j (there also checked against a finite-element simulation).
+    The Lorentz force ∫ j × (B0 + J r) dV of these currents is -(2π/15) σ R⁵ (Jᵀ Ḃ - Ḃ tr J), the same
+    γ since tr J = ∇·B = 0. tests/test_eddy_current_numerical.py checks γ independently: it solves for
+    the induced currents in another gauge by minimising the dissipation over polynomial potentials and
+    integrates the Lorentz force (agreement to 1e-9). The conductivity must be isotropic; for a
+    conductivity tensor the smallest and largest principal values bound γ from below and above.
     The fluctuating force of the same dissipation at the conductor's temperature T,
     〈F_i F_j〉 = 2 kB T γ_ij δ(t - t'), is added in the time-domain simulation (noise_in_simulation).
 
@@ -295,6 +300,15 @@ class EddyCurrentDamping(ForceElement):
 
     def _σ(self, particle):
         σ = self.conductivity if self.conductivity is not None else getattr(particle.material, 'conductivity', None)
+        if σ is not None and np.ndim(σ) == 2:
+            σ = np.asarray(σ, dtype=float)
+            if not np.all(σ == σ[0, 0] * np.eye(3)):
+                raise ValueError(
+                    'EddyCurrentDamping holds for an isotropic conductivity (E = -½ Ḃ × r needs no surface '
+                    'charge only then); the particle material has an anisotropic conductivity tensor, pass '
+                    'conductivity=... [S/m] explicitly (e.g. the in-plane value as an upper bound)'
+                )
+            σ = float(σ[0, 0])
         if σ is None or not σ > 0:
             raise ValueError(
                 'EddyCurrentDamping needs a conductivity: the particle material has none, pass conductivity=... [S/m]'
@@ -619,7 +633,10 @@ def magnetic_trap_report(trap, element=None, r_guess=None, scan_range=None, trap
       trap_depth_method='rays'; 'saddle_refined' (whether Newton's method converged to an index-1
       saddle) and 'saddle_search' (the full `find_escape_saddle` dict, or None)
     - 'eddy_damping_rates' [2π·Hz]: diagonal Γ of eddy-current damping at the equilibrium if the
-      particle material has a conductivity (else None)
+      particle is a sphere of a material with an isotropic conductivity (else None);
+      'eddy_damping_rate_bounds' [2π·Hz]: for an anisotropic conductivity tensor (e.g. pyrolytic
+      graphite), the rates with its smallest and largest principal conductivity, which bound the true
+      rates from below and above (else None)
 
     scan_range defaults to the field source's length_scale [m]. The saddle search needs the potential
     energy of every static element (`static_energy`); if one has none, the report falls back to the
@@ -714,10 +731,23 @@ def magnetic_trap_report(trap, element=None, r_guess=None, scan_range=None, trap
             out['saddle_point'] = saddle['saddle']
             out['saddle_refined'] = saddle['refined']
 
-    if getattr(particle.material, 'is_conductor', False):
-        out['eddy_damping_rates'] = EddyCurrentDamping(element.source, r_eq).damping_rates(particle)
-    else:
-        out['eddy_damping_rates'] = None
+    out['eddy_damping_rates'] = None
+    out['eddy_damping_rate_bounds'] = None
+    material = particle.material
+    if getattr(material, 'is_conductor', False):
+        try:
+            if getattr(material, 'is_electrically_anisotropic', False):
+                # the dissipation min_φ ∫ e·σ e is monotonic in σ, so the smallest and largest principal
+                # conductivities bound the damping of the anisotropic sphere from below and above
+                σ = np.linalg.eigvalsh(material.conductivity_tensor)
+                out['eddy_damping_rate_bounds'] = tuple(
+                    EddyCurrentDamping(element.source, r_eq, conductivity=float(value)).damping_rates(particle)
+                    for value in (σ[0], σ[-1])
+                )
+            else:
+                out['eddy_damping_rates'] = EddyCurrentDamping(element.source, r_eq).damping_rates(particle)
+        except NotImplementedError:
+            pass  # EddyCurrentDamping is written for a sphere only
     return out
 
 
@@ -754,4 +784,10 @@ def magnetic_trap_report_str(report):
         )
     if r['eddy_damping_rates'] is not None:
         lines.append(f'  eddy-current damping Γ/2π = {np.array2string(r["eddy_damping_rates"] / Hz, precision=4)} Hz')
+    if r.get('eddy_damping_rate_bounds') is not None:
+        low, high = r['eddy_damping_rate_bounds']
+        lines.append(
+            f'  eddy-current damping Γ/2π between {np.array2string(low / Hz, precision=4)} and '
+            f'{np.array2string(high / Hz, precision=4)} Hz (anisotropic σ)'
+        )
     return '\n'.join(lines)
