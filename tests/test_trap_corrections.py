@@ -15,12 +15,11 @@ import pytest
 from scipy.optimize import brentq
 
 from levisim.core.constants import ħ
-from levisim.core.units import Hz, kHz, mbar, mm, nm
+from levisim.core.units import Hz, mbar, mm, nm
 from levisim.multiphysics.multitrap import MultiTrap
 from levisim.physics import Spheroid
 from levisim.physics.bead import Bead
 from levisim.physics.fields import HarmonicPotential, PaulTrap
-from levisim.physics.gas import Gas
 from levisim.physics.particle import Sphere
 from levisim.physics.shapes import Dumbbell, Ellipsoid
 from levisim.physics.trap import Trap
@@ -122,7 +121,7 @@ def test_misaligned_hybrid_trap_normal_modes_are_the_hessian_eigenvalues():
 
 
 def test_plain_tweezer_multitrap_is_unchanged_by_intra_trap_couplings():
-    common = dict(num_traps=2, Cartesian_axes_per_trap=3)
+    common = {'num_traps': 2, 'Cartesian_axes_per_trap': 3}
     on = MultiTrap(**common)
     off = MultiTrap(intra_trap_couplings=False, **common)
     assert np.array_equal(on.mechanical_coupling_matrix, off.mechanical_coupling_matrix)
