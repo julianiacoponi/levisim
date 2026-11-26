@@ -249,7 +249,7 @@ def test_toy_parameters_are_unaffected_and_warn_if_asked():
         logger.remove(handler_id)
     assert not default.static_cavity_shifts and not asked.static_cavity_shifts
     assert np.array_equal(default.drift_matrix, asked.drift_matrix)
-    assert any('static_cavity_shifts=True has no effect' in message for message in captured)
+    assert any('static_cavity_shifts only apply to physical parameters' in message for message in captured)
 
 
 def test_measured_frequencies_are_kept():

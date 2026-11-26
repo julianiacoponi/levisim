@@ -66,7 +66,8 @@ def _α(mt):
 
 @pytest.fixture(scope='module')
 def bare():
-    return OneBead()
+    # the numbers of levisim <= 0.1.1: since 1.0 the static shifts are on by default
+    return OneBead(static_cavity_shifts=False)
 
 
 @pytest.fixture(scope='module')
@@ -74,7 +75,14 @@ def full():
     return OneBead(cavity_wavenumber=True, static_cavity_shifts=True)
 
 
-def test_defaults_are_unchanged(bare):
+def test_defaults():
+    # since levisim 1.0 the static shifts are on by default; the cavity wavenumber stays opt-in
+    default = OneBead()
+    assert default.cavity_wavenumber is False and default.static_cavity_shifts is True
+    assert all(d.static_cavity_shift != 0.0 for d in default.dimensions.values())
+
+
+def test_opt_out_gives_the_0_1_1_numbers(bare):
     explicit = OneBead(cavity_wavenumber=False, static_cavity_shifts=False)
     assert bare.cavity_wavenumber is False and bare.static_cavity_shifts is False
     for label, d in bare.dimensions.items():
@@ -88,7 +96,7 @@ def test_defaults_are_unchanged(bare):
 
 
 def test_cavity_wavenumber_scales_the_standing_wave_couplings(bare):
-    mt = OneBead(cavity_wavenumber=True)
+    mt = OneBead(cavity_wavenumber=True, static_cavity_shifts=False)
     r = mt.cavity.k / mt.traps[0].drive_tweezer.k
     # the cavity resonance is above the tweezer for red detuning, so kc > ktw by |Δ|/ωtw
     assert r - 1 == pytest.approx(-mt.cavity.Δ / mt.traps[0].tweezer.ω, rel=1e-6)
@@ -105,7 +113,7 @@ def test_cavity_wavenumber_scales_the_standing_wave_couplings(bare):
 @pytest.mark.parametrize('kc_choice', ['tweezer', 'cavity'])
 @pytest.mark.parametrize('Φ', [0.0, 0.2 * np.pi, 0.35 * np.pi, 0.45 * np.pi])
 def test_static_hessian_matches_finite_differences(Φ, kc_choice):
-    mt = OneBead(Φ=Φ)
+    mt = OneBead(Φ=Φ, static_cavity_shifts=False)  # bare frequencies (the default has the shifts on)
     trap, α = mt.traps[0], _α(mt)
     kc = mt.cavity.k if kc_choice == 'cavity' else None
     h = 2e-10
