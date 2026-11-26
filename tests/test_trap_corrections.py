@@ -80,3 +80,16 @@ def test_directed_noise_default_depends_on_how_the_trap_is_built():
     assert fields_trap.β == 0.0 and fields_trap.Sdir == 0.0
     assert Trap(fields=[Tweezer()]).β == 0.0
     assert Trap(fields=[paul], particle=particle, β=np.sqrt(2)).β == np.sqrt(2)
+
+
+# --------------------------------------------------------------------------------------------------
+# decision 46: finite-size torque on for non-spherical particles
+# --------------------------------------------------------------------------------------------------
+def test_finite_size_torque_default_is_on_for_non_spherical_particles():
+    assert not Trap().finite_size_torque
+    assert not Trap(particle=Sphere(r=100*nm)).finite_size_torque
+    assert not Trap(particle=Ellipsoid(a=60*nm, b=60*nm, c=60*nm)).finite_size_torque
+    assert Trap(particle=Spheroid(a=70*nm, b=50*nm)).finite_size_torque
+    assert Trap(particle=Dumbbell(r1=50*nm)).finite_size_torque
+    assert not Trap(particle=Spheroid(a=70*nm, b=50*nm), finite_size_torque=False).finite_size_torque
+    assert MultiTrap(num_traps=1, beads=[Spheroid(a=70*nm, b=50*nm)], Cartesian_axes_per_trap=3).traps[0].finite_size_torque

@@ -61,6 +61,17 @@ for _name in ('append', 'extend', 'insert', 'remove', 'pop', 'clear', 'sort', 'r
 del _name
 
 
+def _is_spherical(particle):
+    """
+    Whether the particle is a sphere (a `Sphere`/`Bead`, or an `Ellipsoid` with equal semi-axes), for
+    the default of `Trap(finite_size_torque=...)`
+    [bool]
+    """
+    if isinstance(particle, Sphere):
+        return True
+    return bool(getattr(particle, 'is_sphere', False))
+
+
 class Trap:
     """
     Combined physics of a levitated particle in a trap made of force elements, i.e. of
@@ -205,10 +216,12 @@ class Trap:
         # Override resonant frequencies (that ignore Tweezer properties)
         # useful to get SpectralDensityTheory curves to match Experiment or Simulation data
         self.override_Ω_dict = kwargs.get('override_Ω_dict', None)
-        # Opt-in finite-size alignment torque of an extended particle in the anisotropic trap
-        # (levisim.physics.rotation.finite_size_potential): off by default, so the point-dipole
-        # torques are unchanged
-        self.finite_size_torque = bool(kwargs.get('finite_size_torque', False))
+        # Finite-size alignment torque of an extended particle in the anisotropic trap
+        # (levisim.physics.rotation.finite_size_potential): on by default for a non-spherical
+        # particle, off for a sphere (whose torque it is zero anyway); finite_size_torque=False keeps
+        # the point-dipole torques alone
+        finite_size_default = not _is_spherical(self.bead)
+        self.finite_size_torque = bool(kwargs.get('finite_size_torque', finite_size_default))
 
         # ------------------------------------------------------------------------------------------
         # Cavity drive: the light this bead coherently scatters into a cavity (used by MultiTrap)

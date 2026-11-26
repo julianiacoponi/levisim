@@ -86,9 +86,12 @@ $\langle r r^\top\rangle = S/m$ the particle's mass-weighted second moment in th
 `finite_size_torque_stiffness`). It turns the longer axes towards the weaker confinement; for an
 ellipsoid with radii $p, q, r$ along the lab axes it gives
 $\Omega_{lx}^2 = (\Omega_z^2 - \Omega_y^2)(q^2 - r^2)/(q^2 + r^2)$, the trap-anisotropy term of
-Kamba et al., Nat. Commun. **14**, 7943 (2023), Eq. (3). It is opt-in, `Trap(finite_size_torque=True)`
-(then also the default of `RigidBodySimulation`), so the point-dipole torques are unchanged by default;
-`Trap` uses $m\Omega_j^2$ from `override_Ω_dict` when that gives x, y and z.
+Kamba et al., Nat. Commun. **14**, 7943 (2023), Eq. (3). It is on by default for a non-spherical
+particle (`Trap(finite_size_torque=True)`, then also the default of `RigidBodySimulation`) and off for
+a sphere, whose second moment is isotropic and feels no such torque; `finite_size_torque=False` keeps the
+point-dipole torques alone (the default of levisim ≤ 0.1). Without it, two librations of a
+particle aligned with the polarisation are degenerate. `Trap` uses $m\Omega_j^2$ from `override_Ω_dict`
+when that gives x, y and z.
 
 ### Permanent magnets above a superconductor
 
