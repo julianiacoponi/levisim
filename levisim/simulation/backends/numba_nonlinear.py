@@ -117,6 +117,9 @@ def _term_drift(U, P, flags, extra, out):
                 wz = math.sqrt(2.0) * zR * w
                 ellipse = (x / wx) ** 2 + (y / wy) ** 2
                 E = (E0 / w) * math.exp(-ellipse)
+                # Utw here is TWICE the cycle-averaged potential -(Re α/4)|E|² (the 0.x convention of
+                # Trap.Utw); the factors 0.5 below make the force exactly -∇[-(Re α/4)|E|²], the
+                # tweezer stiffness of Trap (checked against Trap.kx/ky/kz and the MultiTrap drift matrix)
                 Utw = -(aRe / 2) * E ** 2
                 Fx += 0.5 * (4 * x / wx ** 2) * Utw
                 Fy += 0.5 * (4 * y / wy ** 2) * Utw

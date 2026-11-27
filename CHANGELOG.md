@@ -2,9 +2,104 @@
 
 All notable changes to `levisim` are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
-[Semantic Versioning](https://semver.org/) (0.x: the API may still change between minor versions).
+[Semantic Versioning](https://semver.org/) (0.x and pre-releases such as 1.0.0rc1: the API may still change;
+from 1.0.0 the public API is stable within a major version).
 
 ## [Unreleased]
+
+## [1.0.0rc1] - 2026-11-26
+
+The first release candidate of levisim 1.0 ("round 5"). levisim now simulates levitated particles
+beyond one bead in one optical tweezer: time-domain cavity simulations with output-light records,
+interactions between particles, Paul and magnetic traps and their hybrids with tweezers,
+non-spherical particles and materials, and rigid-body rotation. Install the pre-release with
+`pip install --pre levisim` (add `[fast]` for the compiled numba kernels). The public API may still
+change before 1.0.0; from 1.0.0 it follows semantic versioning.
+
+### Changed defaults (results of 0.1.x change unless the opt-out is passed)
+- `MultiTrap(static_cavity_shifts=True)` with physical parameters (opt-in in 0.1.1): the trap
+  frequencies include the static stiffness of the cavity field. `static_cavity_shifts=False` gives
+  the numbers of 0.1.x. `cavity_wavenumber` stays off by default.
+- The static cavity field includes the tweezer phases e^{iφn} (`static_cavity_phases`), the
+  dynamical coupling of the cavity dispersive term and the static cavity pull of the detuning
+  (`cavity_dispersive_coupling`), the cavity mode envelope (`cavity_envelope`), and the
+  radiation-reaction corrected Re α_eff in every cavity term (`cavity_effective_polarisability`;
+  −5.4 × 10⁻⁵ on every cavity coupling, also at the node). All four keywords off together with
+  `static_cavity_shifts=False` reproduce 0.1.1 bit for bit.
+- Measured frequencies (`override_Ω_dict`) receive neither the static cavity shift nor the
+  interaction self-stiffness (`interaction_frequency_shifts='all'` restores the latter).
+- `MultiTrap` adds the intra-trap off-diagonal stiffness of combined force elements
+  (`intra_trap_couplings`) and uses the exact Floquet frequencies for hybrid traps with one Paul
+  trap (`paul_exact_frequencies`). Plain tweezer traps are unchanged.
+- `Trap.Utw`, `U_depth` and `Tweezer.potential` are the cycle-averaged potential −(Re α/4)|E|², half
+  the previous values (a factor-2 bug); `v_escape` and `p_escape` fall by √2. Forces, frequencies and
+  spectra are unchanged.
+- `Trap(fields=...)` defaults to directed force noise β = 0 (the tweezer shorthand `Trap()` keeps
+  √2).
+- `finite_size_torque=True` for non-spherical particles (spheres unchanged).
+- `backend='auto'` (numba installed) compiles free-space runs from 2¹⁴ steps (was 2¹⁵) and the linear
+  cavity model up to state dimension 384 (was 128), re-measured on a quiet machine
+  (`benchmarks/auto_backend_thresholds.py`); it now also compiles Paul, magnetic, harmonic and
+  electric force elements, optical binding and pair interactions. Seeded runs then differ from NumPy
+  at round-off; `backend='numpy'` is the reference. An explicit `backend='numba'` for a configuration
+  without a compiled kernel raises `UnsupportedBackendError` instead of running NumPy.
+- `OpticalBinding` uses each tweezer's Jones polarisation (`polarisation='y'` for the old
+  assumption).
+- `magnetic_trap_report` takes the trap depth from a saddle-point search
+  (`trap_depth_method='rays'` gives the previous ray estimate).
+- `Sphere.α` of an anisotropic material is the scalar projection on the tweezer polarisation, as
+  for every other shape; the tensor is `α_tensor`. Isotropic spheres are unchanged.
+- `BISMUTH` has an electrical conductivity, so `magnetic_trap_report` includes its eddy-current
+  damping (`BISMUTH.replace(conductivity=None)` for the previous report).
+- `Simulation` is a deprecated alias of `FreeSpaceSimulation`, to be removed in 2.0.
+
+### Added
+- Simulations (`levisim.simulation`): `StochasticSimulation` base with integrator objects, seeding
+  and chunked noise; `FreeSpaceSimulation`; optional numba backend (`levisim[fast]`) with a threading
+  policy; per-run NumPy force dispatch (30-42 % faster per step).
+- `CavitySimulation` (`MultiTrap.simulate`): time traces of the cavity output and the particle
+  positions. `model='linear'` is exact (Van Loan discretisation); `model='nonlinear'` integrates the
+  full optical potential and the cavity amplitude (split step, `NonlinearCavityModel` with Newton
+  equilibrium and Jacobian). Records `Homodyne`, `Heterodyne`, `PhotonNumber`, `Position`
+  (sample-averaged or `sampling='instantaneous'`), detection efficiency, LO phase noise and an
+  opt-in static carrier, electronic floor, voltage conversion; Fabry-Perot ports
+  (`Cavity(κ_ports=..., κ_loss=...)`); ensembles; theory spectra of every record;
+  `SpectralDensityEstimate` with an ensemble axis.
+- Force elements: a `Trap` is a sum of elements (`Tweezer`, `HarmonicPotential`, `Gravity`,
+  `Feedback`, `PhotonRecoil`, `PaulTrap`, `UniformElectricField`, `MagneticTrap`,
+  `EddyCurrentDamping`, `MeissnerImagePlane`), each with force, torque, potential, stiffness, noise
+  and damping.
+- Paul traps: ring/endcap and linear presets, Mathieu analysis (lowest, next and exact Floquet
+  secular frequencies, stability, growth rates), trap depth, micromotion, electrode-noise heating;
+  hybrid Paul-optical traps.
+- Magnetic levitation: field sources (`CurrentLoop`, `CoilPair`, `CuboidMagnet`, `MultipoleField`,
+  `LocalFieldExpansion`, `FieldSum`, `CallableField`), diamagnetic and magneto-gravitational traps
+  with demagnetisation, eddy-current damping, saddle-point trap depth, and magnets above
+  superconductors (`MeissnerImagePlane`).
+- Interactions between particles (`levisim.physics.interactions`): `Coulomb`, `NewtonianGravity`,
+  `Casimir` (Casimir-Polder and proximity-force limits) and `OpticalBinding` (full dipole Green
+  tensor, Gouy phase, first-order and self-consistent fields); `MultiTrap(interactions=[...])` with
+  general (also non-reciprocal) mechanical coupling matrices, `MultiParticleFreeSpaceSimulation`, and
+  entanglement outputs (logarithmic negativity).
+- Materials and particles: `Material` and a cited materials library; `Particle` with `Sphere` (and
+  `Bead`, kept permanently), `Ellipsoid`, `Spheroid`, `Cylinder`/`Rod`/`Disk`, `Dumbbell`,
+  `TabulatedParticle`; anisotropic polarisability tensors, orientation, gas damping for any convex
+  shape (Martinetz 2018), optional Mie backend (`levisim[mie]`, which also installs numba).
+  Refractive-index tables with interpolation (`RefractiveIndexTable`) for `SILICON`, `DIAMOND` and
+  `GOLD`, each with its cited source (values at 1064 and 1550 nm unchanged); cited NdFeB recoil
+  permeability and grades N35-N55 (`ndfeb_grade`), and electrical conductivities of bismuth and
+  pyrolytic graphite (anisotropic); the eddy-current damping formula is verified against Xiong et
+  al., Commun. Phys. 8, 80 (2025) and an independent numerical solution; `Particle.α_tensor`;
+  sphere and tabulated-particle gas diffusion for any accommodation γs.
+- Rotation: `RigidBodySimulation` (quaternions, torques from every element), librations in
+  `MultiTrap` (`Dimension.is_libration`), Jones-vector tweezer polarisation, finite-size torque.
+- `MultiTrap.from_nonlinear_equilibrium()` (linearisation at the true equilibrium with static
+  cavity forces, recoil, gravity and pair forces), opt-in Brownian bath for ultrastrong direct
+  coupling, and a warning when a dropped axis couples to the light.
+- Paper reproductions (notebooks/papers): Penny 2023 (on `PaulTrap`), Krisnanda 2020, Conangla
+  2020, Dania 2024, Rieser 2022, Reisenbauer 2024, Slezak 2018, Hoang 2016, Reimann 2018, Ahn 2020,
+  van der Laan 2021, Pontin 2023, Kamba 2023, Vinante 2020; docs pages for every feature, and a
+  cavity-output squeezing figure with the parameters of Deplano et al. 2025.
 
 ## [0.1.1] - 2026-11-25
 
